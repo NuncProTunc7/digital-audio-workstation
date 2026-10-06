@@ -1,0 +1,22 @@
+[package]
+name = "daw-analysis"
+description = "Nunc Pro Tune mix analysis: loudness, peaks, balance, spectrogram (Claude's ears)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+daw-engine = { workspace = true }
+daw-model.workspace = true
+ebur128 = "0.1"
+png = "0.18"
+rustfft = "6"
+serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true
