@@ -1,7 +1,9 @@
-import { useRef, useState } from "react";
+import { Fragment, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { meterPercent, snap, snapDown } from "../format";
-import type { Clip, Command, Peaks, Project, Track } from "../types";
+import type { AutomationTarget, Catalog, Clip, Command, Peaks, Project, Track } from "../types";
+import { AUTOMATION_HEIGHT, automatableTargets, targetScale } from "../automation";
+import AutomationLaneEditor from "./AutomationLane";
 import Waveform from "./Waveform";
 
 export const TRACK_HEIGHT = 60;
@@ -29,6 +31,7 @@ interface TimelineProps {
   missingAudio: ReadonlySet<string>;
   /** Asks for audio files and imports them onto `trackId` (null: new tracks) at `beats`. */
   onImportAudio: (trackId: number | null, beats: number) => void;
+  catalog: Catalog;
 }
 
 const isAudio = (t: Track) => t.instrument.kind === "audio";
@@ -56,6 +59,10 @@ export default function Timeline(props: TimelineProps) {
   const lanesRef = useRef<HTMLDivElement>(null);
   const drag = useRef<Drag | null>(null);
   const [renaming, setRenaming] = useState<number | null>(null);
+  // Tracks showing their automation row, and the lane each row shows.
+  const [openAutomation, setOpenAutomation] = useState<ReadonlySet<number>>(new Set());
+  const [shownLane, setShownLane] = useState<Record<number, number>>({});
+  const rowHeight = (t: Track) => TRACK_HEIGHT + (openAutomation.has(t.id) ? AUTOMATION_HEIGHT : 0);
 
   const songEnd = Math.max(
     0,
@@ -73,8 +80,35 @@ export default function Timeline(props: TimelineProps) {
   const trackIndexAt = (clientY: number) => {
     const rect = lanesRef.current?.getBoundingClientRect();
     if (!rect) return 0;
-    const i = Math.floor((clientY - rect.top) / TRACK_HEIGHT);
-    return Math.max(0, Math.min(project.tracks.length - 1, i));
+    let y = clientY - rect.top;
+    for (let i = 0; i < project.tracks.length; i++) {
+      y -= rowHeight(project.tracks[i]);
+      if (y < 0) return i;
+    }
+    return Math.max(0, project.tracks.length - 1);
+  };
+  const toggleAutomation = (id: number) =>
+    setOpenAutomation((open) => {
+      const next = new Set(open);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const laneOf = (t: Track) => {
+    const lanes = t.automation ?? [];
+    return lanes.find((l) => l.id === shownLane[t.id]) ?? lanes[0];
+  };
+  const pickLane = async (t: Track, value: string) => {
+    if (value.startsWith("new:")) {
+      const target = JSON.parse(value.slice(4)) as AutomationTarget;
+      const before = new Set((t.automation ?? []).map((l) => l.id));
+      const p = await props.onCommand({ command: "add_automation_lane", track_id: t.id, target, points: [] });
+      props.onEndGesture();
+      const created = p?.tracks.find((x) => x.id === t.id)?.automation?.find((l) => !before.has(l.id));
+      if (created) setShownLane((s) => ({ ...s, [t.id]: created.id }));
+    } else {
+      setShownLane((s) => ({ ...s, [t.id]: Number(value) }));
+    }
   };
 
   const startClipDrag = (e: ReactPointerEvent, clip: Clip, trackIndex: number, edge: "move" | "end" | "start") => {
@@ -219,8 +253,8 @@ export default function Timeline(props: TimelineProps) {
         <div className="timeline-body">
           <div className="headers-column">
             {project.tracks.map((t, i) => (
+              <Fragment key={t.id}>
               <div
-                key={t.id}
                 className={t.id === props.selectedTrackId ? "track-header selected" : "track-header"}
                 style={{ height: TRACK_HEIGHT }}
                 onClick={() => props.onSelectTrack(t.id)}
@@ -295,6 +329,18 @@ export default function Timeline(props: TimelineProps) {
                       <div style={{ width: `${meterPercent(props.trackPeaks[i] ?? 0)}%` }} />
                     </div>
                     <button
+                      className={openAutomation.has(t.id) ? "tiny on" : "tiny"}
+                      aria-pressed={openAutomation.has(t.id)}
+                      aria-label={`Automation for ${t.name}`}
+                      title="Show automation: draw volume, pan, or any setting changing over time"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleAutomation(t.id);
+                      }}
+                    >
+                      A
+                    </button>
+                    <button
                       className="tiny delete"
                       title="Delete track"
                       aria-label={`Delete ${t.name}`}
@@ -308,6 +354,17 @@ export default function Timeline(props: TimelineProps) {
                   </div>
                 </div>
               </div>
+              {openAutomation.has(t.id) && (
+                <AutomationHeader
+                  track={t}
+                  catalog={props.catalog}
+                  laneId={laneOf(t)?.id}
+                  onPick={(v) => void pickLane(t, v)}
+                  onCommand={props.onCommand}
+                  onEndGesture={props.onEndGesture}
+                />
+              )}
+            </Fragment>
             ))}
             <div className="add-track">
               <button
@@ -354,8 +411,8 @@ export default function Timeline(props: TimelineProps) {
             }}
           >
             {project.tracks.map((t, i) => (
+              <Fragment key={t.id}>
               <div
-                key={t.id}
                 className={t.id === props.selectedTrackId ? "lane selected" : "lane"}
                 style={{ height: TRACK_HEIGHT }}
                 data-track={t.id}
@@ -395,6 +452,31 @@ export default function Timeline(props: TimelineProps) {
                   ),
                 )}
               </div>
+              {openAutomation.has(t.id) && (
+                <div className="automation-row" style={{ height: AUTOMATION_HEIGHT }}>
+                  {(() => {
+                    const lane = laneOf(t);
+                    const scale = lane ? targetScale(lane.target, t, props.catalog) : null;
+                    if (!lane || !scale) {
+                      return <span className="automation-hint">Pick a setting on the left to automate it.</span>;
+                    }
+                    return (
+                      <AutomationLaneEditor
+                        lane={lane}
+                        scale={scale}
+                        ppb={ppb}
+                        width={width}
+                        grid={grid / 4}
+                        onPoints={(points) =>
+                          void props.onCommand({ command: "set_automation_points", track_id: t.id, lane_id: lane.id, points })
+                        }
+                        onEndGesture={props.onEndGesture}
+                      />
+                    );
+                  })()}
+                </div>
+              )}
+            </Fragment>
             ))}
             <div className="playhead" style={{ left: props.playheadBeats * ppb }} aria-hidden />
           </div>
@@ -507,6 +589,76 @@ function AudioClipBox({ clip, ppb, tempoBpm, peaks, missing, selected, onPointer
       )}
       <div className="clip-trim" onPointerDown={(e) => onPointerDown(e, "start")} title="Drag to trim the start" />
       <div className="clip-resize" onPointerDown={(e) => onPointerDown(e, "end")} title="Drag to trim the end" />
+    </div>
+  );
+}
+
+interface AutomationHeaderProps {
+  track: Track;
+  catalog: Catalog;
+  laneId: number | undefined;
+  onPick: (value: string) => void;
+  onCommand: (command: Command) => Promise<Project | undefined>;
+  onEndGesture: () => void;
+}
+
+/** Left side of an automation row: which setting, on/off, delete. */
+function AutomationHeader({ track, catalog, laneId, onPick, onCommand, onEndGesture }: AutomationHeaderProps) {
+  const lanes = track.automation ?? [];
+  const lane = lanes.find((l) => l.id === laneId);
+  const unused = automatableTargets(track, catalog).filter(
+    (o) => !lanes.some((l) => JSON.stringify(l.target) === JSON.stringify(o.target)),
+  );
+  return (
+    <div className="automation-header" style={{ height: AUTOMATION_HEIGHT }}>
+      <select
+        aria-label={`Automation lane for ${track.name}`}
+        value={lane ? String(lane.id) : ""}
+        onChange={(e) => {
+          onPick(e.target.value);
+          e.currentTarget.blur();
+        }}
+      >
+        {!lane && <option value="">Automate…</option>}
+        {lanes.map((l) => (
+          <option key={l.id} value={l.id}>
+            {targetScale(l.target, track, catalog)?.label ?? "Missing setting"}
+          </option>
+        ))}
+        <optgroup label="Add a lane">
+          {unused.map((o) => (
+            <option key={o.label} value={`new:${JSON.stringify(o.target)}`}>
+              + {o.label}
+            </option>
+          ))}
+        </optgroup>
+      </select>
+      {lane && (
+        <div className="track-controls">
+          <button
+            className={lane.enabled ? "tiny on" : "tiny"}
+            aria-pressed={lane.enabled}
+            title={lane.enabled ? "Automation on (click to bypass)" : "Automation bypassed"}
+            onClick={() => {
+              void onCommand({ command: "set_automation_enabled", track_id: track.id, lane_id: lane.id, enabled: !lane.enabled });
+              onEndGesture();
+            }}
+          >
+            On
+          </button>
+          <button
+            className="tiny delete"
+            aria-label="Delete automation lane"
+            title="Delete this automation lane"
+            onClick={() => {
+              void onCommand({ command: "remove_automation_lane", track_id: track.id, lane_id: lane.id });
+              onEndGesture();
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
     </div>
   );
 }

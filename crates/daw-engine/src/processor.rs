@@ -3,7 +3,8 @@ use std::sync::Arc;
 use daw_model::TrackId;
 
 use crate::message::{
-    AudioRegionPlay, EffectChain, EngineMessage, Garbage, RecordedEvent, StripSettings, TrackSlot,
+    AudioRegionPlay, AutoTarget, EffectChain, EngineMessage, Garbage, RecordedEvent, StripSettings,
+    TrackSlot,
 };
 use crate::metronome::Metronome;
 use crate::status::EngineStatus;
@@ -215,11 +216,13 @@ impl AudioProcessor {
                 } => {
                     if let Some(t) = self.track(track_id) {
                         t.instrument.set_param(index, value);
+                        reassert_automation(t);
                     }
                 }
                 EngineMessage::SetStrip { track_id, strip } => {
                     if let Some(t) = self.track(track_id) {
                         t.strip = strip;
+                        reassert_automation(t);
                     }
                 }
                 EngineMessage::SetMasterGain(gain) => self.master_gain.set_target(gain),
@@ -233,6 +236,9 @@ impl AudioProcessor {
                         && let Some(e) = chain.effects.iter_mut().find(|e| e.id == effect_id)
                     {
                         e.processor.set_param(index, value);
+                    }
+                    if let Some(t) = track_id.and_then(|id| self.track(id)) {
+                        reassert_automation(t);
                     }
                 }
                 EngineMessage::SetEffectEnabled {
@@ -253,9 +259,10 @@ impl AudioProcessor {
                 EngineMessage::ReplaceEffects { track_id, chain } => {
                     let old = match track_id {
                         None => Some(std::mem::replace(&mut self.master_effects, chain)),
-                        Some(id) => self
-                            .track(id)
-                            .map(|t| std::mem::replace(&mut t.effects, chain)),
+                        Some(id) => self.track(id).map(|t| {
+                            reassert_automation(t);
+                            std::mem::replace(&mut t.effects, chain)
+                        }),
                     };
                     if let Some(old) = old {
                         self.throw_away(Garbage::Effects(old));
@@ -408,6 +415,7 @@ impl AudioProcessor {
         let any_solo = self.tracks.iter().any(|t| t.strip.solo);
 
         for (index, t) in self.tracks.iter_mut().enumerate() {
+            apply_automation(t, window_start);
             let (bl, br) = (&mut t.buf_left[..n], &mut t.buf_right[..n]);
             bl.fill(0.0);
             br.fill(0.0);
@@ -490,6 +498,40 @@ impl AudioProcessor {
             let click = self.metronome.next();
             *l += click;
             *r += click;
+        }
+    }
+}
+
+/// Makes automation re-apply its values on the next block, after a manual
+/// change (a slider, a preset, a new effect chain) overwrote them.
+// RT-SAFE
+fn reassert_automation(t: &mut TrackSlot) {
+    for c in t.sequence.automation.iter_mut() {
+        c.last = f32::NAN;
+    }
+}
+
+/// Sets every automated value to its curve's value at `beats`. Automation
+/// follows the playhead whether or not the song is playing.
+// RT-SAFE
+fn apply_automation(t: &mut TrackSlot, beats: f64) {
+    for curve in t.sequence.automation.iter_mut() {
+        let Some(v) = curve.value_at(beats) else {
+            continue;
+        };
+        if v == curve.last {
+            continue;
+        }
+        curve.last = v;
+        match curve.target {
+            AutoTarget::Volume => t.strip.gain = db_to_fader_gain(f64::from(v)),
+            AutoTarget::Pan => t.strip.pan = v.clamp(-1.0, 1.0),
+            AutoTarget::Instrument(index) => t.instrument.set_param(index, v),
+            AutoTarget::Effect { effect_id, index } => {
+                if let Some(e) = t.effects.effects.iter_mut().find(|e| e.id == effect_id) {
+                    e.processor.set_param(index, v);
+                }
+            }
         }
     }
 }

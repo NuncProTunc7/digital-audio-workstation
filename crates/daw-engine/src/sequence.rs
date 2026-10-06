@@ -2,9 +2,43 @@
 //! regions the audio thread plays.
 
 use daw_audio::AudioPool;
-use daw_model::Track;
+use daw_model::effect::effect_params;
+use daw_model::instrument::param_specs;
+use daw_model::{AutomationTarget, Track};
 
-use crate::message::{AudioRegionPlay, SeqEvent, Sequence};
+use crate::message::{AudioRegionPlay, AutoCurve, AutoTarget, SeqEvent, Sequence};
+
+/// The track's enabled automation lanes, resolved to engine targets. Lanes
+/// whose target no longer exists (a removed effect) are skipped.
+fn build_automation(track: &Track) -> Vec<AutoCurve> {
+    track
+        .automation
+        .iter()
+        .filter(|l| l.enabled && !l.points.is_empty())
+        .filter_map(|l| {
+            let target = match &l.target {
+                AutomationTarget::Volume => AutoTarget::Volume,
+                AutomationTarget::Pan => AutoTarget::Pan,
+                AutomationTarget::InstrumentParam { param } => AutoTarget::Instrument(
+                    param_specs(track.instrument.kind)
+                        .iter()
+                        .position(|s| s.id == param)?,
+                ),
+                AutomationTarget::EffectParam { effect_id, param } => {
+                    let fx = track.mixer.effects.iter().find(|e| e.id == *effect_id)?;
+                    AutoTarget::Effect {
+                        effect_id: *effect_id,
+                        index: effect_params(fx.kind).iter().position(|s| s.id == param)?,
+                    }
+                }
+            };
+            Some(AutoCurve::new(
+                target,
+                l.points.iter().map(|p| (p.beats, p.value as f32)).collect(),
+            ))
+        })
+        .collect()
+}
 
 /// Flattens all clips on a track. Notes are cut at their clip's end; at the
 /// same beat, note-offs come before note-ons so repeated notes retrigger.
@@ -60,6 +94,7 @@ pub fn build_sequence(track: &Track, audio: &AudioPool, sample_rate_hz: u32) -> 
     Sequence {
         events,
         audio: regions,
+        automation: build_automation(track),
     }
 }
 

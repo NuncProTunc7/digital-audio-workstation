@@ -99,6 +99,7 @@ impl Project {
             || self.tracks.iter().any(|t| {
                 t.id == id
                     || t.mixer.effects.iter().any(|e| e.id == id)
+                    || t.automation.iter().any(|l| l.id == id)
                     || t.clips
                         .iter()
                         .any(|c| c.id == id || c.notes.iter().any(|n| n.id == id))
@@ -111,6 +112,7 @@ impl Project {
         for t in &self.tracks {
             ids.push(t.id);
             ids.extend(t.mixer.effects.iter().map(|e| e.id));
+            ids.extend(t.automation.iter().map(|l| l.id));
             for c in &t.clips {
                 ids.push(c.id);
                 ids.extend(c.notes.iter().map(|n| n.id));
@@ -144,6 +146,7 @@ impl Default for Project {
                 .unwrap_or_else(|| unreachable!("factory preset {preset} exists")),
             mixer: Mixer::default(),
             clips: Vec::new(),
+            automation: Vec::new(),
         };
         Self {
             format_version: FORMAT_VERSION,
@@ -174,6 +177,79 @@ pub struct Track {
     /// MIDI clips on the timeline.
     #[serde(default)]
     pub clips: Vec<Clip>,
+    /// Settings that change over time (volume rides, filter sweeps, ...).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub automation: Vec<AutomationLane>,
+}
+
+/// Id of an automation lane.
+pub type LaneId = Id;
+
+/// What an automation lane moves.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum AutomationTarget {
+    /// Track volume in dB (-60 to +6).
+    Volume,
+    /// Track pan, -1 (left) to 1 (right).
+    Pan,
+    /// An instrument parameter by id (see describe_instruments), in its own units.
+    InstrumentParam { param: String },
+    /// A parameter of an effect on this track, in its own units.
+    EffectParam { effect_id: EffectId, param: String },
+}
+
+/// One point on an automation curve. Values change in straight lines
+/// between points; before the first point and after the last, the nearest
+/// point's value holds.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct AutomationPoint {
+    /// Position in beats from the song start.
+    pub beats: f64,
+    /// Value in the target's units (dB for volume, Hz for a cutoff, ...).
+    pub value: f64,
+}
+
+/// A curve that moves one setting over time. While a lane is enabled and
+/// has points, it overrides that setting's slider during playback.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct AutomationLane {
+    pub id: LaneId,
+    pub target: AutomationTarget,
+    #[serde(default = "enabled_default")]
+    pub enabled: bool,
+    /// Points sorted by `beats`.
+    #[serde(default)]
+    pub points: Vec<AutomationPoint>,
+}
+
+fn enabled_default() -> bool {
+    true
+}
+
+impl AutomationLane {
+    /// The curve's value at `beats` (None without points).
+    pub fn value_at(&self, beats: f64) -> Option<f64> {
+        value_at(&self.points, beats)
+    }
+}
+
+/// Linear interpolation over sorted points, holding the ends.
+pub fn value_at(points: &[AutomationPoint], beats: f64) -> Option<f64> {
+    let first = points.first()?;
+    let i = points.partition_point(|p| p.beats <= beats);
+    if i == 0 {
+        return Some(first.value);
+    }
+    let a = points[i - 1];
+    let Some(b) = points.get(i) else {
+        return Some(a.value);
+    };
+    let span = b.beats - a.beats;
+    if span <= 0.0 {
+        return Some(b.value);
+    }
+    Some(a.value + (b.value - a.value) * (beats - a.beats) / span)
 }
 
 /// A track's channel strip.

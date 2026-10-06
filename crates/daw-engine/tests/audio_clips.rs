@@ -177,3 +177,58 @@ fn output_clock_maps_device_time_to_beats() {
     // Half a second later at 120 BPM: one beat on.
     assert!((a.beats_at(5_500_000_000) - 3.0).abs() < 1e-9);
 }
+
+#[test]
+fn volume_automation_fades_a_track_in_and_removal_restores_the_fader() {
+    use daw_model::{AutomationPoint, AutomationTarget, Session};
+    let pool = pool_with("dc.wav", vec![0.5; SR as usize * 2]);
+    let mut s = Session::new(project(region("dc.wav", 2.0), 0.0, None));
+    // Silent at beat 0, full level by beat 2 (one second).
+    s.execute(Command::AddAutomationLane {
+        track_id: 4,
+        target: AutomationTarget::Volume,
+        points: vec![
+            AutomationPoint {
+                beats: 0.0,
+                value: -60.0,
+            },
+            AutomationPoint {
+                beats: 2.0,
+                value: 0.0,
+            },
+        ],
+    })
+    .expect("lane");
+    let out = left(&render_project(s.project(), &pool, play_from(0.0), 1.5, SR));
+    let level = |at: usize| {
+        out[at - 200..at + 200]
+            .iter()
+            .fold(0.0f32, |m, x| m.max(x.abs()))
+    };
+    assert!(level(2_400) < 0.01, "start {}", level(2_400));
+    // Halfway (beat 1): -30 dB of 0.5.
+    let mid = level(24_000);
+    assert!(
+        (mid - 0.5 * 10f32.powf(-30.0 / 20.0)).abs() < 0.01,
+        "mid {mid}"
+    );
+    assert!((level(60_000) - 0.5).abs() < 0.01, "end {}", level(60_000));
+
+    // Live: with the lane gone, the fader (0 dB) is back.
+    let (engine, mut p) = daw_engine::Engine::with_audio(s.project(), SR, pool);
+    engine.set_metronome(false);
+    engine.play();
+    let mut buf = vec![0.0; 4_800];
+    p.process_interleaved(&mut buf, 2);
+    let lane = s.project().tracks[0].automation[0].id;
+    s.execute(Command::RemoveAutomationLane {
+        track_id: 4,
+        lane_id: lane,
+    })
+    .expect("remove");
+    engine.sync(s.project());
+    let mut buf = vec![0.0; 9_600];
+    p.process_interleaved(&mut buf, 2);
+    let tail = buf[8_000..].iter().fold(0.0f32, |m, x| m.max(x.abs()));
+    assert!((tail - 0.5).abs() < 0.01, "after removal {tail}");
+}

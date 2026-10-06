@@ -31,12 +31,66 @@ pub struct AudioRegionPlay {
     pub fade_out_frames: f64,
 }
 
+/// What an automation curve drives, resolved to engine indices.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum AutoTarget {
+    /// Fader level in dB.
+    Volume,
+    Pan,
+    /// Instrument parameter index.
+    Instrument(usize),
+    /// Effect (by id) parameter index.
+    Effect {
+        effect_id: EffectId,
+        index: usize,
+    },
+}
+
+/// One automation lane, as the audio thread plays it.
+#[derive(Debug, Clone)]
+pub struct AutoCurve {
+    pub target: AutoTarget,
+    /// (beats, value in the target's units), sorted by beats.
+    pub points: Vec<(f64, f32)>,
+    /// Last value applied, so unchanged values aren't re-sent.
+    pub(crate) last: f32,
+}
+
+impl AutoCurve {
+    pub fn new(target: AutoTarget, points: Vec<(f64, f32)>) -> Self {
+        Self {
+            target,
+            points,
+            last: f32::NAN,
+        }
+    }
+
+    /// Value at `beats`: straight lines between points, ends held.
+    // RT-SAFE
+    pub fn value_at(&self, beats: f64) -> Option<f32> {
+        let first = self.points.first()?;
+        let i = self.points.partition_point(|p| p.0 <= beats);
+        if i == 0 {
+            return Some(first.1);
+        }
+        let (ab, av) = self.points[i - 1];
+        let Some(&(bb, bv)) = self.points.get(i) else {
+            return Some(av);
+        };
+        if bb <= ab {
+            return Some(bv);
+        }
+        Some(av + (bv - av) * ((beats - ab) / (bb - ab)) as f32)
+    }
+}
+
 /// All of a track's clips: notes flattened into time-ordered events, and
-/// audio clips in timeline order.
+/// audio clips in timeline order; plus its automation.
 #[derive(Debug, Clone, Default)]
 pub struct Sequence {
     pub events: Vec<SeqEvent>,
     pub audio: Vec<AudioRegionPlay>,
+    pub automation: Vec<AutoCurve>,
 }
 
 /// One effect in a chain, as the audio thread sees it.

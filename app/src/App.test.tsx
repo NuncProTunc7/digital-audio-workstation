@@ -403,6 +403,37 @@ describe("Import and export", () => {
   });
 });
 
+describe("Automation", () => {
+  it("adds a volume lane and draws points on it", async () => {
+    const backend = createPreviewBackend();
+    vi.spyOn(backend, "execute");
+    await renderApp(backend);
+    fireEvent.click(screen.getByRole("button", { name: "Automation for Keys" }));
+    const picker = screen.getByLabelText("Automation lane for Keys") as HTMLSelectElement;
+    expect([...picker.options].map((o) => o.textContent)).toContain("+ Filter: Cutoff");
+    await act(async () => {
+      fireEvent.change(picker, { target: { value: 'new:{"kind":"volume"}' } });
+    });
+    expect(backend.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ command: "add_automation_lane", track_id: 1, target: { kind: "volume" } }),
+    );
+    const lane = await screen.findByLabelText("Volume automation");
+    // jsdom has no layout: x is beats * 24 px, y = 0 is the top (+6 dB).
+    await act(async () => {
+      fireEvent.pointerDown(lane, { clientX: 96, clientY: 0, button: 0 });
+      fireEvent.pointerUp(lane);
+    });
+    const keys = (await backend.getProject()).project.tracks[0];
+    expect(keys.automation?.[0].points).toEqual([{ beats: 4, value: 6 }]);
+    // Double-click removes it.
+    const point = document.querySelector(".automation-point") as Element;
+    await act(async () => {
+      fireEvent.doubleClick(point);
+    });
+    expect((await backend.getProject()).project.tracks[0].automation?.[0].points).toEqual([]);
+  });
+});
+
 async function waitForElement(selector: string): Promise<Element> {
   for (let i = 0; i < 50; i++) {
     const el = document.querySelector(selector);

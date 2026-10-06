@@ -69,10 +69,23 @@ fn fixture() -> Project {
     }
     .apply(&mut p)
     .expect("audio clip");
+    Command::AddAutomationLane {
+        track_id: 1,
+        target: AutomationTarget::Volume,
+        points: vec![pt(0.0, -12.0), pt(8.0, 0.0)],
+    }
+    .apply(&mut p)
+    .expect("lane");
     p
 }
 
 const AUDIO_CLIP: ClipId = 11;
+/// The Keys volume lane in the fixture.
+const LANE: LaneId = 12;
+
+fn pt(beats: f64, value: f64) -> AutomationPoint {
+    AutomationPoint { beats, value }
+}
 
 fn clip_id(p: &Project) -> ClipId {
     p.tracks[0].clips[0].id
@@ -241,6 +254,35 @@ fn sample_commands(p: &Project) -> Vec<Command> {
         Command::DuplicateClip {
             clip_id: AUDIO_CLIP,
             start_beats: None,
+        },
+        Command::AddAutomationLane {
+            track_id: 1,
+            target: AutomationTarget::InstrumentParam {
+                param: "filter.cutoff_hz".into(),
+            },
+            points: vec![pt(0.0, 300.0), pt(16.0, 6000.0)],
+        },
+        Command::AddAutomationLane {
+            track_id: 1,
+            target: AutomationTarget::EffectParam {
+                effect_id: fx,
+                param: "mix".into(),
+            },
+            points: vec![],
+        },
+        Command::SetAutomationPoints {
+            track_id: 1,
+            lane_id: LANE,
+            points: vec![pt(4.0, -60.0), pt(2.0, -6.0)],
+        },
+        Command::SetAutomationEnabled {
+            track_id: 1,
+            lane_id: LANE,
+            enabled: false,
+        },
+        Command::RemoveAutomationLane {
+            track_id: 1,
+            lane_id: LANE,
         },
     ]
 }
@@ -783,4 +825,72 @@ fn audio_clip_gain_drag_is_one_undo_step() {
     assert!(s.undo());
     let (_, c) = s.project().clip(AUDIO_CLIP).expect("clip");
     assert_eq!(c.audio.as_ref().expect("audio").gain_db, 0.0);
+}
+
+#[test]
+fn automation_points_are_checked_sorted_and_interpolated() {
+    let mut p = fixture();
+    Command::SetAutomationPoints {
+        track_id: 1,
+        lane_id: LANE,
+        points: vec![pt(8.0, 0.0), pt(0.0, -20.0)],
+    }
+    .apply(&mut p)
+    .expect("set");
+    let lane = &p.track(1).expect("t").automation[0];
+    assert_eq!(lane.points[0].beats, 0.0);
+    assert_eq!(lane.value_at(-1.0), Some(-20.0));
+    assert_eq!(lane.value_at(4.0), Some(-10.0));
+    assert_eq!(lane.value_at(100.0), Some(0.0));
+    let rejected = [
+        Command::SetAutomationPoints {
+            track_id: 1,
+            lane_id: LANE,
+            points: vec![pt(0.0, 12.0)],
+        },
+        Command::AddAutomationLane {
+            track_id: 1,
+            target: AutomationTarget::Volume,
+            points: vec![],
+        },
+        Command::AddAutomationLane {
+            track_id: 1,
+            target: AutomationTarget::InstrumentParam {
+                param: "nope".into(),
+            },
+            points: vec![],
+        },
+        Command::AddAutomationLane {
+            track_id: 1,
+            target: AutomationTarget::EffectParam {
+                effect_id: 999,
+                param: "mix".into(),
+            },
+            points: vec![],
+        },
+    ];
+    for c in rejected {
+        let mut q = p.clone();
+        assert!(c.clone().apply(&mut q).is_err(), "{c:?}");
+        assert_eq!(q, p);
+    }
+}
+
+#[test]
+fn automation_drag_is_one_undo_step() {
+    let mut s = Session::new(fixture());
+    for v in [-10.0, -8.0, -6.0] {
+        s.execute(Command::SetAutomationPoints {
+            track_id: 1,
+            lane_id: LANE,
+            points: vec![pt(0.0, v)],
+        })
+        .expect("drag");
+    }
+    s.end_gesture();
+    assert!(s.undo());
+    assert_eq!(
+        s.project().track(1).expect("t").automation[0].points.len(),
+        2
+    );
 }

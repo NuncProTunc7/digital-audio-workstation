@@ -807,6 +807,7 @@ export default function App({ backend }: AppProps) {
           peaks={peaks}
           missingAudio={missingAudio}
           onImportAudio={(trackId, beats) => void pickAndImport(trackId, beats)}
+          catalog={catalog}
         />
       </main>
 

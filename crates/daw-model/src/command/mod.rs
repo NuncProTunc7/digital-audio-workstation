@@ -2,6 +2,7 @@
 //! Command that undoes it, which is how undo/redo works.
 
 mod audio;
+mod automation;
 mod clips;
 mod effects;
 mod instruments;
@@ -19,8 +20,8 @@ use thiserror::Error;
 use crate::effect::{Effect, EffectKind};
 use crate::instrument::{Instrument, InstrumentKind};
 use crate::project::{
-    AudioRegion, Clip, ClipId, EffectId, Id, MAX_TEMPO_BPM, MIN_TEMPO_BPM, NoteId, Project, Track,
-    TrackId,
+    AudioRegion, AutomationLane, AutomationPoint, AutomationTarget, Clip, ClipId, EffectId, Id,
+    LaneId, MAX_TEMPO_BPM, MIN_TEMPO_BPM, NoteId, Project, Track, TrackId,
 };
 
 pub use notes::{NoteEdit, NoteInput};
@@ -264,6 +265,40 @@ pub enum Command {
         fade_out_seconds: Option<f64>,
     },
 
+    // ---- Automation ----
+    /// Add an automation lane that moves one of a track's settings over
+    /// time: volume (dB), pan (-1..1), an instrument parameter, or a
+    /// parameter of an effect on the track (ids from get_track). Points are
+    /// (beats, value) pairs; values change in straight lines between them.
+    /// Example: a filter sweep is two points on instrument param
+    /// "filter.cutoff_hz", e.g. (0, 300) and (16, 6000).
+    AddAutomationLane {
+        track_id: TrackId,
+        target: AutomationTarget,
+        #[serde(default)]
+        points: Vec<AutomationPoint>,
+    },
+    /// Delete an automation lane; the setting goes back to its slider value.
+    RemoveAutomationLane { track_id: TrackId, lane_id: LaneId },
+    /// Put back a deleted automation lane exactly as it was (used by undo).
+    RestoreAutomationLane {
+        track_id: TrackId,
+        index: usize,
+        lane: AutomationLane,
+    },
+    /// Replace all points of an automation lane.
+    SetAutomationPoints {
+        track_id: TrackId,
+        lane_id: LaneId,
+        points: Vec<AutomationPoint>,
+    },
+    /// Turn an automation lane on or off without deleting it.
+    SetAutomationEnabled {
+        track_id: TrackId,
+        lane_id: LaneId,
+        enabled: bool,
+    },
+
     // ---- Notes ----
     /// Add notes to a clip. Times are relative to the clip start.
     AddNotes {
@@ -475,6 +510,29 @@ impl Command {
                 fade_in_seconds,
                 fade_out_seconds,
             } => audio::set(project, clip_id, gain_db, fade_in_seconds, fade_out_seconds),
+            C::AddAutomationLane {
+                track_id,
+                target,
+                points,
+            } => automation::add(project, track_id, target, points),
+            C::RemoveAutomationLane { track_id, lane_id } => {
+                automation::remove(project, track_id, lane_id)
+            }
+            C::RestoreAutomationLane {
+                track_id,
+                index,
+                lane,
+            } => automation::restore(project, track_id, index, lane),
+            C::SetAutomationPoints {
+                track_id,
+                lane_id,
+                points,
+            } => automation::set_points(project, track_id, lane_id, points),
+            C::SetAutomationEnabled {
+                track_id,
+                lane_id,
+                enabled,
+            } => automation::set_enabled(project, track_id, lane_id, enabled),
             C::AddNotes { clip_id, notes } => notes::add(project, clip_id, notes),
             C::RemoveNotes { clip_id, note_ids } => notes::remove(project, clip_id, note_ids),
             C::EditNotes { clip_id, edits } => notes::edit(project, clip_id, edits),
@@ -572,6 +630,10 @@ impl Command {
             ) => a == b && sa.is_some() == sb.is_some() && ta.is_some() == tb.is_some(),
             (C::ResizeClip { clip_id: a, .. }, C::ResizeClip { clip_id: b, .. }) => a == b,
             (C::TrimClipStart { clip_id: a, .. }, C::TrimClipStart { clip_id: b, .. }) => a == b,
+            (
+                C::SetAutomationPoints { lane_id: a, .. },
+                C::SetAutomationPoints { lane_id: b, .. },
+            ) => a == b,
             (
                 C::SetAudioClip {
                     clip_id: a,

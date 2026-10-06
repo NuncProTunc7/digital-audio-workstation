@@ -59,12 +59,33 @@ export interface Clip {
   audio?: AudioRegion | null;
 }
 
+export type AutomationTarget =
+  | { kind: "volume" }
+  | { kind: "pan" }
+  | { kind: "instrument_param"; param: string }
+  | { kind: "effect_param"; effect_id: number; param: string };
+
+export interface AutomationPoint {
+  beats: number;
+  value: number;
+}
+
+/** A curve that moves one setting over time. */
+export interface AutomationLane {
+  id: number;
+  target: AutomationTarget;
+  enabled: boolean;
+  /** Sorted by beats. */
+  points: AutomationPoint[];
+}
+
 export interface Track {
   id: number;
   name: string;
   instrument: Instrument;
   mixer: Mixer;
   clips: Clip[];
+  automation?: AutomationLane[];
 }
 
 export interface LoopRegion {
@@ -169,6 +190,10 @@ export type Command =
       fade_in_seconds: Opt<number>;
       fade_out_seconds: Opt<number>;
     }
+  | { command: "add_automation_lane"; track_id: number; target: AutomationTarget; points: AutomationPoint[] }
+  | { command: "remove_automation_lane"; track_id: number; lane_id: number }
+  | { command: "set_automation_points"; track_id: number; lane_id: number; points: AutomationPoint[] }
+  | { command: "set_automation_enabled"; track_id: number; lane_id: number; enabled: boolean }
   | { command: "batch"; commands: Command[] };
 
 export interface ProjectView {

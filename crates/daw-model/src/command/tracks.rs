@@ -48,6 +48,7 @@ pub(super) fn add(
             instrument,
             mixer: Mixer::default(),
             clips: Vec::new(),
+            automation: Vec::new(),
         },
     );
     Ok(Command::RemoveTrack { track_id: id })

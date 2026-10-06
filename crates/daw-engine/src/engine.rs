@@ -274,11 +274,43 @@ impl Engine {
             });
         }
         self.sync_chain(Some(new.id), &os.effects, &ns.effects, tempo_bpm);
-        if old.clips != new.clips {
+        let automation_changed = old.automation != new.automation;
+        if old.clips != new.clips || automation_changed {
             self.send(EngineMessage::ReplaceSequence {
                 track_id: new.id,
                 sequence: Box::new(build_sequence(new, &self.audio, self.sample_rate_hz as u32)),
             });
+        }
+        if automation_changed {
+            // Lanes that went away leave their settings where the curve
+            // left them; put the sliders' values back. Lanes that remain
+            // take over again on the next block.
+            self.resend_static(new);
+        }
+    }
+
+    /// Sends a track's fader, pan, and every instrument and effect setting.
+    fn resend_static(&self, track: &Track) {
+        self.send(EngineMessage::SetStrip {
+            track_id: track.id,
+            strip: strip_settings(&track.mixer),
+        });
+        for (index, spec) in param_specs(track.instrument.kind).iter().enumerate() {
+            self.send(EngineMessage::SetParam {
+                track_id: track.id,
+                index,
+                value: track.instrument.value(spec.id).unwrap_or(spec.default) as f32,
+            });
+        }
+        for e in &track.mixer.effects {
+            for (index, spec) in effect_params(e.kind).iter().enumerate() {
+                self.send(EngineMessage::SetEffectParam {
+                    track_id: Some(track.id),
+                    effect_id: e.id,
+                    index,
+                    value: e.value(spec.id).unwrap_or(spec.default) as f32,
+                });
+            }
         }
     }
 

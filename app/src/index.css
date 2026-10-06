@@ -642,6 +642,7 @@ button.tiny.delete {
 }
 
 .track-header:hover button.tiny.delete,
+.automation-header:hover button.tiny.delete,
 .effect:hover button.tiny.delete {
   opacity: 1;
 }
@@ -1566,4 +1567,64 @@ button.tiny.power.on {
 .dialog-result ul {
   margin: 4px 0 0;
   padding-left: 18px;
+}
+
+/* ---- Phase 6: automation ---- */
+
+.automation-header {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: 4px 8px 4px 28px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.automation-header select {
+  font-size: 12px;
+  max-width: 100%;
+}
+
+.automation-row {
+  position: relative;
+  background: rgba(94, 214, 196, 0.04);
+  border-bottom: 1px solid var(--border);
+}
+
+.automation-hint {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 12px;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.automation-lane {
+  display: block;
+  cursor: crosshair;
+}
+
+.automation-line {
+  fill: none;
+  stroke: var(--accent-2);
+  stroke-width: 2;
+}
+
+.automation-lane.off .automation-line {
+  stroke: var(--muted);
+  stroke-dasharray: 4 4;
+}
+
+.automation-point {
+  fill: var(--bg);
+  stroke: var(--accent-2);
+  stroke-width: 2;
+  cursor: grab;
+}
+
+.automation-point:hover {
+  fill: var(--accent-2);
 }

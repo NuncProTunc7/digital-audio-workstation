@@ -36,6 +36,14 @@ fn track_brief(t: &Track) -> Value {
         "solo": t.mixer.solo,
         "effects": t.mixer.effects.iter().map(|e| json!({"id": e.id, "kind": e.kind, "enabled": e.enabled})).collect::<Vec<_>>(),
         "clips": t.clips.iter().map(clip_brief).collect::<Vec<_>>(),
+        "automation": t.automation.iter().map(|l| json!({
+            "id": l.id,
+            "target": l.target,
+            "enabled": l.enabled,
+            "points": l.points.len(),
+            "from_beats": l.points.first().map(|p| p.beats),
+            "to_beats": l.points.last().map(|p| p.beats),
+        })).collect::<Vec<_>>(),
     })
 }
 
@@ -68,6 +76,7 @@ pub fn track_detail(track: &Track) -> Value {
     let mut v = track_brief(track);
     v["instrument_params"] = json!(track.instrument.params);
     v["effects"] = json!(track.mixer.effects);
+    v["automation"] = json!(track.automation);
     v
 }
 

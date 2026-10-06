@@ -327,6 +327,37 @@ export function applyCommand(project: Project, command: Command): Project {
       if (command.fade_out_seconds !== null) a.fade_out_seconds = command.fade_out_seconds;
       break;
     }
+    case "add_automation_lane": {
+      const t = track(command.track_id);
+      t.automation ??= [];
+      if (t.automation.some((l) => JSON.stringify(l.target) === JSON.stringify(command.target))) {
+        throw new Error("an automation lane for that setting already exists on this track");
+      }
+      t.automation.push({
+        id: id(),
+        target: structuredClone(command.target),
+        enabled: true,
+        points: [...command.points].sort((a, b) => a.beats - b.beats),
+      });
+      break;
+    }
+    case "remove_automation_lane": {
+      const t = track(command.track_id);
+      t.automation = (t.automation ?? []).filter((l) => l.id !== command.lane_id);
+      break;
+    }
+    case "set_automation_points": {
+      const lane = track(command.track_id).automation?.find((l) => l.id === command.lane_id);
+      if (!lane) throw new Error(`automation lane ${command.lane_id} isn't on this track`);
+      lane.points = [...command.points].sort((a, b) => a.beats - b.beats);
+      break;
+    }
+    case "set_automation_enabled": {
+      const lane = track(command.track_id).automation?.find((l) => l.id === command.lane_id);
+      if (!lane) throw new Error(`automation lane ${command.lane_id} isn't on this track`);
+      lane.enabled = command.enabled;
+      break;
+    }
     case "batch": {
       // All-or-nothing: a throw leaves the original project untouched.
       let next = p;

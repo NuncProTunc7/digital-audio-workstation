@@ -88,6 +88,11 @@ fn validate(project: &mut Project) -> Result<(), FileError> {
 
     for track in &mut project.tracks {
         track.instrument = crate::command::complete_instrument_pub(track.instrument.clone())?;
+        for lane in &mut track.automation {
+            lane.points
+                .retain(|p| p.beats.is_finite() && p.value.is_finite());
+            lane.points.sort_by(|a, b| a.beats.total_cmp(&b.beats));
+        }
         for clip in &track.clips {
             crate::command::check_clip_fits_pub(track.instrument.kind, clip)?;
             for n in &clip.notes {

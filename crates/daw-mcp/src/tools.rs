@@ -7,7 +7,12 @@ use serde_json::{Map, Value, json};
 use daw_control::Request;
 
 /// Commands that exist only so undo can restore things exactly.
-const HIDDEN_COMMANDS: &[&str] = &["restore_track", "restore_clip", "restore_effect"];
+const HIDDEN_COMMANDS: &[&str] = &[
+    "restore_track",
+    "restore_clip",
+    "restore_effect",
+    "restore_automation_lane",
+];
 
 /// A tool: its name, description, and JSON Schema for its arguments.
 #[derive(Debug, Clone)]

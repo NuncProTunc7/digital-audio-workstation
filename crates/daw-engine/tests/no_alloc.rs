@@ -104,6 +104,36 @@ fn audio_thread_never_allocates() {
             name: None,
         })
         .expect("audio clip");
+    // Automation on volume, pan, an instrument parameter, and (below) an effect.
+    for (track, target) in [
+        (1, daw_model::AutomationTarget::Volume),
+        (2, daw_model::AutomationTarget::Pan),
+        (
+            1,
+            daw_model::AutomationTarget::InstrumentParam {
+                param: "filter.cutoff_hz".into(),
+            },
+        ),
+    ] {
+        let value = if matches!(target, daw_model::AutomationTarget::InstrumentParam { .. }) {
+            1000.0
+        } else {
+            -0.5
+        };
+        session
+            .execute(Command::AddAutomationLane {
+                track_id: track,
+                target,
+                points: vec![
+                    daw_model::AutomationPoint { beats: 0.0, value },
+                    daw_model::AutomationPoint {
+                        beats: 4.0,
+                        value: value * 2.0,
+                    },
+                ],
+            })
+            .expect("lane");
+    }
     let (engine, mut processor) = Engine::with_audio(session.project(), 48_000, pool);
     // The sound card reports when each buffer will be heard.
     processor.set_output_time(1_000_000_000);
@@ -241,6 +271,26 @@ fn audio_thread_never_allocates() {
     session
         .execute(Command::SetMasterVolume { volume_db: -3.0 })
         .expect("master");
+    let reverb = session.project().tracks[0].mixer.effects[0].id;
+    session
+        .execute(Command::AddAutomationLane {
+            track_id: 1,
+            target: daw_model::AutomationTarget::EffectParam {
+                effect_id: reverb,
+                param: "mix".into(),
+            },
+            points: vec![
+                daw_model::AutomationPoint {
+                    beats: 0.0,
+                    value: 0.1,
+                },
+                daw_model::AutomationPoint {
+                    beats: 2.0,
+                    value: 0.6,
+                },
+            ],
+        })
+        .expect("fx lane");
     engine.sync(session.project());
     engine.locate(1.0);
     assert_eq!(process_counting(&mut processor, &mut out), 0, "live edits");
