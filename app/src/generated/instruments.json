@@ -546,6 +546,464 @@
       ]
     }
   ],
+  "effects": [
+    {
+      "kind": "eq",
+      "name": "EQ",
+      "description": "Three-band equalizer with a low cut: shape the tone.",
+      "params": [
+        {
+          "id": "low_cut_hz",
+          "name": "Low cut",
+          "group": "EQ",
+          "min": 20.0,
+          "max": 1000.0,
+          "default": 20.0,
+          "unit": "hertz",
+          "log_scale": true,
+          "choices": []
+        },
+        {
+          "id": "low.gain_db",
+          "name": "Low",
+          "group": "EQ",
+          "min": -18.0,
+          "max": 18.0,
+          "default": 0.0,
+          "unit": "decibels",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "low.freq_hz",
+          "name": "Low freq",
+          "group": "EQ",
+          "min": 40.0,
+          "max": 800.0,
+          "default": 150.0,
+          "unit": "hertz",
+          "log_scale": true,
+          "choices": []
+        },
+        {
+          "id": "mid.gain_db",
+          "name": "Mid",
+          "group": "EQ",
+          "min": -18.0,
+          "max": 18.0,
+          "default": 0.0,
+          "unit": "decibels",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "mid.freq_hz",
+          "name": "Mid freq",
+          "group": "EQ",
+          "min": 200.0,
+          "max": 8000.0,
+          "default": 1000.0,
+          "unit": "hertz",
+          "log_scale": true,
+          "choices": []
+        },
+        {
+          "id": "mid.q",
+          "name": "Mid width",
+          "group": "EQ",
+          "min": 0.3,
+          "max": 8.0,
+          "default": 1.0,
+          "unit": "none",
+          "log_scale": true,
+          "choices": []
+        },
+        {
+          "id": "high.gain_db",
+          "name": "High",
+          "group": "EQ",
+          "min": -18.0,
+          "max": 18.0,
+          "default": 0.0,
+          "unit": "decibels",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "high.freq_hz",
+          "name": "High freq",
+          "group": "EQ",
+          "min": 1500.0,
+          "max": 16000.0,
+          "default": 6000.0,
+          "unit": "hertz",
+          "log_scale": true,
+          "choices": []
+        }
+      ]
+    },
+    {
+      "kind": "compressor",
+      "name": "Compressor",
+      "description": "Evens out loud and quiet parts; adds punch.",
+      "params": [
+        {
+          "id": "threshold_db",
+          "name": "Threshold",
+          "group": "Compressor",
+          "min": -60.0,
+          "max": 0.0,
+          "default": -18.0,
+          "unit": "decibels",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "ratio",
+          "name": "Ratio",
+          "group": "Compressor",
+          "min": 1.0,
+          "max": 20.0,
+          "default": 4.0,
+          "unit": "ratio",
+          "log_scale": true,
+          "choices": []
+        },
+        {
+          "id": "attack_s",
+          "name": "Attack",
+          "group": "Compressor",
+          "min": 0.0005,
+          "max": 0.2,
+          "default": 0.01,
+          "unit": "seconds",
+          "log_scale": true,
+          "choices": []
+        },
+        {
+          "id": "release_s",
+          "name": "Release",
+          "group": "Compressor",
+          "min": 0.01,
+          "max": 2.0,
+          "default": 0.15,
+          "unit": "seconds",
+          "log_scale": true,
+          "choices": []
+        },
+        {
+          "id": "knee_db",
+          "name": "Knee",
+          "group": "Compressor",
+          "min": 0.0,
+          "max": 24.0,
+          "default": 6.0,
+          "unit": "decibels",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "makeup_db",
+          "name": "Makeup",
+          "group": "Compressor",
+          "min": 0.0,
+          "max": 24.0,
+          "default": 0.0,
+          "unit": "decibels",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "mix",
+          "name": "Mix",
+          "group": "Compressor",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 1.0,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        }
+      ]
+    },
+    {
+      "kind": "reverb",
+      "name": "Reverb",
+      "description": "Room and hall ambience.",
+      "params": [
+        {
+          "id": "size",
+          "name": "Size",
+          "group": "Reverb",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 0.6,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "damping",
+          "name": "Damping",
+          "group": "Reverb",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 0.4,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "width",
+          "name": "Width",
+          "group": "Reverb",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 1.0,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "predelay_s",
+          "name": "Pre-delay",
+          "group": "Reverb",
+          "min": 0.0,
+          "max": 0.2,
+          "default": 0.01,
+          "unit": "seconds",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "mix",
+          "name": "Mix",
+          "group": "Reverb",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 0.25,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        }
+      ]
+    },
+    {
+      "kind": "delay",
+      "name": "Delay",
+      "description": "Echoes, optionally synced to the tempo.",
+      "params": [
+        {
+          "id": "sync",
+          "name": "Sync",
+          "group": "Delay",
+          "min": 0.0,
+          "max": 6.0,
+          "default": 4.0,
+          "unit": "none",
+          "log_scale": false,
+          "choices": [
+            "Free (use Time)",
+            "1/2",
+            "1/4",
+            "Dotted 1/8",
+            "1/8",
+            "1/8 triplet",
+            "1/16"
+          ]
+        },
+        {
+          "id": "time_s",
+          "name": "Time",
+          "group": "Delay",
+          "min": 0.01,
+          "max": 2.0,
+          "default": 0.3,
+          "unit": "seconds",
+          "log_scale": true,
+          "choices": []
+        },
+        {
+          "id": "feedback",
+          "name": "Feedback",
+          "group": "Delay",
+          "min": 0.0,
+          "max": 0.95,
+          "default": 0.35,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "tone_hz",
+          "name": "Tone",
+          "group": "Delay",
+          "min": 500.0,
+          "max": 20000.0,
+          "default": 6000.0,
+          "unit": "hertz",
+          "log_scale": true,
+          "choices": []
+        },
+        {
+          "id": "ping_pong",
+          "name": "Ping-pong",
+          "group": "Delay",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 0.0,
+          "unit": "none",
+          "log_scale": false,
+          "choices": [
+            "Off",
+            "On"
+          ]
+        },
+        {
+          "id": "mix",
+          "name": "Mix",
+          "group": "Delay",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 0.25,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        }
+      ]
+    },
+    {
+      "kind": "chorus",
+      "name": "Chorus",
+      "description": "Thickens and widens with moving copies.",
+      "params": [
+        {
+          "id": "rate_hz",
+          "name": "Rate",
+          "group": "Chorus",
+          "min": 0.05,
+          "max": 5.0,
+          "default": 0.8,
+          "unit": "hertz",
+          "log_scale": true,
+          "choices": []
+        },
+        {
+          "id": "depth",
+          "name": "Depth",
+          "group": "Chorus",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 0.5,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "mix",
+          "name": "Mix",
+          "group": "Chorus",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 0.5,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        }
+      ]
+    },
+    {
+      "kind": "distortion",
+      "name": "Distortion",
+      "description": "Warm saturation to hard fuzz.",
+      "params": [
+        {
+          "id": "drive_db",
+          "name": "Drive",
+          "group": "Distortion",
+          "min": 0.0,
+          "max": 40.0,
+          "default": 12.0,
+          "unit": "decibels",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "tone_hz",
+          "name": "Tone",
+          "group": "Distortion",
+          "min": 500.0,
+          "max": 20000.0,
+          "default": 8000.0,
+          "unit": "hertz",
+          "log_scale": true,
+          "choices": []
+        },
+        {
+          "id": "output_db",
+          "name": "Output",
+          "group": "Distortion",
+          "min": -24.0,
+          "max": 6.0,
+          "default": -6.0,
+          "unit": "decibels",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "mix",
+          "name": "Mix",
+          "group": "Distortion",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 1.0,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        }
+      ]
+    },
+    {
+      "kind": "limiter",
+      "name": "Limiter",
+      "description": "Keeps peaks under a ceiling. Use last on the master.",
+      "params": [
+        {
+          "id": "input_db",
+          "name": "Input gain",
+          "group": "Limiter",
+          "min": 0.0,
+          "max": 24.0,
+          "default": 0.0,
+          "unit": "decibels",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "ceiling_db",
+          "name": "Ceiling",
+          "group": "Limiter",
+          "min": -12.0,
+          "max": 0.0,
+          "default": -1.0,
+          "unit": "decibels",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "release_s",
+          "name": "Release",
+          "group": "Limiter",
+          "min": 0.01,
+          "max": 1.0,
+          "default": 0.1,
+          "unit": "seconds",
+          "log_scale": true,
+          "choices": []
+        }
+      ]
+    }
+  ],
   "drum_pads": [
     {
       "note": 36,

@@ -16,9 +16,32 @@ export function formatParam(spec: ParamSpec, value: number): string {
       return `${value > 0 ? "+" : ""}${Math.round(value)} ct`;
     case "percent":
       return `${Math.round(value * 100)}%`;
+    case "ratio":
+      return `${value.toFixed(1)}:1`;
     case "none":
       return `${value.toFixed(2)}×`;
   }
+}
+
+/** Snaps `beats` to the nearest multiple of `grid`. */
+export function snap(beats: number, grid: number): number {
+  return Math.round(beats / grid) * grid;
+}
+
+/** Snaps down to a multiple of `grid`. */
+export function snapDown(beats: number, grid: number): number {
+  return Math.floor(beats / grid + 1e-9) * grid;
+}
+
+/** "-6.0 dB", or "−∞" at the bottom of a fader. */
+export function formatDb(db: number): string {
+  return db <= -60 ? "−∞ dB" : `${db > 0 ? "+" : ""}${db.toFixed(1)} dB`;
+}
+
+/** Level meter width (0–100%) from a linear peak, over a 60 dB range. */
+export function meterPercent(peak: number): number {
+  const db = peak > 0 ? 20 * Math.log10(peak) : -100;
+  return Math.max(0, Math.min(100, ((db + 60) / 60) * 100));
 }
 
 const SLIDER_STEPS = 1000;

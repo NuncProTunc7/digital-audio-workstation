@@ -6,6 +6,7 @@ interface StatusBarProps {
   info: AppInfo | null;
   preview: boolean;
   error: string | null;
+  filePath: string | null;
   onDevice: (name: string | null) => void;
   onRefreshMidi: () => void;
 }
@@ -24,7 +25,16 @@ function Meter({ level }: { level: number }) {
   );
 }
 
-export default function StatusBar({ audio, transport, info, preview, error, onDevice, onRefreshMidi }: StatusBarProps) {
+export default function StatusBar({
+  audio,
+  transport,
+  info,
+  preview,
+  error,
+  filePath,
+  onDevice,
+  onRefreshMidi,
+}: StatusBarProps) {
   const latencyMs =
     transport?.buffer_frames && audio?.sample_rate_hz
       ? (transport.buffer_frames / audio.sample_rate_hz) * 1000
@@ -77,6 +87,9 @@ export default function StatusBar({ audio, transport, info, preview, error, onDe
         </span>
       )}
       <span className="spacer" />
+      <span className="status-item muted" title={filePath ?? "Not saved yet"}>
+        {filePath ? filePath.split(/[\\/]/).pop() : "Not saved"}
+      </span>
       {info && (
         <span className="status-item muted">
           v{info.version} · {info.license}

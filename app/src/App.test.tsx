@@ -13,7 +13,17 @@ function spyBackend(): Backend {
   vi.spyOn(b, "execute");
   vi.spyOn(b, "play");
   vi.spyOn(b, "selectTrack");
+  vi.spyOn(b, "recordStart");
+  vi.spyOn(b, "locate");
   return b;
+}
+
+function trackHeader(name: string): HTMLElement {
+  const header = [...document.querySelectorAll<HTMLElement>(".track-header")].find((h) =>
+    h.querySelector(".track-name")?.textContent?.includes(name),
+  );
+  if (!header) throw new Error(`no track header ${name}`);
+  return header;
 }
 
 async function renderApp(backend: Backend = createPreviewBackend()) {
@@ -27,11 +37,9 @@ describe("App", () => {
     await renderApp();
     expect((screen.getByLabelText("Tempo in BPM") as HTMLInputElement).value).toBe("120");
     expect((screen.getByLabelText("Time signature") as HTMLSelectElement).value).toBe("4/4");
-    const tracks = screen.getByRole("listbox", { name: "Tracks" });
-    const selected = tracks.querySelector('[aria-selected="true"]');
+    const selected = document.querySelector(".track-header.selected");
     expect(selected?.textContent).toContain("Keys");
-    expect(screen.getByText("Bass")).toBeTruthy();
-    expect(screen.getByText("Drums")).toBeTruthy();
+    expect(document.querySelectorAll(".lane").length).toBe(3);
     expect((screen.getByLabelText("Preset") as HTMLSelectElement).value).toBe("Warm Keys");
   });
 
@@ -41,7 +49,7 @@ describe("App", () => {
     fireEvent.change(tempo, { target: { value: "90" } });
     fireEvent.blur(tempo);
     expect(await screen.findByDisplayValue("90")).toBeTruthy();
-    fireEvent.click(screen.getByText("Undo", { exact: false }));
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
     expect(await screen.findByDisplayValue("120")).toBeTruthy();
   });
 
@@ -74,7 +82,7 @@ describe("App", () => {
 
   it("maps keys to drum pads on the drum track", async () => {
     const backend = await renderApp(spyBackend());
-    fireEvent.click(screen.getByText("Drums"));
+    fireEvent.click(trackHeader("Drums"));
     expect(backend.selectTrack).toHaveBeenCalledWith(3);
     expect(await screen.findByTitle("Kick (note 36)")).toBeTruthy();
     fireEvent.keyDown(window, { code: "KeyA", key: "a" });
@@ -112,3 +120,103 @@ describe("App", () => {
     expect(backend.play).toHaveBeenCalled();
   });
 });
+
+describe("Arranging", () => {
+  it("creates a clip by double-clicking a lane and opens the piano roll", async () => {
+    const backend = await renderApp(spyBackend());
+    const lane = document.querySelectorAll(".lane")[0];
+    await act(async () => {
+      fireEvent.doubleClick(lane, { clientX: 10, clientY: 10 });
+    });
+    expect(backend.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ command: "create_clip", track_id: 1, start_beats: 0, length_beats: 4 }),
+    );
+    expect(await screen.findByRole("tab", { selected: true })).toHaveProperty(
+      "textContent",
+      expect.stringContaining("Piano roll"),
+    );
+    expect(document.querySelector(".clip")).toBeTruthy();
+  });
+
+  it("adds a note when clicking the piano roll grid", async () => {
+    const backend = await renderApp(spyBackend());
+    await act(async () => {
+      fireEvent.doubleClick(document.querySelectorAll(".lane")[0], { clientX: 10, clientY: 10 });
+    });
+    const grid = await waitForElement(".roll-grid");
+    await act(async () => {
+      fireEvent.pointerDown(grid, { clientX: 5, clientY: 5, button: 0 });
+    });
+    expect(backend.execute).toHaveBeenCalledWith(expect.objectContaining({ command: "add_notes" }));
+    expect(document.querySelectorAll(".roll-note").length).toBe(1);
+  });
+
+  it("deletes the selected clip with the Delete key and undoes it", async () => {
+    await renderApp(spyBackend());
+    await act(async () => {
+      fireEvent.doubleClick(document.querySelectorAll(".lane")[1], { clientX: 10, clientY: 10 });
+    });
+    expect(document.querySelectorAll(".clip").length).toBe(1);
+    // Back to the timeline: deleting applies to the clip, not notes.
+    fireEvent.click(screen.getByRole("tab", { name: /Mixer/ }));
+    await act(async () => {
+      fireEvent.keyDown(window, { code: "Delete", key: "Delete" });
+    });
+    expect(document.querySelectorAll(".clip").length).toBe(0);
+    await act(async () => {
+      fireEvent.keyDown(window, { code: "KeyZ", key: "z", ctrlKey: true });
+    });
+    expect(document.querySelectorAll(".clip").length).toBe(1);
+  });
+
+  it("adds an effect from the mixer", async () => {
+    const backend = await renderApp(spyBackend());
+    fireEvent.click(screen.getByRole("tab", { name: /Mixer/ }));
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText("Add effect to Keys"), { target: { value: "reverb" } });
+    });
+    expect(backend.execute).toHaveBeenCalledWith({ command: "add_effect", track_id: 1, kind: "reverb", index: null });
+    expect(await screen.findByRole("button", { name: "▸ Reverb" })).toBeTruthy();
+  });
+
+  it("moves a mixer fader with the arrow keys", async () => {
+    const backend = await renderApp(spyBackend());
+    fireEvent.click(screen.getByRole("tab", { name: /Mixer/ }));
+    const fader = screen.getByRole("slider", { name: "Keys volume" });
+    await act(async () => {
+      fireEvent.keyDown(fader, { key: "ArrowDown" });
+    });
+    expect(backend.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ command: "set_track_mixer", track_id: 1, volume_db: -1 }),
+    );
+    expect(screen.getByRole("slider", { name: "Keys volume" }).getAttribute("aria-valuenow")).toBe("-1");
+  });
+
+  it("records onto the selected track with R", async () => {
+    const backend = await renderApp(spyBackend());
+    fireEvent.click(trackHeader("Bass"));
+    await act(async () => {
+      fireEvent.keyDown(window, { code: "KeyR", key: "r" });
+    });
+    expect(backend.recordStart).toHaveBeenCalledWith(2);
+  });
+
+  it("adds a track", async () => {
+    await renderApp(spyBackend());
+    await act(async () => {
+      fireEvent.click(screen.getByText("+ Drum track"));
+    });
+    expect(document.querySelectorAll(".lane").length).toBe(4);
+  });
+});
+
+async function waitForElement(selector: string): Promise<Element> {
+  for (let i = 0; i < 50; i++) {
+    const el = document.querySelector(selector);
+    if (el) return el;
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+  }
+  throw new Error(`${selector} never appeared`);
+}

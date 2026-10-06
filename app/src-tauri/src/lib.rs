@@ -6,6 +6,7 @@
 //! - **Live actions** (playing notes, play/stop, metronome, device choice)
 //!   change what you hear right now but not the song itself.
 
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, RwLock};
 
@@ -28,6 +29,10 @@ struct AppState {
     /// Track that MIDI keyboards play.
     selected_track: Arc<AtomicU32>,
     metronome_on: AtomicBool,
+    /// Where the open project was last saved or opened from.
+    project_path: Mutex<Option<PathBuf>>,
+    /// Track being recorded onto, while recording.
+    recording_track: Mutex<Option<TrackId>>,
 }
 
 impl Default for AppState {
@@ -40,6 +45,8 @@ impl Default for AppState {
             midi: Mutex::new(None),
             selected_track: Arc::new(AtomicU32::new(1)),
             metronome_on: AtomicBool::new(true),
+            project_path: Mutex::new(None),
+            recording_track: Mutex::new(None),
         }
     }
 }
@@ -91,19 +98,28 @@ impl AppState {
     }
 }
 
-/// What the UI needs to draw the project and the undo/redo buttons.
+/// What the UI needs to draw the project, undo/redo, and the title bar.
 #[derive(Serialize)]
 struct ProjectView {
     project: Project,
     can_undo: bool,
     can_redo: bool,
+    /// Unsaved changes since the last save or open.
+    dirty: bool,
+    file_path: Option<String>,
 }
 
-fn view(session: &Session) -> ProjectView {
+fn view(state: &AppState, session: &Session) -> ProjectView {
     ProjectView {
         project: session.project().clone(),
         can_undo: session.can_undo(),
         can_redo: session.can_redo(),
+        dirty: session.is_dirty(),
+        file_path: state
+            .project_path
+            .lock()
+            .ok()
+            .and_then(|p| p.as_ref().map(|p| p.display().to_string())),
     }
 }
 
@@ -112,7 +128,7 @@ fn after_edit(state: &AppState, session: &Session) -> ProjectView {
     if let Some(engine) = state.engine() {
         engine.sync(session.project());
     }
-    view(session)
+    view(state, session)
 }
 
 #[derive(Serialize)]
@@ -136,7 +152,72 @@ fn app_info() -> AppInfo {
 #[tauri::command]
 fn get_project(state: State<'_, AppState>) -> Result<ProjectView, String> {
     let session = state.session()?;
-    Ok(view(&session))
+    Ok(view(&state, &session))
+}
+
+// ---- Files ----
+
+/// Starts a fresh project with the default Keys, Bass, and Drums tracks.
+#[tauri::command]
+fn new_project(state: State<'_, AppState>) -> Result<ProjectView, String> {
+    replace_project(&state, Project::default(), None)
+}
+
+#[tauri::command]
+fn open_project(state: State<'_, AppState>, path: String) -> Result<ProjectView, String> {
+    let path = PathBuf::from(path);
+    let project = daw_model::load_project(&path).map_err(|e| e.to_string())?;
+    replace_project(&state, project, Some(path))
+}
+
+/// Saves to `path`, or to the current file when `path` is omitted.
+#[tauri::command]
+fn save_project(state: State<'_, AppState>, path: Option<String>) -> Result<ProjectView, String> {
+    // Lock order everywhere: session first, then project_path.
+    let mut session = state.session()?;
+    let current = state.project_path.lock().ok().and_then(|p| p.clone());
+    let target = match path {
+        Some(p) => with_extension(PathBuf::from(p)),
+        None => current.ok_or_else(|| "choose where to save first".to_owned())?,
+    };
+    daw_model::save_project(session.project(), &target).map_err(|e| e.to_string())?;
+    session.mark_saved();
+    if let Ok(mut p) = state.project_path.lock() {
+        *p = Some(target);
+    }
+    Ok(view(&state, &session))
+}
+
+fn with_extension(path: PathBuf) -> PathBuf {
+    if path
+        .extension()
+        .is_some_and(|e| e == daw_model::PROJECT_EXTENSION)
+    {
+        path
+    } else {
+        let mut s = path.into_os_string();
+        s.push(".");
+        s.push(daw_model::PROJECT_EXTENSION);
+        PathBuf::from(s)
+    }
+}
+
+fn replace_project(
+    state: &AppState,
+    project: Project,
+    path: Option<PathBuf>,
+) -> Result<ProjectView, String> {
+    if let Some(engine) = state.engine() {
+        engine.stop();
+        engine.stop();
+        engine.all_notes_off();
+    }
+    let mut session = state.session()?;
+    session.replace_project(project);
+    if let Ok(mut p) = state.project_path.lock() {
+        *p = path;
+    }
+    Ok(after_edit(state, &session))
 }
 
 #[tauri::command]
@@ -215,6 +296,61 @@ fn stop(state: State<'_, AppState>) {
     }
 }
 
+/// Moves the playhead to a position in beats.
+#[tauri::command]
+fn locate(state: State<'_, AppState>, beats: f64) {
+    if let Some(engine) = state.engine() {
+        engine.locate(beats);
+    }
+}
+
+/// Starts recording what you play on `track_id` (and starts playback).
+#[tauri::command]
+fn record_start(state: State<'_, AppState>, track_id: TrackId) -> Result<(), String> {
+    let engine = state.engine().ok_or("no audio output; check the device")?;
+    if state.session()?.project().track(track_id).is_none() {
+        return Err(format!("there is no track with id {track_id}"));
+    }
+    if let Ok(mut r) = state.recording_track.lock() {
+        *r = Some(track_id);
+    }
+    engine.start_recording(track_id);
+    engine.play();
+    Ok(())
+}
+
+/// Stops recording and playback, and turns what was played into a clip.
+#[tauri::command]
+fn record_stop(state: State<'_, AppState>) -> Result<ProjectView, String> {
+    let track = state.recording_track.lock().ok().and_then(|mut r| r.take());
+    let mut session = state.session()?;
+    let Some(engine) = state.engine() else {
+        return Ok(view(&state, &session));
+    };
+    let stop_beats = engine.status().position_beats;
+    let events = engine.stop_recording();
+    engine.stop();
+    if let Some(track_id) = track
+        && let Some(clip) = daw_engine::recording::clip_from_recording(
+            &events,
+            stop_beats,
+            session.project().beats_per_bar(),
+        )
+    {
+        session
+            .execute(Command::CreateClip {
+                track_id,
+                start_beats: clip.start_beats,
+                length_beats: clip.length_beats,
+                name: Some("Recording".into()),
+                notes: clip.notes,
+            })
+            .map_err(|e| e.to_string())?;
+        session.end_gesture();
+    }
+    Ok(after_edit(&state, &session))
+}
+
 #[tauri::command]
 fn set_metronome(state: State<'_, AppState>, on: bool) {
     state.metronome_on.store(on, Ordering::Relaxed);
@@ -232,6 +368,9 @@ struct TransportStatus {
     peak_right: f32,
     cpu_load: f32,
     buffer_frames: u32,
+    /// Peak level per track, in track order.
+    track_peaks: Vec<f32>,
+    recording: bool,
 }
 
 #[tauri::command]
@@ -245,6 +384,12 @@ fn transport_status(state: State<'_, AppState>) -> TransportStatus {
         peak_right: snap.peak_right,
         cpu_load: snap.cpu_load,
         buffer_frames: snap.buffer_frames,
+        track_peaks: snap.track_peaks,
+        recording: state
+            .recording_track
+            .lock()
+            .map(|r| r.is_some())
+            .unwrap_or(false),
     }
 }
 
@@ -349,6 +494,7 @@ fn connect_midi(app: &AppHandle, state: &AppState) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let result = tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(AppState::default())
         .setup(|app| {
             let state = app.state::<AppState>();
@@ -356,6 +502,19 @@ pub fn run() {
             let _ = state.start_audio(None);
             connect_midi(app.handle(), &state);
             // Keep the first track's kind sensible for MIDI routing.
+            // A project file passed on the command line (or by double-clicking
+            // it, once file associations exist) opens at startup.
+            if let Some(path) = std::env::args_os().nth(1).map(PathBuf::from).filter(|p| {
+                p.extension()
+                    .is_some_and(|e| e == daw_model::PROJECT_EXTENSION)
+            }) {
+                match daw_model::load_project(&path) {
+                    Ok(project) => {
+                        let _ = replace_project(&state, project, Some(path));
+                    }
+                    Err(e) => eprintln!("could not open {}: {e}", path.display()),
+                }
+            }
             if let Ok(session) = state.session()
                 && let Some(first) = session
                     .project()
@@ -370,6 +529,12 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             app_info,
             get_project,
+            new_project,
+            open_project,
+            save_project,
+            locate,
+            record_start,
+            record_stop,
             execute,
             end_gesture,
             undo,

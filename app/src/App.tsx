@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { Backend } from "./backend";
 import InstrumentPanel from "./components/InstrumentPanel";
+import Mixer from "./components/Mixer";
 import Piano from "./components/Piano";
+import PianoRoll from "./components/PianoRoll";
 import StatusBar from "./components/StatusBar";
-import TrackList from "./components/TrackList";
+import Timeline from "./components/Timeline";
 import { formatPosition } from "./format";
 import {
   DEFAULT_BASE_NOTE,
@@ -15,10 +17,20 @@ import {
   shiftOctave,
   stepVelocity,
 } from "./keymap";
-import type { AppInfo, AudioStatus, Catalog, Command, ProjectView, TransportStatus } from "./types";
+import type {
+  AppInfo,
+  AudioStatus,
+  Catalog,
+  Command,
+  Project,
+  ProjectView,
+  Track,
+  TransportStatus,
+} from "./types";
 
 const TIME_SIGNATURES = ["2/4", "3/4", "4/4", "5/4", "6/8", "7/8", "9/8", "12/8"];
 const STATUS_POLL_MS = 60;
+type Tab = "instrument" | "pianoroll" | "mixer";
 
 interface AppProps {
   backend: Backend;
@@ -26,9 +38,9 @@ interface AppProps {
 
 function isTextEntry(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
-  return el?.tagName === "INPUT" && (el as HTMLInputElement).type !== "range"
-    ? true
-    : el?.tagName === "SELECT" || el?.tagName === "TEXTAREA";
+  if (!el) return false;
+  if (el.tagName === "INPUT") return (el as HTMLInputElement).type !== "range";
+  return el.tagName === "SELECT" || el.tagName === "TEXTAREA";
 }
 
 export default function App({ backend }: AppProps) {
@@ -38,12 +50,22 @@ export default function App({ backend }: AppProps) {
   const [transport, setTransport] = useState<TransportStatus | null>(null);
   const [info, setInfo] = useState<AppInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [selectedId, setSelectedId] = useState(1);
+  const [selectedTrackId, setSelectedTrackId] = useState(1);
+  const [selectedClipId, setSelectedClipId] = useState<number | null>(null);
+  const [selectedNotes, setSelectedNotes] = useState<ReadonlySet<number>>(new Set());
+  const [tab, setTab] = useState<Tab>("instrument");
+  const [pixelsPerBeat, setPixelsPerBeat] = useState(24);
+  const [dockHeight, setDockHeight] = useState(330);
   const [baseNote, setBaseNote] = useState(DEFAULT_BASE_NOTE);
   const [velocity, setVelocity] = useState(DEFAULT_VELOCITY);
   const [activeNotes, setActiveNotes] = useState<ReadonlySet<number>>(new Set());
   // Computer keys currently held, and the note each one started.
   const heldKeys = useRef(new Map<string, number>());
+  // Latest view for callbacks that must not re-subscribe on every edit.
+  const viewRef = useRef<ProjectView | null>(null);
+  useEffect(() => {
+    viewRef.current = view;
+  }, [view]);
 
   // Runs a backend call and surfaces any failure in the status bar.
   const run = useCallback(async <T,>(call: () => Promise<T>): Promise<T | undefined> => {
@@ -78,6 +100,12 @@ export default function App({ backend }: AppProps) {
     return () => window.clearInterval(timer);
   }, [backend]);
 
+  // Window title shows the song name and an unsaved-changes dot.
+  useEffect(() => {
+    if (!view) return;
+    void backend.setTitle(`${view.dirty ? "• " : ""}${view.project.name} — Nunc Pro Tune`);
+  }, [backend, view?.dirty, view?.project.name, view]);
+
   const markNote = useCallback((note: number, on: boolean) => {
     setActiveNotes((prev) => {
       const next = new Set(prev);
@@ -95,9 +123,32 @@ export default function App({ backend }: AppProps) {
     return () => unlisten?.();
   }, [backend, markNote]);
 
-  const selectedTrack = view?.project.tracks.find((t) => t.id === selectedId) ?? view?.project.tracks[0];
+  const project = view?.project;
+  const selectedTrack: Track | undefined =
+    project?.tracks.find((t) => t.id === selectedTrackId) ?? project?.tracks[0];
+  const selectedClip = project?.tracks.flatMap((t) => t.clips).find((c) => c.id === selectedClipId);
+  const clipTrack = selectedClip ? project?.tracks.find((t) => t.clips.some((c) => c.id === selectedClip.id)) : undefined;
   const isDrums = selectedTrack?.instrument.kind === "drums";
   const typingBase = isDrums ? DRUM_BASE_NOTE : baseNote;
+  const recording = transport?.recording ?? false;
+
+  const applyView = useCallback((v: ProjectView | undefined) => {
+    if (v) setView(v);
+    return v?.project;
+  }, []);
+
+  const execute = useCallback(
+    async (command: Command): Promise<Project | undefined> => {
+      const v = await run(() => backend.execute(command));
+      if (v) return applyView(v);
+      // Re-sync so inputs drop the rejected value.
+      applyView(await run(() => backend.getProject()));
+      return undefined;
+    },
+    [backend, run, applyView],
+  );
+
+  const endGesture = useCallback(() => void backend.endGesture(), [backend]);
 
   const noteOn = useCallback(
     (note: number) => {
@@ -117,47 +168,135 @@ export default function App({ backend }: AppProps) {
     [backend, selectedTrack, markNote],
   );
 
+  const audition = useCallback(
+    (note: number) => {
+      const track = clipTrack ?? selectedTrack;
+      if (!track) return;
+      void backend.noteOn(track.id, note, 0.8);
+      window.setTimeout(() => void backend.noteOff(track.id, note), 250);
+    },
+    [backend, clipTrack, selectedTrack],
+  );
+
   const releaseAll = useCallback(() => {
     heldKeys.current.clear();
     setActiveNotes(new Set());
     void backend.allNotesOff();
   }, [backend]);
 
-  const selectTrack = (id: number) => {
-    releaseAll();
-    setSelectedId(id);
-    void backend.selectTrack(id);
-  };
-
-  const execute = useCallback(
-    async (command: Command) => {
-      const v = await run(() => backend.execute(command));
-      if (v) setView(v);
-      else {
-        // Re-sync so inputs drop the rejected value.
-        const current = await run(() => backend.getProject());
-        if (current) setView(current);
-      }
+  const selectTrack = useCallback(
+    (id: number) => {
+      if (id !== selectedTrackId) releaseAll();
+      setSelectedTrackId(id);
+      void backend.selectTrack(id);
     },
-    [backend, run],
+    [backend, releaseAll, selectedTrackId],
   );
 
-  const undo = useCallback(async () => {
-    const v = await run(() => backend.undo());
-    if (v) setView(v);
-  }, [backend, run]);
+  const selectClip = useCallback(
+    (id: number | null, trackId: number) => {
+      setSelectedClipId(id);
+      setSelectedNotes(new Set());
+      selectTrack(trackId);
+    },
+    [selectTrack],
+  );
 
-  const redo = useCallback(async () => {
-    const v = await run(() => backend.redo());
-    if (v) setView(v);
-  }, [backend, run]);
+  const openClip = useCallback((id: number) => {
+    setSelectedClipId(id);
+    setSelectedNotes(new Set());
+    setTab("pianoroll");
+  }, []);
+
+  const undo = useCallback(async () => applyView(await run(() => backend.undo())), [backend, run, applyView]);
+  const redo = useCallback(async () => applyView(await run(() => backend.redo())), [backend, run, applyView]);
+
+  // ---- Files ----
+  const confirmDiscard = useCallback(async () => {
+    if (!viewRef.current?.dirty) return true;
+    return backend.confirm("You have unsaved changes. Discard them?");
+  }, [backend]);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    void backend.onCloseRequested(confirmDiscard).then((u) => {
+      unlisten = u;
+    });
+    return () => unlisten?.();
+  }, [backend, confirmDiscard]);
+
+  const newFile = useCallback(async () => {
+    if (!(await confirmDiscard())) return;
+    applyView(await run(() => backend.newProject()));
+    setSelectedClipId(null);
+    setSelectedTrackId(1);
+  }, [backend, run, applyView, confirmDiscard]);
+
+  const openFile = useCallback(async () => {
+    if (!(await confirmDiscard())) return;
+    const path = await run(() => backend.pickOpenPath());
+    if (!path) return;
+    const p = applyView(await run(() => backend.openProject(path)));
+    setSelectedClipId(null);
+    if (p?.tracks[0]) setSelectedTrackId(p.tracks[0].id);
+  }, [backend, run, applyView, confirmDiscard]);
+
+  const saveFile = useCallback(
+    async (saveAs: boolean) => {
+      const current = viewRef.current;
+      if (!current) return;
+      let path: string | null = null;
+      if (saveAs || !current.file_path) {
+        path = (await run(() => backend.pickSavePath(current.project.name))) ?? null;
+        if (!path) return;
+      }
+      applyView(await run(() => backend.saveProject(path)));
+    },
+    [backend, run, applyView],
+  );
+
+  // ---- Transport ----
+  const toggleRecord = useCallback(async () => {
+    if (recording) {
+      applyView(await run(() => backend.recordStop()));
+    } else if (selectedTrack) {
+      await run(() => backend.recordStart(selectedTrack.id));
+    }
+  }, [backend, run, applyView, recording, selectedTrack]);
+
+  const stop = useCallback(async () => {
+    if (recording) await toggleRecord();
+    else await backend.stop();
+  }, [backend, recording, toggleRecord]);
 
   const togglePlay = useCallback(() => {
-    void (transport?.playing ? backend.stop() : backend.play());
-  }, [backend, transport?.playing]);
+    void (transport?.playing ? stop() : backend.play());
+  }, [backend, transport?.playing, stop]);
 
-  // Keyboard: shortcuts and musical typing.
-  useEffect(() => {
+  const removeTrack = useCallback(
+    async (track: Track) => {
+      if (track.clips.length > 0 && !(await backend.confirm(`Delete "${track.name}" and its clips?`))) return;
+      await execute({ command: "remove_track", track_id: track.id });
+      endGesture();
+    },
+    [backend, execute, endGesture],
+  );
+
+  const deleteSelection = useCallback(async () => {
+    if (tab === "pianoroll" && selectedClip && selectedNotes.size > 0) {
+      await execute({ command: "remove_notes", clip_id: selectedClip.id, note_ids: [...selectedNotes] });
+      setSelectedNotes(new Set());
+    } else if (selectedClip) {
+      await execute({ command: "delete_clip", clip_id: selectedClip.id });
+      setSelectedClipId(null);
+    }
+    endGesture();
+  }, [tab, selectedClip, selectedNotes, execute, endGesture]);
+
+  // Keyboard: shortcuts and musical typing. A layout effect, so the listener
+  // is swapped during the commit and a key press can never reach a handler
+  // from the previous render.
+  useLayoutEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (isTextEntry(e.target)) return;
       if (e.ctrlKey || e.metaKey) {
@@ -168,6 +307,21 @@ export default function App({ backend }: AppProps) {
         } else if (key === "y" || (key === "z" && e.shiftKey)) {
           e.preventDefault();
           void redo();
+        } else if (key === "s") {
+          e.preventDefault();
+          void saveFile(e.shiftKey);
+        } else if (key === "o") {
+          e.preventDefault();
+          void openFile();
+        } else if (key === "n") {
+          e.preventDefault();
+          void newFile();
+        } else if (key === "d" && selectedClip) {
+          e.preventDefault();
+          void execute({ command: "duplicate_clip", clip_id: selectedClip.id, start_beats: null }).then(endGesture);
+        } else if (key === "a" && tab === "pianoroll" && selectedClip) {
+          e.preventDefault();
+          setSelectedNotes(new Set(selectedClip.notes.map((n) => n.id)));
         }
         return;
       }
@@ -180,6 +334,17 @@ export default function App({ backend }: AppProps) {
         case "Space":
           e.preventDefault();
           togglePlay();
+          return;
+        case "KeyR":
+          void toggleRecord();
+          return;
+        case "Home":
+          void backend.locate(0);
+          return;
+        case "Delete":
+        case "Backspace":
+          e.preventDefault();
+          void deleteSelection();
           return;
         case "KeyZ":
           setBaseNote((b) => shiftOctave(b, -1));
@@ -216,22 +381,53 @@ export default function App({ backend }: AppProps) {
       window.removeEventListener("keyup", onKeyUp);
       window.removeEventListener("blur", releaseAll);
     };
-  }, [undo, redo, togglePlay, typingBase, noteOn, noteOff, releaseAll]);
+  }, [
+    backend,
+    undo,
+    redo,
+    saveFile,
+    openFile,
+    newFile,
+    togglePlay,
+    toggleRecord,
+    deleteSelection,
+    execute,
+    endGesture,
+    selectedClip,
+    tab,
+    typingBase,
+    noteOn,
+    noteOff,
+    releaseAll,
+  ]);
 
-  if (!view || !catalog || !selectedTrack) {
+  if (!view || !catalog || !project || !selectedTrack) {
     return <div className="loading">{error ?? "Starting Nunc Pro Tune…"}</div>;
   }
 
-  const { project } = view;
   const signature = `${project.time_signature.numerator}/${project.time_signature.denominator}`;
+  const beatsPerBar = project.time_signature.numerator;
   const pianoLow = Math.max(24, Math.min(60, baseNote - 12));
+  const position = transport?.position_beats ?? 0;
 
   return (
-    <div className="app">
+    <div className="app" style={{ gridTemplateRows: `auto 1fr 6px ${dockHeight}px auto` }}>
       <header className="transport">
         <div className="brand">
           <img src="/favicon.png" alt="" width={20} height={20} />
           <span>Nunc Pro Tune</span>
+        </div>
+
+        <div className="file-buttons" role="group" aria-label="File">
+          <button className="small" onClick={() => void newFile()} title="New project (Ctrl+N)">
+            New
+          </button>
+          <button className="small" onClick={() => void openFile()} title="Open project (Ctrl+O)">
+            Open
+          </button>
+          <button className="small" onClick={() => void saveFile(false)} title="Save (Ctrl+S). Ctrl+Shift+S: Save as">
+            Save{view.dirty ? " •" : ""}
+          </button>
         </div>
 
         <CommitInput
@@ -239,7 +435,7 @@ export default function App({ backend }: AppProps) {
           className="project-name"
           label="Project name"
           initial={project.name}
-          onCommit={(name) => execute({ command: "rename_project", name })}
+          onCommit={(name) => void execute({ command: "rename_project", name })}
         />
 
         <div className="transport-buttons" role="group" aria-label="Transport">
@@ -251,18 +447,34 @@ export default function App({ backend }: AppProps) {
           >
             ▶
           </button>
-          <button onClick={() => void backend.stop()} title="Stop (Space). Press twice to return to the start." aria-label="Stop">
+          <button onClick={() => void stop()} title="Stop (Space). Press twice to return to the start." aria-label="Stop">
             ■
           </button>
-          <button disabled className="record" title="Recording arrives in Phase 2" aria-label="Record">
+          <button
+            onClick={() => void toggleRecord()}
+            className={recording ? "record recording" : "record"}
+            title={`Record onto "${selectedTrack.name}" (R). Play along; press again to stop and keep the take.`}
+            aria-label="Record"
+            aria-pressed={recording}
+          >
             ●
           </button>
         </div>
 
         <span className="position" aria-label="Position" title="Bar.Beat">
-          {formatPosition(transport?.position_beats ?? 0, project.time_signature.numerator)}
+          {formatPosition(position, beatsPerBar)}
         </span>
 
+        <button
+          className={project.loop_region.enabled ? "toggle on" : "toggle"}
+          aria-pressed={project.loop_region.enabled}
+          onClick={() =>
+            void execute({ command: "set_loop", enabled: !project.loop_region.enabled, start_beats: null, end_beats: null })
+          }
+          title="Loop the highlighted region (drag along the top of the ruler to set it)"
+        >
+          Loop
+        </button>
         <button
           className={transport?.metronome_on ? "toggle on" : "toggle"}
           aria-pressed={transport?.metronome_on ?? true}
@@ -286,7 +498,6 @@ export default function App({ backend }: AppProps) {
               else setError(`"${text}" is not a number`);
             }}
           />
-          <span className="unit">BPM</span>
         </label>
 
         <label className="field">
@@ -307,56 +518,148 @@ export default function App({ backend }: AppProps) {
         </label>
 
         <div className="history" role="group" aria-label="History">
-          <button onClick={() => void undo()} disabled={!view.can_undo} title="Undo (Ctrl+Z)">
-            ↶ Undo
+          <button onClick={() => void undo()} disabled={!view.can_undo} title="Undo (Ctrl+Z)" aria-label="Undo">
+            ↶
           </button>
-          <button onClick={() => void redo()} disabled={!view.can_redo} title="Redo (Ctrl+Y)">
-            ↷ Redo
+          <button onClick={() => void redo()} disabled={!view.can_redo} title="Redo (Ctrl+Y)" aria-label="Redo">
+            ↷
           </button>
         </div>
       </header>
 
-      <main className="workspace">
-        <TrackList tracks={project.tracks} selectedId={selectedTrack.id} onSelect={selectTrack} />
-        <InstrumentPanel
-          track={selectedTrack}
-          catalog={catalog}
-          activeNotes={activeNotes}
-          onParam={(param, value) =>
-            void execute({ command: "set_instrument_param", track_id: selectedTrack.id, param, value })
-          }
-          onEndGesture={() => void backend.endGesture()}
-          onPreset={(preset) => void execute({ command: "load_preset", track_id: selectedTrack.id, preset })}
-          onPadHit={noteOn}
-          onPadRelease={noteOff}
+      <main className="arrange">
+        <Timeline
+          project={project}
+          selectedTrackId={selectedTrack.id}
+          selectedClipId={selectedClipId}
+          playheadBeats={position}
+          recording={recording}
+          trackPeaks={transport?.track_peaks ?? []}
+          pixelsPerBeat={pixelsPerBeat}
+          onZoom={setPixelsPerBeat}
+          onSelectTrack={selectTrack}
+          onSelectClip={selectClip}
+          onOpenClip={openClip}
+          onCommand={execute}
+          onEndGesture={endGesture}
+          onLocate={(beats) => void backend.locate(beats)}
+          onRemoveTrack={(t) => void removeTrack(t)}
         />
       </main>
 
-      <section className="keyboard-dock" aria-label="Keyboard">
-        <div className="keyboard-help">
-          {isDrums ? (
-            <span>
-              Drums: <kbd>A</kbd> kick · <kbd>S</kbd> snare · <kbd>T</kbd> closed hat · <kbd>U</kbd> open hat ·{" "}
-              <kbd>O</kbd> crash — or click the pads.
-            </span>
-          ) : (
-            <span>
-              Play with <kbd>A</kbd>–<kbd>'</kbd> (white keys) and <kbd>W</kbd> <kbd>E</kbd> <kbd>T</kbd>{" "}
-              <kbd>Y</kbd> <kbd>U</kbd> <kbd>O</kbd> <kbd>P</kbd> (black keys) · <kbd>Z</kbd>/<kbd>X</kbd> octave (
-              {noteName(baseNote)}) · <kbd>C</kbd>/<kbd>V</kbd> velocity ({velocity}) · <kbd>Space</kbd> play/stop
-            </span>
+      <div
+        className="splitter"
+        role="separator"
+        aria-orientation="horizontal"
+        title="Drag to resize"
+        onPointerDown={(e) => {
+          e.currentTarget.setPointerCapture?.(e.pointerId);
+          const y0 = e.clientY;
+          const h0 = dockHeight;
+          const move = (ev: PointerEvent) =>
+            setDockHeight(Math.max(180, Math.min(window.innerHeight * 0.75, h0 - (ev.clientY - y0))));
+          const up = () => {
+            window.removeEventListener("pointermove", move);
+            window.removeEventListener("pointerup", up);
+          };
+          window.addEventListener("pointermove", move);
+          window.addEventListener("pointerup", up);
+        }}
+      />
+
+      <section className="dock">
+        <nav className="tabs" role="tablist">
+          {(
+            [
+              ["instrument", `Instrument · ${selectedTrack.name}`],
+              ["pianoroll", selectedClip ? `Piano roll · ${selectedClip.name}` : "Piano roll"],
+              ["mixer", "Mixer"],
+            ] as [Tab, string][]
+          ).map(([id, label]) => (
+            <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? "tab active" : "tab"} onClick={() => setTab(id)}>
+              {label}
+            </button>
+          ))}
+        </nav>
+
+        <div className="dock-body">
+          {tab === "instrument" && (
+            <div className="instrument-tab">
+              <InstrumentPanel
+                track={selectedTrack}
+                catalog={catalog}
+                activeNotes={activeNotes}
+                onParam={(param, value) =>
+                  void execute({ command: "set_instrument_param", track_id: selectedTrack.id, param, value })
+                }
+                onEndGesture={endGesture}
+                onPreset={(preset) => void execute({ command: "load_preset", track_id: selectedTrack.id, preset })}
+                onPadHit={noteOn}
+                onPadRelease={noteOff}
+              />
+              <div className="keyboard-dock">
+                <div className="keyboard-help">
+                  {isDrums ? (
+                    <span>
+                      Drums: <kbd>A</kbd> kick · <kbd>S</kbd> snare · <kbd>T</kbd> closed hat · <kbd>U</kbd> open hat ·{" "}
+                      <kbd>O</kbd> crash — or click the pads. <kbd>R</kbd> record · <kbd>Space</kbd> play/stop
+                    </span>
+                  ) : (
+                    <span>
+                      Play <kbd>A</kbd>–<kbd>'</kbd> and <kbd>W</kbd> <kbd>E</kbd> <kbd>T</kbd> <kbd>Y</kbd> <kbd>U</kbd>{" "}
+                      <kbd>O</kbd> <kbd>P</kbd> · <kbd>Z</kbd>/<kbd>X</kbd> octave ({noteName(baseNote)}) · <kbd>C</kbd>/
+                      <kbd>V</kbd> velocity ({velocity}) · <kbd>R</kbd> record · <kbd>Space</kbd> play/stop
+                    </span>
+                  )}
+                </div>
+                {!isDrums && (
+                  <Piano
+                    lowNote={pianoLow}
+                    highNote={pianoLow + 47}
+                    activeNotes={activeNotes}
+                    baseNote={typingBase}
+                    onNoteOn={noteOn}
+                    onNoteOff={noteOff}
+                  />
+                )}
+              </div>
+            </div>
+          )}
+
+          {tab === "pianoroll" &&
+            (selectedClip && clipTrack ? (
+              <PianoRoll
+                clip={selectedClip}
+                track={clipTrack}
+                drumPads={catalog.drum_pads}
+                playheadBeats={position - selectedClip.start_beats}
+                beatsPerBar={beatsPerBar}
+                selected={selectedNotes}
+                onSelect={setSelectedNotes}
+                onCommand={execute}
+                onEndGesture={endGesture}
+                onAudition={audition}
+              />
+            ) : (
+              <p className="empty-state">
+                Double-click a clip on the timeline to edit its notes — or double-click an empty spot in a track to make a
+                new clip. You can also press <kbd>R</kbd> to record what you play.
+              </p>
+            ))}
+
+          {tab === "mixer" && (
+            <Mixer
+              project={project}
+              catalog={catalog}
+              trackPeaks={transport?.track_peaks ?? []}
+              masterPeaks={[transport?.peak_left ?? 0, transport?.peak_right ?? 0]}
+              selectedTrackId={selectedTrack.id}
+              onSelectTrack={selectTrack}
+              onCommand={execute}
+              onEndGesture={endGesture}
+            />
           )}
         </div>
-        {!isDrums && (
-          <Piano
-            lowNote={pianoLow}
-            highNote={pianoLow + 47}
-            activeNotes={activeNotes}
-            baseNote={typingBase}
-            onNoteOn={noteOn}
-            onNoteOff={noteOff}
-          />
-        )}
       </section>
 
       <StatusBar
@@ -365,6 +668,7 @@ export default function App({ backend }: AppProps) {
         info={info}
         preview={backend.preview}
         error={error}
+        filePath={view.file_path}
         onDevice={(name) => void run(() => backend.setOutputDevice(name)).then((a) => a && setAudio(a))}
         onRefreshMidi={() => void run(() => backend.refreshMidi()).then((a) => a && setAudio(a))}
       />
