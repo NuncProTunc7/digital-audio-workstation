@@ -6,7 +6,7 @@ export interface TimeSignature {
   denominator: number;
 }
 
-export type InstrumentKind = "synth" | "drums";
+export type InstrumentKind = "synth" | "drums" | "audio";
 export type EffectKind = "eq" | "compressor" | "reverb" | "delay" | "chorus" | "distortion" | "limiter";
 
 export interface Instrument {
@@ -38,12 +38,25 @@ export interface Note {
   velocity: number;
 }
 
+/** The part of an audio file an audio clip plays. */
+export interface AudioRegion {
+  /** File name inside the project's audio folder. */
+  file: string;
+  file_seconds: number;
+  offset_seconds: number;
+  gain_db: number;
+  fade_in_seconds: number;
+  fade_out_seconds: number;
+}
+
 export interface Clip {
   id: number;
   name: string;
   start_beats: number;
   length_beats: number;
   notes: Note[];
+  /** Present on audio clips (audio tracks) only. */
+  audio?: AudioRegion | null;
 }
 
 export interface Track {
@@ -139,6 +152,23 @@ export type Command =
       note_ids: Opt<number[]>;
     }
   | { command: "transpose_notes"; clip_id: number; semitones: number; note_ids: Opt<number[]> }
+  | { command: "split_clip"; clip_id: number; at_beats: number }
+  | { command: "trim_clip_start"; clip_id: number; start_beats: number }
+  | {
+      command: "add_audio_clip";
+      track_id: number;
+      start_beats: number;
+      audio: AudioRegion;
+      length_beats: Opt<number>;
+      name: Opt<string>;
+    }
+  | {
+      command: "set_audio_clip";
+      clip_id: number;
+      gain_db: Opt<number>;
+      fade_in_seconds: Opt<number>;
+      fade_out_seconds: Opt<number>;
+    }
   | { command: "batch"; commands: Command[] };
 
 export interface ProjectView {

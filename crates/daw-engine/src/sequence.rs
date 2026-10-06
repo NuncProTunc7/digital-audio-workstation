@@ -70,6 +70,7 @@ mod tests {
                 note(2, 62, 1.5, 4.0),
                 note(3, 64, 3.0, 1.0),
             ],
+            audio: None,
         }]);
         let s = build_sequence(&t);
         let summary: Vec<(f64, u8, bool)> = s
@@ -96,6 +97,7 @@ mod tests {
             start_beats: 0.0,
             length_beats: 4.0,
             notes: vec![note(1, 60, 0.0, 1.0), note(2, 60, 1.0, 1.0)],
+            audio: None,
         }]);
         let s = build_sequence(&t);
         assert_eq!(s.events[1].beat, 1.0);

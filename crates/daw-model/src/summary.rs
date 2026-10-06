@@ -40,6 +40,15 @@ fn track_brief(t: &Track) -> Value {
 }
 
 fn clip_brief(c: &Clip) -> Value {
+    if let Some(a) = &c.audio {
+        return json!({
+            "id": c.id,
+            "name": c.name,
+            "start_beats": c.start_beats,
+            "length_beats": c.length_beats,
+            "audio": a,
+        });
+    }
     let lo = c.notes.iter().map(|n| n.pitch).min();
     let hi = c.notes.iter().map(|n| n.pitch).max();
     json!({
@@ -89,5 +98,27 @@ mod tests {
         let p = Project::default();
         let d = track_detail(&p.tracks[0]);
         assert!(d["instrument_params"]["filter.cutoff_hz"].is_number());
+    }
+
+    #[test]
+    fn audio_clips_show_their_audio_instead_of_notes() {
+        let c = Clip {
+            id: 9,
+            name: "Vox".into(),
+            start_beats: 0.0,
+            length_beats: 8.0,
+            notes: Vec::new(),
+            audio: Some(crate::AudioRegion {
+                file: "vox.wav".into(),
+                file_seconds: 4.0,
+                offset_seconds: 0.0,
+                gain_db: -3.0,
+                fade_in_seconds: 0.0,
+                fade_out_seconds: 0.5,
+            }),
+        };
+        let b = clip_brief(&c);
+        assert_eq!(b["audio"]["file"], "vox.wav");
+        assert!(b.get("note_count").is_none());
     }
 }

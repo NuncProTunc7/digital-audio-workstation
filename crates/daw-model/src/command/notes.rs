@@ -113,9 +113,16 @@ pub(crate) fn sort_notes(notes: &mut [Note]) {
 }
 
 fn clip_mut(project: &mut Project, clip_id: ClipId) -> Result<&mut Clip, CommandError> {
-    project
+    let clip = project
         .clip_mut(clip_id)
-        .ok_or(CommandError::UnknownClip(clip_id))
+        .ok_or(CommandError::UnknownClip(clip_id))?;
+    if clip.is_audio() {
+        return Err(super::invalid(
+            "clip",
+            "is an audio clip; it has no notes to edit",
+        ));
+    }
+    Ok(clip)
 }
 
 pub(super) fn add(

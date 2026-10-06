@@ -544,6 +544,16 @@
           "description": "Long, deep kick and big toms for epic moments."
         }
       ]
+    },
+    {
+      "kind": "audio",
+      "params": [],
+      "presets": [
+        {
+          "name": "Audio",
+          "description": "Recorded or imported audio."
+        }
+      ]
     }
   ],
   "effects": [

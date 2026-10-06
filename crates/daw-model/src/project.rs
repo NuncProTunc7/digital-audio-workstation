@@ -16,6 +16,8 @@ pub const MAX_BEATS: f64 = 16_384.0;
 pub const MIN_LENGTH_BEATS: f64 = 1.0 / 64.0;
 /// Project file format version written by this build.
 pub const FORMAT_VERSION: u32 = 1;
+/// Longest audio file a project accepts, in seconds (one hour).
+pub const MAX_AUDIO_SECONDS: f64 = 3600.0;
 
 /// Identifier of a track, clip, note, or effect. Unique within a project.
 pub type Id = u32;
@@ -240,17 +242,63 @@ impl Default for LoopRegion {
     }
 }
 
-/// A block of notes on a track's timeline.
+/// A block of notes (on instrument tracks) or audio (on audio tracks) on a
+/// track's timeline.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Clip {
     pub id: ClipId,
     pub name: String,
     /// Where the clip starts on the timeline, in beats from the song start.
     pub start_beats: f64,
-    /// Clip length in beats. Notes past the end are not played.
+    /// Clip length in beats. Notes past the end are not played; audio past
+    /// the end of its file is silent.
     pub length_beats: f64,
-    /// Notes, with times relative to the clip start.
+    /// Notes, with times relative to the clip start. Empty for audio clips.
+    #[serde(default)]
     pub notes: Vec<Note>,
+    /// The audio this clip plays, on audio tracks.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audio: Option<AudioRegion>,
+}
+
+impl Clip {
+    pub fn is_audio(&self) -> bool {
+        self.audio.is_some()
+    }
+}
+
+/// Loudest clip gain, in decibels.
+pub const MAX_CLIP_GAIN_DB: f64 = 24.0;
+
+/// The part of an audio file an audio clip plays, and how.
+///
+/// Audio keeps its own speed: changing the tempo moves where clips start
+/// (they stay on their beat) but does not stretch the audio.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct AudioRegion {
+    /// File name inside the project's audio folder ("<Song> Audio").
+    pub file: String,
+    /// Length of the whole file, in seconds.
+    pub file_seconds: f64,
+    /// Where in the file the clip starts playing, in seconds.
+    #[serde(default)]
+    pub offset_seconds: f64,
+    /// Clip volume in decibels (-60 to +24; 0 = as recorded).
+    #[serde(default)]
+    pub gain_db: f64,
+    /// Fade-in length at the clip start, in seconds.
+    #[serde(default)]
+    pub fade_in_seconds: f64,
+    /// Fade-out length at the clip end, in seconds.
+    #[serde(default)]
+    pub fade_out_seconds: f64,
+}
+
+impl AudioRegion {
+    /// Seconds of audio left after `offset_seconds`.
+    pub fn remaining_seconds(&self) -> f64 {
+        (self.file_seconds - self.offset_seconds).max(0.0)
+    }
 }
 
 /// One MIDI note inside a clip.

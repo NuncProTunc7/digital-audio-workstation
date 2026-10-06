@@ -13,8 +13,20 @@ fn note(pitch: u8, start: f64, len: f64) -> NoteInput {
     }
 }
 
+fn region(file: &str, seconds: f64) -> crate::project::AudioRegion {
+    crate::project::AudioRegion {
+        file: file.into(),
+        file_seconds: seconds,
+        offset_seconds: 0.0,
+        gain_db: 0.0,
+        fade_in_seconds: 0.0,
+        fade_out_seconds: 0.0,
+    }
+}
+
 /// Default project plus a clip (id 4) with notes (ids 5, 6, 7) on Keys and
-/// a reverb (id 8) on Keys and a limiter (id 9) on the master.
+/// a reverb (id 8) on Keys and a limiter (id 9) on the master, and an audio
+/// track "Vox" (id 10) holding a 4-second audio clip (id 11) at beat 0.
 fn fixture() -> Project {
     let mut p = Project::default();
     Command::CreateClip {
@@ -40,8 +52,27 @@ fn fixture() -> Project {
     }
     .apply(&mut p)
     .expect("master fx");
+    Command::AddTrack {
+        name: "Vox".into(),
+        instrument: InstrumentKind::Audio,
+        preset: None,
+        index: None,
+    }
+    .apply(&mut p)
+    .expect("audio track");
+    Command::AddAudioClip {
+        track_id: 10,
+        start_beats: 0.0,
+        audio: region("vox-0123abcd.wav", 4.0),
+        length_beats: None,
+        name: None,
+    }
+    .apply(&mut p)
+    .expect("audio clip");
     p
 }
+
+const AUDIO_CLIP: ClipId = 11;
 
 fn clip_id(p: &Project) -> ClipId {
     p.tracks[0].clips[0].id
@@ -177,6 +208,39 @@ fn sample_commands(p: &Project) -> Vec<Command> {
             clip_id: clip,
             semitones: -12,
             note_ids: Some(vec![first_note]),
+        },
+        Command::SplitClip {
+            clip_id: clip,
+            at_beats: 1.5,
+        },
+        Command::TrimClipStart {
+            clip_id: clip,
+            start_beats: 1.0,
+        },
+        Command::AddAudioClip {
+            track_id: 10,
+            start_beats: 16.0,
+            audio: region("guitar.wav", 10.0),
+            length_beats: Some(4.0),
+            name: Some("Riff".into()),
+        },
+        Command::SetAudioClip {
+            clip_id: AUDIO_CLIP,
+            gain_db: Some(-6.0),
+            fade_in_seconds: None,
+            fade_out_seconds: Some(0.5),
+        },
+        Command::SplitClip {
+            clip_id: AUDIO_CLIP,
+            at_beats: 2.0,
+        },
+        Command::TrimClipStart {
+            clip_id: AUDIO_CLIP,
+            start_beats: 1.0,
+        },
+        Command::DuplicateClip {
+            clip_id: AUDIO_CLIP,
+            start_beats: None,
         },
     ]
 }
@@ -518,7 +582,7 @@ fn batch_applies_as_one_step_and_undoes_in_reverse() {
     })
     .expect("batch");
     assert_eq!(s.project().tempo_bpm, 90.0);
-    assert_eq!(s.project().tracks.len(), 4);
+    assert_eq!(s.project().tracks.len(), before.tracks.len() + 1);
     assert!(s.undo());
     assert_eq!(s.project().tracks, before.tracks);
     assert_eq!(s.project().tempo_bpm, before.tempo_bpm);
@@ -555,4 +619,168 @@ fn failed_batch_changes_nothing_and_names_the_step() {
 #[test]
 fn command_name_is_snake_case() {
     assert_eq!(Command::SetTempo { bpm: 1.0 }.name(), "set_tempo");
+}
+
+#[test]
+fn audio_clip_defaults_to_the_files_length_and_name() {
+    let p = fixture();
+    let (track, c) = p.clip(AUDIO_CLIP).expect("clip");
+    assert_eq!(track, 10);
+    assert_eq!(c.name, "vox");
+    // 4 seconds at 120 BPM is 8 beats.
+    assert!((c.length_beats - 8.0).abs() < 1e-9);
+}
+
+#[test]
+fn splitting_audio_continues_the_recording_in_the_second_half() {
+    let mut p = fixture();
+    Command::SplitClip {
+        clip_id: AUDIO_CLIP,
+        at_beats: 2.0,
+    }
+    .apply(&mut p)
+    .expect("split");
+    let clips = &p.track(10).expect("track").clips;
+    assert_eq!(clips.len(), 2);
+    let (a, b) = (&clips[0], &clips[1]);
+    assert_eq!(a.id, AUDIO_CLIP);
+    assert!((a.length_beats - 2.0).abs() < 1e-9);
+    assert!((b.start_beats - 2.0).abs() < 1e-9);
+    assert!((b.length_beats - 6.0).abs() < 1e-9);
+    // 2 beats at 120 BPM = 1 second into the file.
+    let offset = b.audio.as_ref().expect("audio").offset_seconds;
+    assert!((offset - 1.0).abs() < 1e-9);
+}
+
+#[test]
+fn splitting_notes_moves_later_notes_to_the_new_clip() {
+    let mut p = fixture();
+    let id = clip_id(&p);
+    Command::SplitClip {
+        clip_id: id,
+        at_beats: 1.5,
+    }
+    .apply(&mut p)
+    .expect("split");
+    let clips = &p.tracks[0].clips;
+    assert_eq!(clips[0].notes.len(), 2);
+    assert_eq!(clips[1].notes.len(), 1);
+    assert!((clips[1].notes[0].start_beats - 0.5).abs() < 1e-9);
+}
+
+#[test]
+fn trimming_audio_start_skips_into_the_recording() {
+    let mut p = fixture();
+    Command::TrimClipStart {
+        clip_id: AUDIO_CLIP,
+        start_beats: 1.0,
+    }
+    .apply(&mut p)
+    .expect("trim");
+    let (_, c) = p.clip(AUDIO_CLIP).expect("clip");
+    assert!((c.start_beats - 1.0).abs() < 1e-9);
+    assert!((c.length_beats - 7.0).abs() < 1e-9);
+    assert!((c.audio.as_ref().expect("audio").offset_seconds - 0.5).abs() < 1e-9);
+    // Can't drag back past the start of the file.
+    let mut q = p.clone();
+    q.clip_mut(AUDIO_CLIP)
+        .expect("clip")
+        .audio
+        .as_mut()
+        .expect("a")
+        .offset_seconds = 0.0;
+    let err = Command::TrimClipStart {
+        clip_id: AUDIO_CLIP,
+        start_beats: 0.0,
+    }
+    .apply(&mut q);
+    assert!(err.is_err());
+}
+
+#[test]
+fn audio_and_note_clips_stay_on_their_own_kind_of_track() {
+    let base = fixture();
+    let note_clip = clip_id(&base);
+    let rejected = [
+        Command::MoveClip {
+            clip_id: AUDIO_CLIP,
+            start_beats: None,
+            track_id: Some(1),
+        },
+        Command::MoveClip {
+            clip_id: note_clip,
+            start_beats: None,
+            track_id: Some(10),
+        },
+        Command::CreateClip {
+            track_id: 10,
+            start_beats: 0.0,
+            length_beats: 4.0,
+            name: None,
+            notes: vec![],
+        },
+        Command::AddAudioClip {
+            track_id: 1,
+            start_beats: 0.0,
+            audio: region("a.wav", 1.0),
+            length_beats: None,
+            name: None,
+        },
+        Command::AddNotes {
+            clip_id: AUDIO_CLIP,
+            notes: vec![note(60, 0.0, 1.0)],
+        },
+        Command::SetAudioClip {
+            clip_id: note_clip,
+            gain_db: Some(-3.0),
+            fade_in_seconds: None,
+            fade_out_seconds: None,
+        },
+        Command::SetInstrument {
+            track_id: 10,
+            instrument: Instrument::from_preset(InstrumentKind::Synth, "Init").expect("preset"),
+        },
+    ];
+    for command in rejected {
+        let mut p = base.clone();
+        assert!(
+            command.clone().apply(&mut p).is_err(),
+            "{command:?} was allowed"
+        );
+        assert_eq!(p, base, "{command:?} changed the project");
+    }
+}
+
+#[test]
+fn audio_file_names_cannot_be_paths() {
+    for bad in ["../x.wav", "C:\\x.wav", "a/b.wav", "", ".hidden.wav"] {
+        let mut p = fixture();
+        let r = Command::AddAudioClip {
+            track_id: 10,
+            start_beats: 0.0,
+            audio: region(bad, 1.0),
+            length_beats: None,
+            name: None,
+        }
+        .apply(&mut p);
+        assert!(r.is_err(), "{bad} was accepted");
+    }
+}
+
+#[test]
+fn audio_clip_gain_drag_is_one_undo_step() {
+    let mut s = Session::new(fixture());
+    for g in [-1.0, -2.0, -3.0] {
+        s.execute(Command::SetAudioClip {
+            clip_id: AUDIO_CLIP,
+            gain_db: Some(g),
+            fade_in_seconds: None,
+            fade_out_seconds: None,
+        })
+        .expect("gain");
+    }
+    s.end_gesture();
+    assert!(s.undo());
+    let (_, c) = s.project().clip(AUDIO_CLIP).expect("clip");
+    assert_eq!(c.audio.as_ref().expect("audio").gain_db, 0.0);
 }

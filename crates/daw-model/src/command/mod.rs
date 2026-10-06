@@ -1,6 +1,7 @@
 //! Every edit to a project is a [`Command`]. Applying one returns the
 //! Command that undoes it, which is how undo/redo works.
 
+mod audio;
 mod clips;
 mod effects;
 mod instruments;
@@ -18,7 +19,8 @@ use thiserror::Error;
 use crate::effect::{Effect, EffectKind};
 use crate::instrument::{Instrument, InstrumentKind};
 use crate::project::{
-    Clip, ClipId, EffectId, Id, MAX_TEMPO_BPM, MIN_TEMPO_BPM, NoteId, Project, Track, TrackId,
+    AudioRegion, Clip, ClipId, EffectId, Id, MAX_TEMPO_BPM, MIN_TEMPO_BPM, NoteId, Project, Track,
+    TrackId,
 };
 
 pub use notes::{NoteEdit, NoteInput};
@@ -26,6 +28,11 @@ pub use notes::{NoteEdit, NoteInput};
 /// Instrument validation shared with file loading.
 pub(crate) fn complete_instrument_pub(i: Instrument) -> Result<Instrument, CommandError> {
     instruments::complete_instrument(i)
+}
+
+/// Clip/track kind validation shared with file loading.
+pub(crate) fn check_clip_fits_pub(kind: InstrumentKind, clip: &Clip) -> Result<(), CommandError> {
+    audio::check_clip_fits(kind, clip)
 }
 
 /// Note validation shared with file loading.
@@ -212,6 +219,49 @@ pub enum Command {
         clip_id: ClipId,
         /// Where the copy starts; defaults to the original's end.
         start_beats: Option<f64>,
+    },
+
+    /// Split a clip in two at a point on the timeline. Works for note and
+    /// audio clips; notes go with the half they start in.
+    SplitClip {
+        clip_id: ClipId,
+        /// Where to cut, in beats from the song start (inside the clip).
+        at_beats: f64,
+    },
+    /// Move a clip's start while keeping its end in place, trimming (or
+    /// revealing) the beginning. For audio clips this skips into the
+    /// recording; for note clips, notes before the new start are removed.
+    TrimClipStart {
+        clip_id: ClipId,
+        /// New start, in beats from the song start.
+        start_beats: f64,
+    },
+
+    // ---- Audio ----
+    /// Place audio that is already in the project's audio folder on an audio
+    /// track. To bring in a new file (wav, mp3, m4a from a phone...), use the
+    /// import_audio tool instead; it copies the file and calls this.
+    AddAudioClip {
+        /// An audio track (instrument "audio").
+        track_id: TrackId,
+        /// Start on the timeline, in beats from the song start.
+        start_beats: f64,
+        /// Which audio to play; copy it from an existing clip's `audio`.
+        audio: AudioRegion,
+        /// Length in beats; defaults to the rest of the file at the current tempo.
+        length_beats: Option<f64>,
+        /// Optional name; defaults to the file name.
+        name: Option<String>,
+    },
+    /// Change an audio clip's volume and fades. Omitted fields keep their value.
+    SetAudioClip {
+        clip_id: ClipId,
+        /// Clip volume in dB (-60 to +24; 0 = as recorded).
+        gain_db: Option<f64>,
+        /// Fade-in length in seconds.
+        fade_in_seconds: Option<f64>,
+        /// Fade-out length in seconds.
+        fade_out_seconds: Option<f64>,
     },
 
     // ---- Notes ----
@@ -407,6 +457,24 @@ impl Command {
                 start_beats,
             } => clips::duplicate(project, clip_id, start_beats),
 
+            C::SplitClip { clip_id, at_beats } => audio::split(project, clip_id, at_beats),
+            C::TrimClipStart {
+                clip_id,
+                start_beats,
+            } => audio::trim_start(project, clip_id, start_beats),
+            C::AddAudioClip {
+                track_id,
+                start_beats,
+                audio,
+                length_beats,
+                name,
+            } => audio::add(project, track_id, start_beats, audio, length_beats, name),
+            C::SetAudioClip {
+                clip_id,
+                gain_db,
+                fade_in_seconds,
+                fade_out_seconds,
+            } => audio::set(project, clip_id, gain_db, fade_in_seconds, fade_out_seconds),
             C::AddNotes { clip_id, notes } => notes::add(project, clip_id, notes),
             C::RemoveNotes { clip_id, note_ids } => notes::remove(project, clip_id, note_ids),
             C::EditNotes { clip_id, edits } => notes::edit(project, clip_id, edits),
@@ -503,6 +571,26 @@ impl Command {
                 },
             ) => a == b && sa.is_some() == sb.is_some() && ta.is_some() == tb.is_some(),
             (C::ResizeClip { clip_id: a, .. }, C::ResizeClip { clip_id: b, .. }) => a == b,
+            (C::TrimClipStart { clip_id: a, .. }, C::TrimClipStart { clip_id: b, .. }) => a == b,
+            (
+                C::SetAudioClip {
+                    clip_id: a,
+                    gain_db: ga,
+                    fade_in_seconds: ia,
+                    fade_out_seconds: oa,
+                },
+                C::SetAudioClip {
+                    clip_id: b,
+                    gain_db: gb,
+                    fade_in_seconds: ib,
+                    fade_out_seconds: ob,
+                },
+            ) => {
+                a == b
+                    && ga.is_some() == gb.is_some()
+                    && ia.is_some() == ib.is_some()
+                    && oa.is_some() == ob.is_some()
+            }
             (
                 C::EditNotes {
                     clip_id: a,

@@ -15,10 +15,22 @@ pub enum InstrumentKind {
     Synth,
     /// 16-pad synthesized drum machine on General MIDI notes 36–51.
     Drums,
+    /// Plays recorded and imported audio (voice, guitar, phone recordings)
+    /// instead of notes. Its clips hold audio, not MIDI.
+    Audio,
 }
 
 impl InstrumentKind {
-    pub const ALL: [InstrumentKind; 2] = [InstrumentKind::Synth, InstrumentKind::Drums];
+    pub const ALL: [InstrumentKind; 3] = [
+        InstrumentKind::Synth,
+        InstrumentKind::Drums,
+        InstrumentKind::Audio,
+    ];
+
+    /// Audio tracks hold audio clips; every other kind holds note clips.
+    pub fn is_audio(self) -> bool {
+        self == InstrumentKind::Audio
+    }
 }
 
 /// A track's instrument settings.
@@ -551,6 +563,7 @@ pub fn param_specs(kind: InstrumentKind) -> &'static [ParamSpec] {
     match kind {
         InstrumentKind::Synth => SYNTH_PARAMS,
         InstrumentKind::Drums => DRUM_PARAMS,
+        InstrumentKind::Audio => &[],
     }
 }
 
@@ -770,8 +783,17 @@ pub fn presets(kind: InstrumentKind) -> &'static [Preset] {
     match kind {
         InstrumentKind::Synth => SYNTH_PRESETS,
         InstrumentKind::Drums => DRUM_PRESETS,
+        InstrumentKind::Audio => AUDIO_PRESETS,
     }
 }
+
+/// Audio tracks have no sound settings of their own; this single "preset"
+/// keeps them uniform with instrument tracks.
+pub const AUDIO_PRESETS: &[Preset] = &[Preset {
+    name: "Audio",
+    description: "Recorded or imported audio.",
+    values: &[],
+}];
 
 /// Everything the UI and Claude need to know about an instrument kind.
 #[derive(Debug, Clone, Serialize)]

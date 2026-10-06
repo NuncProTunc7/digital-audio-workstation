@@ -89,6 +89,7 @@ fn validate(project: &mut Project) -> Result<(), FileError> {
     for track in &mut project.tracks {
         track.instrument = crate::command::complete_instrument_pub(track.instrument.clone())?;
         for clip in &track.clips {
+            crate::command::check_clip_fits_pub(track.instrument.kind, clip)?;
             for n in &clip.notes {
                 crate::command::validate_note_pub(n)?;
             }

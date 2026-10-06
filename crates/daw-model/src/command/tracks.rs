@@ -71,6 +71,9 @@ pub(super) fn restore(
     }
     track.name = check_name(track.name)?;
     track.instrument = complete_instrument(track.instrument)?;
+    for clip in &track.clips {
+        super::audio::check_clip_fits(track.instrument.kind, clip)?;
+    }
     // Every id inside the track must be free.
     let probe = Project {
         tracks: vec![track.clone()],

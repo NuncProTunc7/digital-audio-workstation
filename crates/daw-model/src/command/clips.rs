@@ -1,8 +1,9 @@
+use super::audio::check_clip_fits;
 use super::notes::{NoteInput, materialize, sort_notes};
-use super::{Command, CommandError, check_length, check_name, check_position};
+use super::{Command, CommandError, check_length, check_name, check_position, invalid};
 use crate::project::{Clip, ClipId, Project, TrackId};
 
-fn insert_sorted(clips: &mut Vec<Clip>, clip: Clip) {
+pub(super) fn insert_sorted(clips: &mut Vec<Clip>, clip: Clip) {
     let at = clips
         .iter()
         .position(|c| c.start_beats > clip.start_beats)
@@ -20,11 +21,19 @@ pub(super) fn create(
 ) -> Result<Command, CommandError> {
     check_position("clip start", start_beats)?;
     check_length("clip length", length_beats)?;
-    let track_name = project
+    let track = project
         .track(track_id)
-        .ok_or(CommandError::UnknownTrack(track_id))?
-        .name
-        .clone();
+        .ok_or(CommandError::UnknownTrack(track_id))?;
+    if track.instrument.kind.is_audio() {
+        return Err(invalid(
+            "track",
+            format!(
+                "\"{}\" is an audio track; note clips go on instrument tracks (use import_audio for audio)",
+                track.name
+            ),
+        ));
+    }
+    let track_name = track.name.clone();
     let name = match name {
         Some(n) => check_name(n)?,
         None => track_name,
@@ -38,6 +47,7 @@ pub(super) fn create(
         start_beats,
         length_beats,
         notes,
+        audio: None,
     };
     if let Some(t) = project.track_mut(track_id) {
         insert_sorted(&mut t.clips, clip);
@@ -66,9 +76,12 @@ pub(super) fn restore(
     track_id: TrackId,
     mut clip: Clip,
 ) -> Result<Command, CommandError> {
-    project
+    let kind = project
         .track(track_id)
-        .ok_or(CommandError::UnknownTrack(track_id))?;
+        .ok_or(CommandError::UnknownTrack(track_id))?
+        .instrument
+        .kind;
+    check_clip_fits(kind, &clip)?;
     check_position("clip start", clip.start_beats)?;
     check_length("clip length", clip.length_beats)?;
     clip.name = check_name(clip.name)?;
@@ -109,9 +122,12 @@ pub(super) fn move_clip(
         check_position("clip start", s)?;
     }
     let to_track = track_id.unwrap_or(from_track);
-    project
+    let kind = project
         .track(to_track)
-        .ok_or(CommandError::UnknownTrack(to_track))?;
+        .ok_or(CommandError::UnknownTrack(to_track))?
+        .instrument
+        .kind;
+    check_clip_fits(kind, clip)?;
 
     let source = project
         .track_mut(from_track)
@@ -173,6 +189,10 @@ pub(super) fn duplicate(
         .clip(clip_id)
         .ok_or(CommandError::UnknownClip(clip_id))?;
     let start = start_beats.unwrap_or(clip.start_beats + clip.length_beats);
+    if let Some(audio) = clip.audio.clone() {
+        let (length, name) = (clip.length_beats, clip.name.clone());
+        return super::audio::add(project, track_id, start, audio, Some(length), Some(name));
+    }
     let notes = clip
         .notes
         .iter()

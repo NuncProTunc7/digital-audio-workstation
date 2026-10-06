@@ -60,6 +60,12 @@ pub(super) fn set_instrument(
     let track = project
         .track_mut(track_id)
         .ok_or(CommandError::UnknownTrack(track_id))?;
+    if complete.kind.is_audio() != track.instrument.kind.is_audio() && !track.clips.is_empty() {
+        return Err(super::invalid(
+            "instrument",
+            "can't switch between audio and notes while the track has clips; add a new track instead",
+        ));
+    }
     let old = std::mem::replace(&mut track.instrument, complete);
     Ok(Command::SetInstrument {
         track_id,

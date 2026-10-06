@@ -19,7 +19,7 @@ pub use file::{
 };
 pub use instrument::{Instrument, InstrumentKind};
 pub use project::{
-    Clip, ClipId, EffectId, FORMAT_VERSION, Id, LoopRegion, MAX_TRACKS, MAX_VOLUME_DB,
+    AudioRegion, Clip, ClipId, EffectId, FORMAT_VERSION, Id, LoopRegion, MAX_TRACKS, MAX_VOLUME_DB,
     MIN_VOLUME_DB, MasterBus, Mixer, Note, NoteId, Project, TimeSignature, Track, TrackId,
 };
 pub use session::Session;

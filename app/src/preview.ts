@@ -181,6 +181,7 @@ export function applyCommand(project: Project, command: Command): Project {
       break;
     case "create_clip": {
       const t = track(command.track_id);
+      if (t.instrument.kind === "audio") throw new Error(`"${t.name}" is an audio track`);
       const notes = toNotes(command.notes);
       t.clips.push({
         id: id(),
@@ -263,6 +264,65 @@ export function applyCommand(project: Project, command: Command): Project {
         if (command.note_ids && !command.note_ids.includes(n.id)) continue;
         n.pitch = Math.max(0, Math.min(127, n.pitch + command.semitones));
       }
+      break;
+    }
+    case "split_clip": {
+      const [t, c] = clipOf(command.clip_id);
+      const cut = command.at_beats - c.start_beats;
+      if (cut <= 0 || cut >= c.length_beats) throw new Error("split point must be inside the clip");
+      const second: Clip = {
+        ...structuredClone(c),
+        id: id(),
+        start_beats: command.at_beats,
+        length_beats: c.length_beats - cut,
+        notes: c.notes.filter((n) => n.start_beats >= cut).map((n) => ({ ...n, start_beats: n.start_beats - cut })),
+      };
+      c.length_beats = cut;
+      c.notes = c.notes.filter((n) => n.start_beats < cut);
+      if (c.audio && second.audio) {
+        second.audio.offset_seconds = c.audio.offset_seconds + (cut * 60) / p.tempo_bpm;
+        c.audio.fade_out_seconds = 0;
+        second.audio.fade_in_seconds = 0;
+      }
+      t.clips.push(second);
+      t.clips.sort((a, b) => a.start_beats - b.start_beats);
+      break;
+    }
+    case "trim_clip_start": {
+      const [, c] = clipOf(command.clip_id);
+      const delta = command.start_beats - c.start_beats;
+      if (delta >= c.length_beats) throw new Error("clip length must stay positive");
+      if (c.audio) {
+        const offset = c.audio.offset_seconds + (delta * 60) / p.tempo_bpm;
+        if (offset < -1e-6) throw new Error("can't move before the beginning of the recording");
+        c.audio.offset_seconds = Math.max(0, offset);
+      }
+      c.notes = c.notes.map((n) => ({ ...n, start_beats: n.start_beats - delta })).filter((n) => n.start_beats >= 0);
+      c.start_beats = command.start_beats;
+      c.length_beats -= delta;
+      break;
+    }
+    case "add_audio_clip": {
+      const t = track(command.track_id);
+      if (t.instrument.kind !== "audio") throw new Error(`"${t.name}" is not an audio track`);
+      const remaining = command.audio.file_seconds - command.audio.offset_seconds;
+      t.clips.push({
+        id: id(),
+        name: command.name ?? command.audio.file.replace(/(-[0-9a-f]{8})?\.[^.]+$/, ""),
+        start_beats: command.start_beats,
+        length_beats: command.length_beats ?? (remaining * p.tempo_bpm) / 60,
+        notes: [],
+        audio: structuredClone(command.audio),
+      });
+      t.clips.sort((a, b) => a.start_beats - b.start_beats);
+      break;
+    }
+    case "set_audio_clip": {
+      const a = clipOf(command.clip_id)[1].audio;
+      if (!a) throw new Error("is a note clip, not an audio clip");
+      if (command.gain_db !== null) a.gain_db = command.gain_db;
+      if (command.fade_in_seconds !== null) a.fade_in_seconds = command.fade_in_seconds;
+      if (command.fade_out_seconds !== null) a.fade_out_seconds = command.fade_out_seconds;
       break;
     }
     case "batch": {

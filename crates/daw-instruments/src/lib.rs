@@ -42,12 +42,30 @@ pub fn create(instrument: &Instrument, sample_rate_hz: f32) -> Box<dyn Instrumen
     let mut processor: Box<dyn InstrumentProcessor> = match instrument.kind {
         InstrumentKind::Synth => Box::new(Synth::new(sample_rate_hz)),
         InstrumentKind::Drums => Box::new(DrumMachine::new(sample_rate_hz)),
+        // Audio tracks get their sound from audio clips, played by the engine.
+        InstrumentKind::Audio => Box::new(Silent),
     };
     for (index, spec) in param_specs(instrument.kind).iter().enumerate() {
         let value = instrument.value(spec.id).unwrap_or(spec.default);
         processor.set_param(index, value as f32);
     }
     processor
+}
+
+/// The "instrument" of an audio track: ignores notes and adds nothing.
+struct Silent;
+
+impl InstrumentProcessor for Silent {
+    // RT-SAFE
+    fn note_on(&mut self, _note: u8, _velocity: f32) {}
+    // RT-SAFE
+    fn note_off(&mut self, _note: u8) {}
+    // RT-SAFE
+    fn all_notes_off(&mut self) {}
+    // RT-SAFE
+    fn set_param(&mut self, _index: usize, _value: f32) {}
+    // RT-SAFE
+    fn process(&mut self, _left: &mut [f32], _right: &mut [f32]) {}
 }
 
 #[cfg(test)]
