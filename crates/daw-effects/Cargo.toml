@@ -1,0 +1,15 @@
+[package]
+name = "daw-effects"
+description = "Nunc Pro Tune built-in audio effects."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+daw-dsp = { path = "../daw-dsp" }
+daw-model.workspace = true
+
+[lints]
+workspace = true
