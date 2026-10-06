@@ -1,0 +1,631 @@
+{
+  "instruments": [
+    {
+      "kind": "synth",
+      "params": [
+        {
+          "id": "osc1.wave",
+          "name": "Wave",
+          "group": "Oscillator 1",
+          "min": 0.0,
+          "max": 3.0,
+          "default": 1.0,
+          "unit": "none",
+          "log_scale": false,
+          "choices": [
+            "Sine",
+            "Saw",
+            "Square",
+            "Triangle"
+          ]
+        },
+        {
+          "id": "osc1.level",
+          "name": "Level",
+          "group": "Oscillator 1",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 0.8,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "osc2.wave",
+          "name": "Wave",
+          "group": "Oscillator 2",
+          "min": 0.0,
+          "max": 3.0,
+          "default": 1.0,
+          "unit": "none",
+          "log_scale": false,
+          "choices": [
+            "Sine",
+            "Saw",
+            "Square",
+            "Triangle"
+          ]
+        },
+        {
+          "id": "osc2.level",
+          "name": "Level",
+          "group": "Oscillator 2",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 0.5,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "osc2.semitones",
+          "name": "Pitch",
+          "group": "Oscillator 2",
+          "min": -24.0,
+          "max": 24.0,
+          "default": 0.0,
+          "unit": "semitones",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "osc2.detune_cents",
+          "name": "Detune",
+          "group": "Oscillator 2",
+          "min": -50.0,
+          "max": 50.0,
+          "default": 7.0,
+          "unit": "cents",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "osc.pulse_width",
+          "name": "Pulse width",
+          "group": "Oscillator 1",
+          "min": 0.05,
+          "max": 0.95,
+          "default": 0.5,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "sub.level",
+          "name": "Sub",
+          "group": "Mixer",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 0.0,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "noise.level",
+          "name": "Noise",
+          "group": "Mixer",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 0.0,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "filter.mode",
+          "name": "Mode",
+          "group": "Filter",
+          "min": 0.0,
+          "max": 2.0,
+          "default": 0.0,
+          "unit": "none",
+          "log_scale": false,
+          "choices": [
+            "Low-pass",
+            "Band-pass",
+            "High-pass"
+          ]
+        },
+        {
+          "id": "filter.cutoff_hz",
+          "name": "Cutoff",
+          "group": "Filter",
+          "min": 20.0,
+          "max": 20000.0,
+          "default": 2000.0,
+          "unit": "hertz",
+          "log_scale": true,
+          "choices": []
+        },
+        {
+          "id": "filter.resonance",
+          "name": "Resonance",
+          "group": "Filter",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 0.2,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "filter.env_amount",
+          "name": "Env amount",
+          "group": "Filter",
+          "min": -1.0,
+          "max": 1.0,
+          "default": 0.3,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "filter.key_track",
+          "name": "Key track",
+          "group": "Filter",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 0.5,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "amp.attack_s",
+          "name": "Attack",
+          "group": "Amp envelope",
+          "min": 0.001,
+          "max": 10.0,
+          "default": 0.005,
+          "unit": "seconds",
+          "log_scale": true,
+          "choices": []
+        },
+        {
+          "id": "amp.decay_s",
+          "name": "Decay",
+          "group": "Amp envelope",
+          "min": 0.001,
+          "max": 10.0,
+          "default": 0.3,
+          "unit": "seconds",
+          "log_scale": true,
+          "choices": []
+        },
+        {
+          "id": "amp.sustain",
+          "name": "Sustain",
+          "group": "Amp envelope",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 0.7,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "amp.release_s",
+          "name": "Release",
+          "group": "Amp envelope",
+          "min": 0.001,
+          "max": 10.0,
+          "default": 0.3,
+          "unit": "seconds",
+          "log_scale": true,
+          "choices": []
+        },
+        {
+          "id": "fenv.attack_s",
+          "name": "Attack",
+          "group": "Filter envelope",
+          "min": 0.001,
+          "max": 10.0,
+          "default": 0.005,
+          "unit": "seconds",
+          "log_scale": true,
+          "choices": []
+        },
+        {
+          "id": "fenv.decay_s",
+          "name": "Decay",
+          "group": "Filter envelope",
+          "min": 0.001,
+          "max": 10.0,
+          "default": 0.4,
+          "unit": "seconds",
+          "log_scale": true,
+          "choices": []
+        },
+        {
+          "id": "fenv.sustain",
+          "name": "Sustain",
+          "group": "Filter envelope",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 0.3,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "fenv.release_s",
+          "name": "Release",
+          "group": "Filter envelope",
+          "min": 0.001,
+          "max": 10.0,
+          "default": 0.3,
+          "unit": "seconds",
+          "log_scale": true,
+          "choices": []
+        },
+        {
+          "id": "lfo.rate_hz",
+          "name": "Rate",
+          "group": "LFO",
+          "min": 0.05,
+          "max": 20.0,
+          "default": 5.0,
+          "unit": "hertz",
+          "log_scale": true,
+          "choices": []
+        },
+        {
+          "id": "lfo.to_pitch_cents",
+          "name": "Vibrato",
+          "group": "LFO",
+          "min": 0.0,
+          "max": 100.0,
+          "default": 0.0,
+          "unit": "cents",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "lfo.to_cutoff",
+          "name": "Filter wobble",
+          "group": "LFO",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 0.0,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "voice.mode",
+          "name": "Voices",
+          "group": "Voice",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 0.0,
+          "unit": "none",
+          "log_scale": false,
+          "choices": [
+            "Poly",
+            "Mono"
+          ]
+        },
+        {
+          "id": "voice.glide_s",
+          "name": "Glide",
+          "group": "Voice",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 0.0,
+          "unit": "seconds",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "velocity.sensitivity",
+          "name": "Velocity",
+          "group": "Voice",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 0.7,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "master.gain_db",
+          "name": "Volume",
+          "group": "Output",
+          "min": -36.0,
+          "max": 6.0,
+          "default": -6.0,
+          "unit": "decibels",
+          "log_scale": false,
+          "choices": []
+        }
+      ],
+      "presets": [
+        {
+          "name": "Init",
+          "description": "Plain two-saw starting point."
+        },
+        {
+          "name": "Warm Keys",
+          "description": "Soft, slightly detuned keys for chords."
+        },
+        {
+          "name": "Soft Pad",
+          "description": "Slow, wide pad for backgrounds and ambience."
+        },
+        {
+          "name": "Bright Lead",
+          "description": "Cutting mono lead with vibrato and a little glide."
+        },
+        {
+          "name": "Pluck",
+          "description": "Short, percussive pluck for arpeggios."
+        },
+        {
+          "name": "Chip Square",
+          "description": "8-bit style square lead for retro game music."
+        },
+        {
+          "name": "Brass Stab",
+          "description": "Punchy brass-like stab with a filter swell."
+        },
+        {
+          "name": "Sub Bass",
+          "description": "Clean, deep sine-like bass that sits under everything."
+        },
+        {
+          "name": "Fat Bass",
+          "description": "Thick detuned saw bass with a little glide."
+        },
+        {
+          "name": "Acid Bass",
+          "description": "Squelchy resonant bass for driving loops."
+        }
+      ]
+    },
+    {
+      "kind": "drums",
+      "params": [
+        {
+          "id": "kick.level",
+          "name": "Kick",
+          "group": "Levels",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 0.9,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "snare.level",
+          "name": "Snare",
+          "group": "Levels",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 0.75,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "hats.level",
+          "name": "Hi-hats",
+          "group": "Levels",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 0.5,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "toms.level",
+          "name": "Toms",
+          "group": "Levels",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 0.7,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "perc.level",
+          "name": "Clap & perc",
+          "group": "Levels",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 0.65,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "cymbals.level",
+          "name": "Cymbals",
+          "group": "Levels",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 0.45,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "kick.tune_semitones",
+          "name": "Kick tune",
+          "group": "Kick",
+          "min": -12.0,
+          "max": 12.0,
+          "default": 0.0,
+          "unit": "semitones",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "kick.decay",
+          "name": "Kick decay",
+          "group": "Kick",
+          "min": 0.25,
+          "max": 2.0,
+          "default": 1.0,
+          "unit": "none",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "snare.tone",
+          "name": "Snare tone",
+          "group": "Snare",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 0.5,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "hats.decay",
+          "name": "Hat decay",
+          "group": "Hi-hats",
+          "min": 0.25,
+          "max": 2.0,
+          "default": 1.0,
+          "unit": "none",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "kit.tune_semitones",
+          "name": "Kit tune",
+          "group": "Kit",
+          "min": -12.0,
+          "max": 12.0,
+          "default": 0.0,
+          "unit": "semitones",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "kit.decay",
+          "name": "Kit decay",
+          "group": "Kit",
+          "min": 0.25,
+          "max": 2.0,
+          "default": 1.0,
+          "unit": "none",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "master.gain_db",
+          "name": "Volume",
+          "group": "Output",
+          "min": -36.0,
+          "max": 6.0,
+          "default": -6.0,
+          "unit": "decibels",
+          "log_scale": false,
+          "choices": []
+        }
+      ],
+      "presets": [
+        {
+          "name": "Classic Kit",
+          "description": "Balanced analog-style kit."
+        },
+        {
+          "name": "Tight Kit",
+          "description": "Short, dry hits for fast patterns."
+        },
+        {
+          "name": "Boomy Kit",
+          "description": "Long, deep kick and big toms for epic moments."
+        }
+      ]
+    }
+  ],
+  "drum_pads": [
+    {
+      "note": 36,
+      "name": "Kick",
+      "group": "kick"
+    },
+    {
+      "note": 37,
+      "name": "Rim",
+      "group": "perc"
+    },
+    {
+      "note": 38,
+      "name": "Snare",
+      "group": "snare"
+    },
+    {
+      "note": 39,
+      "name": "Clap",
+      "group": "perc"
+    },
+    {
+      "note": 40,
+      "name": "Snare 2",
+      "group": "snare"
+    },
+    {
+      "note": 41,
+      "name": "Floor Tom",
+      "group": "toms"
+    },
+    {
+      "note": 42,
+      "name": "Closed Hat",
+      "group": "hats"
+    },
+    {
+      "note": 43,
+      "name": "Floor Tom 2",
+      "group": "toms"
+    },
+    {
+      "note": 44,
+      "name": "Pedal Hat",
+      "group": "hats"
+    },
+    {
+      "note": 45,
+      "name": "Low Tom",
+      "group": "toms"
+    },
+    {
+      "note": 46,
+      "name": "Open Hat",
+      "group": "hats"
+    },
+    {
+      "note": 47,
+      "name": "Mid Tom",
+      "group": "toms"
+    },
+    {
+      "note": 48,
+      "name": "Hi-Mid Tom",
+      "group": "toms"
+    },
+    {
+      "note": 49,
+      "name": "Crash",
+      "group": "cymbals"
+    },
+    {
+      "note": 50,
+      "name": "High Tom",
+      "group": "toms"
+    },
+    {
+      "note": 51,
+      "name": "Ride",
+      "group": "cymbals"
+    }
+  ]
+}

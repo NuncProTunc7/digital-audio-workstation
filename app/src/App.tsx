@@ -1,20 +1,49 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { Backend } from "./backend";
-import type { AppInfo, AudioStatus, Command, ProjectView } from "./types";
+import InstrumentPanel from "./components/InstrumentPanel";
+import Piano from "./components/Piano";
+import StatusBar from "./components/StatusBar";
+import TrackList from "./components/TrackList";
+import { formatPosition } from "./format";
+import {
+  DEFAULT_BASE_NOTE,
+  DEFAULT_VELOCITY,
+  DRUM_BASE_NOTE,
+  noteForCode,
+  noteName,
+  shiftOctave,
+  stepVelocity,
+} from "./keymap";
+import type { AppInfo, AudioStatus, Catalog, Command, ProjectView, TransportStatus } from "./types";
 
 const TIME_SIGNATURES = ["2/4", "3/4", "4/4", "5/4", "6/8", "7/8", "9/8", "12/8"];
-const RULER_BARS = 32;
+const STATUS_POLL_MS = 60;
 
 interface AppProps {
   backend: Backend;
 }
 
+function isTextEntry(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null;
+  return el?.tagName === "INPUT" && (el as HTMLInputElement).type !== "range"
+    ? true
+    : el?.tagName === "SELECT" || el?.tagName === "TEXTAREA";
+}
+
 export default function App({ backend }: AppProps) {
   const [view, setView] = useState<ProjectView | null>(null);
+  const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [audio, setAudio] = useState<AudioStatus | null>(null);
+  const [transport, setTransport] = useState<TransportStatus | null>(null);
   const [info, setInfo] = useState<AppInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState(1);
+  const [baseNote, setBaseNote] = useState(DEFAULT_BASE_NOTE);
+  const [velocity, setVelocity] = useState(DEFAULT_VELOCITY);
+  const [activeNotes, setActiveNotes] = useState<ReadonlySet<number>>(new Set());
+  // Computer keys currently held, and the note each one started.
+  const heldKeys = useRef(new Map<string, number>());
 
   // Runs a backend call and surfaces any failure in the status bar.
   const run = useCallback(async <T,>(call: () => Promise<T>): Promise<T | undefined> => {
@@ -29,14 +58,76 @@ export default function App({ backend }: AppProps) {
   }, []);
 
   useEffect(() => {
-    Promise.all([backend.getProject(), backend.audioStatus(), backend.appInfo()])
-      .then(([v, a, i]) => {
+    Promise.all([backend.getProject(), backend.catalog(), backend.audioStatus(), backend.appInfo()])
+      .then(([v, c, a, i]) => {
         setView(v);
+        setCatalog(c);
         setAudio(a);
         setInfo(i);
       })
       .catch((e: unknown) => setError(String(e)));
   }, [backend]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      backend
+        .transportStatus()
+        .then(setTransport)
+        .catch(() => {});
+    }, STATUS_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [backend]);
+
+  const markNote = useCallback((note: number, on: boolean) => {
+    setActiveNotes((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(note);
+      else next.delete(note);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    void backend.onMidiNote(markNote).then((u) => {
+      unlisten = u;
+    });
+    return () => unlisten?.();
+  }, [backend, markNote]);
+
+  const selectedTrack = view?.project.tracks.find((t) => t.id === selectedId) ?? view?.project.tracks[0];
+  const isDrums = selectedTrack?.instrument.kind === "drums";
+  const typingBase = isDrums ? DRUM_BASE_NOTE : baseNote;
+
+  const noteOn = useCallback(
+    (note: number) => {
+      if (!selectedTrack) return;
+      void backend.noteOn(selectedTrack.id, note, velocity / 127);
+      markNote(note, true);
+    },
+    [backend, selectedTrack, velocity, markNote],
+  );
+
+  const noteOff = useCallback(
+    (note: number) => {
+      if (!selectedTrack) return;
+      void backend.noteOff(selectedTrack.id, note);
+      markNote(note, false);
+    },
+    [backend, selectedTrack, markNote],
+  );
+
+  const releaseAll = useCallback(() => {
+    heldKeys.current.clear();
+    setActiveNotes(new Set());
+    void backend.allNotesOff();
+  }, [backend]);
+
+  const selectTrack = (id: number) => {
+    releaseAll();
+    setSelectedId(id);
+    void backend.selectTrack(id);
+  };
 
   const execute = useCallback(
     async (command: Command) => {
@@ -61,35 +152,79 @@ export default function App({ backend }: AppProps) {
     if (v) setView(v);
   }, [backend, run]);
 
+  const togglePlay = useCallback(() => {
+    void (transport?.playing ? backend.stop() : backend.play());
+  }, [backend, transport?.playing]);
+
+  // Keyboard: shortcuts and musical typing.
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey)) return;
-      const target = e.target as HTMLElement | null;
-      if (target?.tagName === "INPUT") return; // let inputs keep their own undo
-      const key = e.key.toLowerCase();
-      if (key === "z" && !e.shiftKey) {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (isTextEntry(e.target)) return;
+      if (e.ctrlKey || e.metaKey) {
+        const key = e.key.toLowerCase();
+        if (key === "z" && !e.shiftKey) {
+          e.preventDefault();
+          void undo();
+        } else if (key === "y" || (key === "z" && e.shiftKey)) {
+          e.preventDefault();
+          void redo();
+        }
+        return;
+      }
+      if (e.altKey) return;
+      if (e.repeat) {
+        if (heldKeys.current.has(e.code)) e.preventDefault();
+        return;
+      }
+      switch (e.code) {
+        case "Space":
+          e.preventDefault();
+          togglePlay();
+          return;
+        case "KeyZ":
+          setBaseNote((b) => shiftOctave(b, -1));
+          return;
+        case "KeyX":
+          setBaseNote((b) => shiftOctave(b, 1));
+          return;
+        case "KeyC":
+          setVelocity((v) => stepVelocity(v, -1));
+          return;
+        case "KeyV":
+          setVelocity((v) => stepVelocity(v, 1));
+          return;
+      }
+      const note = noteForCode(e.code, typingBase);
+      if (note !== null && !heldKeys.current.has(e.code)) {
         e.preventDefault();
-        void undo();
-      } else if (key === "y" || (key === "z" && e.shiftKey)) {
-        e.preventDefault();
-        void redo();
+        heldKeys.current.set(e.code, note);
+        noteOn(note);
       }
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [undo, redo]);
+    const onKeyUp = (e: KeyboardEvent) => {
+      const note = heldKeys.current.get(e.code);
+      if (note !== undefined) {
+        heldKeys.current.delete(e.code);
+        noteOff(note);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", releaseAll);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", releaseAll);
+    };
+  }, [undo, redo, togglePlay, typingBase, noteOn, noteOff, releaseAll]);
 
-  const toggleTone = async () => {
-    const a = await run(() => backend.setTestTone(!audio?.test_tone_on));
-    if (a) setAudio(a);
-  };
-
-  if (!view) {
+  if (!view || !catalog || !selectedTrack) {
     return <div className="loading">{error ?? "Starting Nunc Pro Tune…"}</div>;
   }
 
   const { project } = view;
   const signature = `${project.time_signature.numerator}/${project.time_signature.denominator}`;
+  const pianoLow = Math.max(24, Math.min(60, baseNote - 12));
 
   return (
     <div className="app">
@@ -108,10 +243,34 @@ export default function App({ backend }: AppProps) {
         />
 
         <div className="transport-buttons" role="group" aria-label="Transport">
-          <button disabled title="Playback arrives in Phase 1">▶</button>
-          <button disabled title="Playback arrives in Phase 1">■</button>
-          <button disabled className="record" title="Recording arrives in Phase 4">●</button>
+          <button
+            onClick={() => void backend.play()}
+            className={transport?.playing ? "playing" : ""}
+            title="Play (Space)"
+            aria-label="Play"
+          >
+            ▶
+          </button>
+          <button onClick={() => void backend.stop()} title="Stop (Space). Press twice to return to the start." aria-label="Stop">
+            ■
+          </button>
+          <button disabled className="record" title="Recording arrives in Phase 2" aria-label="Record">
+            ●
+          </button>
         </div>
+
+        <span className="position" aria-label="Position" title="Bar.Beat">
+          {formatPosition(transport?.position_beats ?? 0, project.time_signature.numerator)}
+        </span>
+
+        <button
+          className={transport?.metronome_on ? "toggle on" : "toggle"}
+          aria-pressed={transport?.metronome_on ?? true}
+          onClick={() => void backend.setMetronome(!(transport?.metronome_on ?? true))}
+          title="Metronome click while playing"
+        >
+          Click
+        </button>
 
         <label className="field">
           <span>Tempo</span>
@@ -138,13 +297,12 @@ export default function App({ backend }: AppProps) {
             onChange={(e) => {
               const [numerator, denominator] = e.target.value.split("/").map(Number);
               void execute({ command: "set_time_signature", numerator, denominator });
+              e.currentTarget.blur();
             }}
           >
-            {(TIME_SIGNATURES.includes(signature) ? TIME_SIGNATURES : [signature, ...TIME_SIGNATURES]).map(
-              (ts) => (
-                <option key={ts}>{ts}</option>
-              ),
-            )}
+            {(TIME_SIGNATURES.includes(signature) ? TIME_SIGNATURES : [signature, ...TIME_SIGNATURES]).map((ts) => (
+              <option key={ts}>{ts}</option>
+            ))}
           </select>
         </label>
 
@@ -159,56 +317,57 @@ export default function App({ backend }: AppProps) {
       </header>
 
       <main className="workspace">
-        <aside className="track-list">
-          <div className="panel-title">Tracks</div>
-          <p className="empty">No tracks yet.</p>
-        </aside>
-        <section className="timeline">
-          <div className="ruler" style={{ gridTemplateColumns: `repeat(${RULER_BARS}, 96px)` }}>
-            {Array.from({ length: RULER_BARS }, (_, i) => (
-              <div key={i} className="bar-number">
-                {i + 1}
-              </div>
-            ))}
-          </div>
-          <div className="timeline-empty">
-            <h1>Phase 0: the shell works</h1>
-            <p>
-              Tracks, instruments, and the on-screen keyboard arrive in Phase 1 and 2.
-              <br />
-              Press <strong>Test sound</strong> below to check your speakers.
-            </p>
-          </div>
-        </section>
+        <TrackList tracks={project.tracks} selectedId={selectedTrack.id} onSelect={selectTrack} />
+        <InstrumentPanel
+          track={selectedTrack}
+          catalog={catalog}
+          activeNotes={activeNotes}
+          onParam={(param, value) =>
+            void execute({ command: "set_instrument_param", track_id: selectedTrack.id, param, value })
+          }
+          onEndGesture={() => void backend.endGesture()}
+          onPreset={(preset) => void execute({ command: "load_preset", track_id: selectedTrack.id, preset })}
+          onPadHit={noteOn}
+          onPadRelease={noteOff}
+        />
       </main>
 
-      <footer className="status-bar">
-        <button
-          className={audio?.test_tone_on ? "tone on" : "tone"}
-          onClick={() => void toggleTone()}
-          aria-pressed={audio?.test_tone_on ?? false}
-        >
-          {audio?.test_tone_on ? "Stop test sound" : "Test sound"}
-        </button>
-        <span className="status-item" title="Audio output device">
-          🔈 {audio?.active_output ?? audio?.default_output ?? "No output device found"}
-        </span>
-        {audio?.sample_rate_hz && (
-          <span className="status-item">{(audio.sample_rate_hz / 1000).toFixed(1)} kHz</span>
+      <section className="keyboard-dock" aria-label="Keyboard">
+        <div className="keyboard-help">
+          {isDrums ? (
+            <span>
+              Drums: <kbd>A</kbd> kick · <kbd>S</kbd> snare · <kbd>T</kbd> closed hat · <kbd>U</kbd> open hat ·{" "}
+              <kbd>O</kbd> crash — or click the pads.
+            </span>
+          ) : (
+            <span>
+              Play with <kbd>A</kbd>–<kbd>'</kbd> (white keys) and <kbd>W</kbd> <kbd>E</kbd> <kbd>T</kbd>{" "}
+              <kbd>Y</kbd> <kbd>U</kbd> <kbd>O</kbd> <kbd>P</kbd> (black keys) · <kbd>Z</kbd>/<kbd>X</kbd> octave (
+              {noteName(baseNote)}) · <kbd>C</kbd>/<kbd>V</kbd> velocity ({velocity}) · <kbd>Space</kbd> play/stop
+            </span>
+          )}
+        </div>
+        {!isDrums && (
+          <Piano
+            lowNote={pianoLow}
+            highNote={pianoLow + 47}
+            activeNotes={activeNotes}
+            baseNote={typingBase}
+            onNoteOn={noteOn}
+            onNoteOff={noteOff}
+          />
         )}
-        {backend.preview && <span className="status-item preview">Browser preview: no audio engine</span>}
-        {error && (
-          <span className="status-item error" role="alert">
-            {error}
-          </span>
-        )}
-        <span className="spacer" />
-        {info && (
-          <span className="status-item muted">
-            v{info.version} · {info.license}
-          </span>
-        )}
-      </footer>
+      </section>
+
+      <StatusBar
+        audio={audio}
+        transport={transport}
+        info={info}
+        preview={backend.preview}
+        error={error}
+        onDevice={(name) => void run(() => backend.setOutputDevice(name)).then((a) => a && setAudio(a))}
+        onRefreshMidi={() => void run(() => backend.refreshMidi()).then((a) => a && setAudio(a))}
+      />
     </div>
   );
 }

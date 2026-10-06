@@ -1,0 +1,54 @@
+import type { ParamSpec } from "./types";
+
+/** Human-readable value for a parameter, such as "2.1 kHz" or "120 ms". */
+export function formatParam(spec: ParamSpec, value: number): string {
+  if (spec.choices.length > 0) return spec.choices[Math.round(value)] ?? String(value);
+  switch (spec.unit) {
+    case "hertz":
+      return value >= 1000 ? `${(value / 1000).toFixed(1)} kHz` : `${value.toFixed(value < 10 ? 2 : 0)} Hz`;
+    case "seconds":
+      return value < 1 ? `${Math.round(value * 1000)} ms` : `${value.toFixed(2)} s`;
+    case "decibels":
+      return `${value > 0 ? "+" : ""}${value.toFixed(1)} dB`;
+    case "semitones":
+      return `${value > 0 ? "+" : ""}${Math.round(value)} st`;
+    case "cents":
+      return `${value > 0 ? "+" : ""}${Math.round(value)} ct`;
+    case "percent":
+      return `${Math.round(value * 100)}%`;
+    case "none":
+      return `${value.toFixed(2)}×`;
+  }
+}
+
+const SLIDER_STEPS = 1000;
+
+/** Slider position (0–1000) for a value, honoring log scaling. */
+export function toSlider(spec: ParamSpec, value: number): number {
+  const t =
+    spec.log_scale && spec.min > 0
+      ? Math.log(value / spec.min) / Math.log(spec.max / spec.min)
+      : (value - spec.min) / (spec.max - spec.min);
+  return Math.round(Math.min(1, Math.max(0, t)) * SLIDER_STEPS);
+}
+
+/** Value for a slider position, snapped to whole steps for semitones. */
+export function fromSlider(spec: ParamSpec, position: number): number {
+  const t = position / SLIDER_STEPS;
+  let value =
+    spec.log_scale && spec.min > 0
+      ? spec.min * Math.pow(spec.max / spec.min, t)
+      : spec.min + t * (spec.max - spec.min);
+  if (spec.unit === "semitones" || spec.unit === "cents") value = Math.round(value);
+  return Math.min(spec.max, Math.max(spec.min, value));
+}
+
+export { SLIDER_STEPS };
+
+/** "Bar 3 · Beat 2" from a position in beats. */
+export function formatPosition(beats: number, beatsPerBar: number): string {
+  const whole = Math.floor(beats + 1e-9);
+  const bar = Math.floor(whole / beatsPerBar) + 1;
+  const beat = (whole % beatsPerBar) + 1;
+  return `${bar}.${beat}`;
+}
