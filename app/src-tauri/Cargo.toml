@@ -1,0 +1,29 @@
+[package]
+name = "nunc-pro-tune"
+description = "Nunc Pro Tune desktop app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lib]
+name = "nunc_pro_tune_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "nunc-pro-tune"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+daw-engine = { workspace = true, features = ["device"] }
+daw-model.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tauri = { version = "2", features = [] }
+
+[lints]
+workspace = true
