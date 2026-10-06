@@ -84,11 +84,48 @@ pub enum Request {
         path: Option<String>,
         xml: Option<String>,
     },
+    /// Render seamless loops (and stems, adaptive-music resources) into a
+    /// Godot project.
+    ExportGodot(GodotOptions),
     /// The song (or some tracks) as MusicXML; written to `path` if given.
     ExportMusicXml {
         path: Option<String>,
         track_ids: Option<Vec<TrackId>>,
     },
+}
+
+/// Options for [`Request::ExportGodot`]; omitted fields use sensible defaults.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GodotOptions {
+    /// The Godot project folder (the one containing project.godot).
+    pub project_dir: String,
+    /// Folder inside the project (default "music").
+    #[serde(default)]
+    pub folder: Option<String>,
+    /// Base file name (default: the song name).
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub format: Option<daw_export::AudioFormat>,
+    #[serde(default)]
+    pub start_beats: Option<f64>,
+    #[serde(default)]
+    pub end_beats: Option<f64>,
+    /// Seamless loop (default true).
+    #[serde(default)]
+    pub looped: Option<bool>,
+    #[serde(default)]
+    pub stems: Option<bool>,
+    /// With stems, an AudioStreamSynchronized of them (default true).
+    #[serde(default)]
+    pub layers: Option<bool>,
+    #[serde(default)]
+    pub sections: Option<Vec<daw_export::Section>>,
+    /// Loudness target in LUFS (default -16); `normalize: false` turns it off.
+    #[serde(default)]
+    pub target_lufs: Option<f64>,
+    #[serde(default)]
+    pub normalize: Option<bool>,
 }
 
 /// Reply to a [`Request`].

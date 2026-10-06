@@ -297,3 +297,28 @@ export interface ClaudeStatus {
   desktop_configured: boolean;
   claude_code_command: string;
 }
+
+/** Options for exporting into a Godot project (mirrors daw_control::GodotOptions). */
+export interface GodotOptions {
+  project_dir: string;
+  folder: string | null;
+  name: string | null;
+  format: "ogg" | "wav" | null;
+  start_beats: number | null;
+  end_beats: number | null;
+  looped: boolean | null;
+  stems: boolean | null;
+  layers: boolean | null;
+  target_lufs: number | null;
+  normalize: boolean | null;
+}
+
+/** What a Godot export wrote. */
+export interface ExportReport {
+  /** res:// paths. */
+  files: string[];
+  integrated_lufs: number | null;
+  gain_db: number;
+  seconds: number;
+  looped: boolean;
+}

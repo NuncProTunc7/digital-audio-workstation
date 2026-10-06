@@ -234,6 +234,10 @@ fn handle_inner<H: Host>(host: &H, request: Request) -> Result<Value, String> {
             crate::notation::export_midi_file(host, Path::new(&path))?;
             Ok(json!({ "exported_to": path }))
         }
+        Request::ExportGodot(options) => {
+            let report = export_godot(host, &options)?;
+            serde_json::to_value(report).map_err(|e| e.to_string())
+        }
         Request::ImportMusicXml { path, xml } => {
             let tracks = match (path, xml) {
                 (Some(p), _) => crate::notation::import_musicxml_file(host, Path::new(&p))?,
@@ -529,6 +533,36 @@ fn with_extension(path: &Path) -> PathBuf {
         s.push(daw_model::PROJECT_EXTENSION);
         PathBuf::from(s)
     }
+}
+
+/// Default loudness for game music exports (LUFS).
+pub const DEFAULT_GAME_LUFS: f64 = -16.0;
+
+/// Renders loops into a Godot project. Rendering runs on a snapshot, so
+/// the app stays responsive.
+pub fn export_godot<H: Host>(
+    host: &H,
+    options: &crate::protocol::GodotOptions,
+) -> Result<daw_export::ExportReport, String> {
+    let project = host.session()?.project().clone();
+    let spec = daw_export::GodotExport {
+        project_dir: PathBuf::from(&options.project_dir),
+        folder: options.folder.clone().unwrap_or_else(|| "music".into()),
+        name: options.name.clone().unwrap_or_else(|| project.name.clone()),
+        format: options.format.unwrap_or_default(),
+        start_beats: options.start_beats,
+        end_beats: options.end_beats,
+        looped: options.looped.unwrap_or(true),
+        stems: options.stems.unwrap_or(false),
+        layers_resource: options.layers.unwrap_or(true),
+        sections: options.sections.clone().unwrap_or_default(),
+        target_lufs: if options.normalize == Some(false) {
+            None
+        } else {
+            Some(options.target_lufs.unwrap_or(DEFAULT_GAME_LUFS))
+        },
+    };
+    daw_export::export_to_godot(&project, &host.audio(), &spec).map_err(|e| e.to_string())
 }
 
 /// Renders the whole song (plus a 2 s tail) to a 24-bit WAV file. Returns

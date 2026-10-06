@@ -538,6 +538,17 @@ export function createPreviewBackend(): PreviewBackend {
       throw new Error(`Opening sheet music needs the desktop app (${path})`);
     },
     exportMusicXml: noop,
+    pickFolder: async () => null,
+    exportGodot: async (options) => {
+      const name = (options.name ?? project.name).toLowerCase().replace(/[^a-z0-9]+/g, "_");
+      const folder = options.folder ?? "music";
+      const files = [`res://${folder}/${name}.${options.format ?? "ogg"}`];
+      if (options.stems) {
+        for (const t of project.tracks) files.push(`res://${folder}/${name}_${t.name.toLowerCase()}.ogg`);
+        if (options.layers ?? true) files.push(`res://${folder}/${name}_layers.tres`);
+      }
+      return { files, integrated_lufs: options.normalize === false ? null : (options.target_lufs ?? -16), gain_db: 0, seconds: 8, looped: options.looped ?? true };
+    },
     // A one-bar score per track, so the view has something to draw.
     sheetMusic: async (trackIds) => {
       const tracks = project.tracks.filter((t) => t.instrument.kind !== "audio" && (!trackIds || trackIds.includes(t.id)));

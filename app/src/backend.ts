@@ -10,6 +10,8 @@ import type {
   Catalog,
   ClaudeStatus,
   Command,
+  ExportReport,
+  GodotOptions,
   InputStatus,
   Peaks,
   ProjectView,
@@ -100,6 +102,9 @@ export interface Backend {
   /** Reads sheet music (.musicxml, .xml, .mxl) into new tracks. */
   importMusicXml(path: string): Promise<ProjectView>;
   exportMusicXml(path: string, trackIds: number[] | null): Promise<void>;
+  /** Shows a folder picker; null if cancelled. */
+  pickFolder(title: string): Promise<string | null>;
+  exportGodot(options: GodotOptions): Promise<ExportReport>;
   /** The song (or some tracks) as MusicXML, for the sheet music view. */
   sheetMusic(trackIds: number[] | null): Promise<string>;
   /** Files dropped on the window, with the drop point in CSS pixels. */
@@ -184,6 +189,11 @@ export const tauriBackend: Backend = {
   importMusicXml: (path) => invoke("import_musicxml", { path }),
   exportMusicXml: (path, trackIds) => invoke("export_musicxml", { path, trackIds }),
   sheetMusic: (trackIds) => invoke("sheet_music", { trackIds }),
+  pickFolder: async (title) => {
+    const picked = await open({ directory: true, multiple: false, title });
+    return typeof picked === "string" ? picked : null;
+  },
+  exportGodot: (options) => invoke("export_godot", { options }),
   inputStatus: () => invoke("input_status"),
   monitorInput: (on) => invoke("monitor_input", { on }),
   setInputDevice: (name) => invoke("set_input_device", { name }),

@@ -371,6 +371,26 @@ describe("Import and export", () => {
     expect(backend.importMusicXml).toHaveBeenCalledWith("C:\\Scores\\menu theme.mxl");
   });
 
+  it("exports loops and stems into a Godot project", async () => {
+    const backend = createPreviewBackend();
+    vi.spyOn(backend, "exportGodot");
+    await renderApp(backend);
+    fireEvent.click(screen.getByRole("button", { name: "Export ▾" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "To Godot (loops, stems)…" }));
+    const dialog = screen.getByRole("dialog", { name: "Export to Godot" });
+    expect((screen.getByRole("button", { name: "Export" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText("Godot project folder"), { target: { value: "C:\\Games\\MyGame" } });
+    fireEvent.click(screen.getByLabelText(/each track as a stem/));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Export" }));
+    });
+    expect(backend.exportGodot).toHaveBeenCalledWith(
+      expect.objectContaining({ project_dir: "C:\\Games\\MyGame", folder: "music", name: "untitled", stems: true, looped: true, target_lufs: -16 }),
+    );
+    expect(dialog.textContent).toContain("res://music/untitled.ogg");
+    expect(dialog.textContent).toContain("res://music/untitled_layers.tres");
+  });
+
   it("routes dropped MIDI files to the MIDI importer", async () => {
     const backend = createPreviewBackend();
     vi.spyOn(backend, "importMidi").mockImplementation(() => backend.getProject());

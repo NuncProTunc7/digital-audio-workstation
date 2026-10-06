@@ -5,6 +5,7 @@ import { AUDIO_EXTENSIONS, MIDI_EXTENSIONS, MUSICXML_EXTENSIONS } from "./backen
 import type { ExportKind } from "./backend";
 import AudioPanel from "./components/AudioPanel";
 import ClaudePanel from "./components/ClaudePanel";
+import GodotExportDialog from "./components/GodotExportDialog";
 import InstrumentPanel from "./components/InstrumentPanel";
 import Mixer from "./components/Mixer";
 import Piano from "./components/Piano";
@@ -294,6 +295,7 @@ export default function App({ backend }: AppProps) {
   );
 
   const [exportOpen, setExportOpen] = useState(false);
+  const [godotOpen, setGodotOpen] = useState(false);
   const exportAs = useCallback(
     async (kind: ExportKind) => {
       setExportOpen(false);
@@ -674,6 +676,15 @@ export default function App({ backend }: AppProps) {
                 <button role="menuitem" onClick={() => void exportAs("musicxml")}>
                   Sheet music (MusicXML)…
                 </button>
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setExportOpen(false);
+                    setGodotOpen(true);
+                  }}
+                >
+                  To Godot (loops, stems)…
+                </button>
               </div>
             )}
           </div>
@@ -981,6 +992,14 @@ export default function App({ backend }: AppProps) {
         claude={claude}
         onToggleClaude={() => setClaudeOpen((o) => !o)}
       />
+      {godotOpen && (
+        <GodotExportDialog
+          project={project}
+          onPickFolder={() => backend.pickFolder("Choose your Godot project folder")}
+          onExport={(options) => run(() => backend.exportGodot(options))}
+          onClose={() => setGodotOpen(false)}
+        />
+      )}
       {claudeOpen && (
         <ClaudePanel
           status={claude}

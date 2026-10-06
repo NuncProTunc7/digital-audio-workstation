@@ -603,6 +603,15 @@ fn sheet_music(
     daw_control::notation::sheet_music(&*state, track_ids.as_deref())
 }
 
+/// Renders loops (and stems, adaptive-music resources) into a Godot project.
+#[tauri::command(async)]
+fn export_godot(
+    state: State<'_, AppState>,
+    options: daw_control::GodotOptions,
+) -> Result<daw_export::ExportReport, String> {
+    daw_control::export_godot(&*state, &options)
+}
+
 /// Renders the song to a WAV file.
 // Off the main thread: decoding and rendering can take seconds.
 #[tauri::command(async)]
@@ -953,7 +962,8 @@ pub fn run() {
             export_wav,
             import_musicxml,
             export_musicxml,
-            sheet_music
+            sheet_music,
+            export_godot
         ])
         .run(tauri::generate_context!());
     if let Err(e) = result {

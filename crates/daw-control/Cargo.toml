@@ -12,6 +12,7 @@ base64 = "0.22"
 daw-audio.workspace = true
 daw-analysis = { path = "../daw-analysis" }
 daw-engine = { workspace = true }
+daw-export = { path = "../daw-export" }
 daw-instruments = { path = "../daw-instruments" }
 daw-model.workspace = true
 daw-notation = { path = "../daw-notation" }

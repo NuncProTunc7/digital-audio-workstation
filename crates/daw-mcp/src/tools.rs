@@ -302,6 +302,28 @@ fn extra_tools() -> Vec<ToolDef> {
             false,
         ),
         tool(
+            "export_godot",
+            "Export music straight into the user's Godot project as seamless loops. Writes OGG (or WAV) files plus Godot .import settings so they loop as soon as Godot imports them (with BPM/beat info for beat-synced transitions). Region: the loop region if looping is on, else the whole song. Options: stems (one file per track) with an AudioStreamSynchronized layers resource for adaptive mixing; sections (named regions, e.g. explore/combat) become an AudioStreamInteractive that switches on the next bar. Loudness is normalized to -16 LUFS unless told otherwise. Ask the user for their Godot project folder if you don't know it.",
+            object_schema(
+                json!({
+                    "project_dir": { "type": "string", "description": "The Godot project folder (contains project.godot)." },
+                    "folder": { "type": "string", "description": "Folder inside the project (default \"music\")." },
+                    "name": { "type": "string", "description": "Base file name (default: the song name)." },
+                    "format": { "type": "string", "enum": ["ogg", "wav"], "description": "Default ogg." },
+                    "start_beats": num("Region start (default: loop region or song start)."),
+                    "end_beats": num("Region end."),
+                    "looped": { "type": "boolean", "description": "Seamless loop (default true). False: plays once with a ring-out." },
+                    "stems": { "type": "boolean", "description": "Also export each track separately (default false)." },
+                    "layers": { "type": "boolean", "description": "With stems, write an AudioStreamSynchronized .tres (default true)." },
+                    "sections": { "type": "array", "description": "Named sections for an AudioStreamInteractive .tres.", "items": { "type": "object", "properties": { "name": { "type": "string" }, "start_beats": { "type": "number" }, "end_beats": { "type": "number" } }, "required": ["name", "start_beats", "end_beats"] } },
+                    "target_lufs": num("Loudness target (default -16)."),
+                    "normalize": { "type": "boolean", "description": "False keeps the mix level as is." }
+                }),
+                &["project_dir"],
+            ),
+            false,
+        ),
+        tool(
             "import_musicxml",
             "Turn sheet music into tracks. Give either the path of a MusicXML file (.musicxml, .xml, or compressed .mxl, as saved by MuseScore and most notation apps) or MusicXML text in `xml`. To import a photo or PDF of printed music: read the notes from the image yourself, write them as a partwise MusicXML score (one <part> per instrument; include divisions, time signature, and <sound tempo>), and pass it as `xml`; check the result with get_clip. Each part becomes a new track; an empty song also takes the tempo and meter. One undo step.",
             object_schema(
@@ -408,6 +430,10 @@ pub fn to_request(name: &str, args: Map<String, Value>) -> Result<Request, Strin
         "import_midi" => Request::ImportMidi {
             path: get_str("path").ok_or("path is required")?,
         },
+        "export_godot" => Request::ExportGodot(
+            serde_json::from_value(Value::Object(args))
+                .map_err(|e| format!("invalid arguments for export_godot: {e}"))?,
+        ),
         "import_musicxml" => Request::ImportMusicXml {
             path: get_str("path"),
             xml: get_str("xml"),
