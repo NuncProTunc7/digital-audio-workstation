@@ -7,6 +7,8 @@ pub struct Session {
     project: Project,
     undo_stack: Vec<Command>,
     redo_stack: Vec<Command>,
+    // The most recent Command executed, for merging slider drags.
+    last_executed: Option<Command>,
 }
 
 impl Session {
@@ -15,6 +17,7 @@ impl Session {
             project,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
+            last_executed: None,
         }
     }
 
@@ -23,15 +26,34 @@ impl Session {
     }
 
     /// Applies a Command and records it for undo. A new edit clears redo.
+    ///
+    /// Repeated edits of the same thing (one slider being dragged) merge into
+    /// a single undo step that restores the value from before the drag.
     pub fn execute(&mut self, command: Command) -> Result<(), CommandError> {
+        let merge = self.redo_stack.is_empty()
+            && self
+                .last_executed
+                .as_ref()
+                .is_some_and(|last| last.coalesces_with(&command));
+        let applied = command.clone();
         let inverse = command.apply(&mut self.project)?;
-        self.undo_stack.push(inverse);
+        if !merge {
+            self.undo_stack.push(inverse);
+        }
         self.redo_stack.clear();
+        self.last_executed = Some(applied);
         Ok(())
+    }
+
+    /// Ends the current merge window, so the next edit gets its own undo
+    /// step even if it touches the same parameter. Call when a drag ends.
+    pub fn end_gesture(&mut self) {
+        self.last_executed = None;
     }
 
     /// Reverts the most recent edit. Returns `false` if there was nothing to undo.
     pub fn undo(&mut self) -> bool {
+        self.last_executed = None;
         Self::step(
             &mut self.project,
             &mut self.undo_stack,
@@ -41,6 +63,7 @@ impl Session {
 
     /// Re-applies the most recently undone edit. Returns `false` if there was nothing to redo.
     pub fn redo(&mut self) -> bool {
+        self.last_executed = None;
         Self::step(
             &mut self.project,
             &mut self.redo_stack,
@@ -107,6 +130,58 @@ mod tests {
             .execute(Command::SetTempo { bpm: 100.0 })
             .expect("ok");
         assert!(!session.can_redo());
+    }
+
+    fn cutoff(value: f64) -> Command {
+        Command::SetInstrumentParam {
+            track_id: 1,
+            param: "filter.cutoff_hz".into(),
+            value,
+        }
+    }
+
+    #[test]
+    fn slider_drag_is_one_undo_step() {
+        let mut session = Session::default();
+        let original = session.project().clone();
+        for v in [500.0, 600.0, 700.0, 800.0] {
+            session.execute(cutoff(v)).expect("ok");
+        }
+        assert!(session.undo());
+        assert_eq!(session.project(), &original);
+        assert!(!session.can_undo());
+    }
+
+    #[test]
+    fn end_gesture_separates_undo_steps() {
+        let mut session = Session::default();
+        session.execute(cutoff(500.0)).expect("ok");
+        session.end_gesture();
+        session.execute(cutoff(900.0)).expect("ok");
+        session.undo();
+        let value = session
+            .project()
+            .track(1)
+            .expect("track")
+            .instrument
+            .value("filter.cutoff_hz");
+        assert_eq!(value, Some(500.0));
+    }
+
+    #[test]
+    fn different_params_are_separate_steps() {
+        let mut session = Session::default();
+        session.execute(cutoff(500.0)).expect("ok");
+        session
+            .execute(Command::SetInstrumentParam {
+                track_id: 1,
+                param: "filter.resonance".into(),
+                value: 0.9,
+            })
+            .expect("ok");
+        session.undo();
+        let inst = &session.project().track(1).expect("track").instrument;
+        assert_eq!(inst.value("filter.cutoff_hz"), Some(500.0));
     }
 
     #[test]

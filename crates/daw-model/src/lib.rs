@@ -5,9 +5,11 @@
 //! makes every edit undoable and every button scriptable.
 
 mod command;
+pub mod instrument;
 mod project;
 mod session;
 
 pub use command::{Command, CommandError, command_schema};
-pub use project::{Project, TimeSignature};
+pub use instrument::{Instrument, InstrumentKind};
+pub use project::{Project, TimeSignature, Track, TrackId};
 pub use session::Session;
