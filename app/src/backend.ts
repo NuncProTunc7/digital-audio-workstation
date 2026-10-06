@@ -1,13 +1,27 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ask, open, save } from "@tauri-apps/plugin-dialog";
 import { createPreviewBackend } from "./preview";
-import type { AppInfo, AudioStatus, Catalog, ClaudeStatus, Command, ProjectView, TransportStatus } from "./types";
+import type {
+  AppInfo,
+  AudioStatus,
+  Catalog,
+  ClaudeStatus,
+  Command,
+  InputStatus,
+  Peaks,
+  ProjectView,
+  TransportStatus,
+} from "./types";
 
 export { createPreviewBackend };
 
 const PROJECT_FILTER = [{ name: "Nunc Pro Tune project", extensions: ["nptune"] }];
+/** What the audio importer reads (see daw_audio::SUPPORTED_EXTENSIONS). */
+export const AUDIO_EXTENSIONS = ["wav", "wave", "mp3", "m4a", "mp4", "aac", "flac", "ogg", "oga"];
+const AUDIO_FILTER = [{ name: "Audio (WAV, MP3, M4A, FLAC, OGG)", extensions: AUDIO_EXTENSIONS }];
 
 /** Everything the UI can ask of the Rust side. */
 export interface Backend {
@@ -56,6 +70,19 @@ export interface Backend {
   /** Calls back for each MIDI keyboard note. Returns an unsubscribe function. */
   onMidiNote(callback: (note: number, on: boolean) => void): Promise<() => void>;
 
+  // Audio files and the microphone.
+  /** Imports a file onto `trackId` (null: a new audio track) at `startBeats` (null: 0). */
+  importAudio(path: string, trackId: number | null, startBeats: number | null): Promise<ProjectView>;
+  /** Shows an open dialog for audio files; empty if cancelled. */
+  pickAudioFiles(): Promise<string[]>;
+  audioPeaks(file: string): Promise<Peaks>;
+  inputStatus(): Promise<InputStatus>;
+  /** Opens (true) or closes (false) the microphone for metering. */
+  monitorInput(on: boolean): Promise<InputStatus>;
+  setInputDevice(name: string | null): Promise<InputStatus>;
+  /** Files dropped on the window, with the drop point in CSS pixels. */
+  onFileDrop(callback: (paths: string[], x: number, y: number) => void): Promise<() => void>;
+
   // Claude.
   claudeStatus(): Promise<ClaudeStatus>;
   /** Adds Nunc Pro Tune to Claude Desktop's settings. */
@@ -103,6 +130,22 @@ export const tauriBackend: Backend = {
   refreshMidi: () => invoke("refresh_midi"),
   onMidiNote: async (callback) =>
     listen<{ note: number; on: boolean }>("midi-note", (e) => callback(e.payload.note, e.payload.on)),
+  importAudio: (path, trackId, startBeats) => invoke("import_audio", { path, trackId, startBeats }),
+  pickAudioFiles: async () => {
+    const picked = await open({ multiple: true, directory: false, filters: AUDIO_FILTER });
+    if (picked === null) return [];
+    return Array.isArray(picked) ? picked : [picked];
+  },
+  audioPeaks: (file) => invoke("audio_peaks", { file }),
+  inputStatus: () => invoke("input_status"),
+  monitorInput: (on) => invoke("monitor_input", { on }),
+  setInputDevice: (name) => invoke("set_input_device", { name }),
+  onFileDrop: (callback) =>
+    getCurrentWebview().onDragDropEvent((e) => {
+      if (e.payload.type !== "drop") return;
+      const scale = window.devicePixelRatio || 1;
+      callback(e.payload.paths, e.payload.position.x / scale, e.payload.position.y / scale);
+    }),
   claudeStatus: () => invoke("claude_status"),
   claudeInstallDesktop: () => invoke("claude_install_desktop"),
   onProjectChanged: async (callback) => listen<string>("project-changed", (e) => callback(e.payload)),

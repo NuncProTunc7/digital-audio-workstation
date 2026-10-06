@@ -177,6 +177,29 @@ export interface ProjectView {
   can_redo: boolean;
   dirty: boolean;
   file_path: string | null;
+  /** Audio files clips refer to that can't be found (those clips are silent). */
+  missing_audio: string[];
+}
+
+/** Waveform overview of an audio file. */
+export interface Peaks {
+  per_second: number;
+  /** Interleaved [min, max, min, max, ...], one pair per bucket. */
+  min_max: number[];
+  /** Loudest sample (1.0 = full scale). */
+  peak: number;
+  seconds: number;
+}
+
+export interface InputStatus {
+  devices: string[];
+  default_device: string | null;
+  /** The open microphone, if any. */
+  active: string | null;
+  sample_rate_hz: number | null;
+  /** Peak level since the last poll, 0–1. */
+  level: number;
+  error: string | null;
 }
 
 export type Unit = "none" | "hertz" | "seconds" | "decibels" | "semitones" | "cents" | "percent" | "ratio";

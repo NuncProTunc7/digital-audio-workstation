@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { Backend } from "./backend";
+import { AUDIO_EXTENSIONS } from "./backend";
+import AudioPanel from "./components/AudioPanel";
 import ClaudePanel from "./components/ClaudePanel";
 import InstrumentPanel from "./components/InstrumentPanel";
 import Mixer from "./components/Mixer";
@@ -8,7 +10,7 @@ import Piano from "./components/Piano";
 import PianoRoll from "./components/PianoRoll";
 import StatusBar from "./components/StatusBar";
 import Timeline from "./components/Timeline";
-import { formatPosition } from "./format";
+import { formatPosition, snapDown } from "./format";
 import {
   DEFAULT_BASE_NOTE,
   DEFAULT_VELOCITY,
@@ -24,6 +26,8 @@ import type {
   Catalog,
   ClaudeStatus,
   Command,
+  InputStatus,
+  Peaks,
   Project,
   ProjectView,
   Track,
@@ -33,6 +37,7 @@ import type {
 const TIME_SIGNATURES = ["2/4", "3/4", "4/4", "5/4", "6/8", "7/8", "9/8", "12/8"];
 const STATUS_POLL_MS = 60;
 const CLAUDE_POLL_MS = 2000;
+const INPUT_POLL_MS = 70;
 const TOAST_MS = 4000;
 type Tab = "instrument" | "pianoroll" | "mixer";
 
@@ -66,6 +71,9 @@ export default function App({ backend }: AppProps) {
   const [claude, setClaude] = useState<ClaudeStatus | null>(null);
   const [claudeOpen, setClaudeOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [peaks, setPeaks] = useState<Record<string, Peaks>>({});
+  const peaksRequested = useRef(new Set<string>());
+  const [input, setInput] = useState<InputStatus | null>(null);
   // Computer keys currently held, and the note each one started.
   const heldKeys = useRef(new Map<string, number>());
   // Latest view for callbacks that must not re-subscribe on every edit.
@@ -175,6 +183,8 @@ export default function App({ backend }: AppProps) {
   const selectedClip = project?.tracks.flatMap((t) => t.clips).find((c) => c.id === selectedClipId);
   const clipTrack = selectedClip ? project?.tracks.find((t) => t.clips.some((c) => c.id === selectedClip.id)) : undefined;
   const isDrums = selectedTrack?.instrument.kind === "drums";
+  const isAudioTrack = selectedTrack?.instrument.kind === "audio";
+  const missingAudio = useMemo(() => new Set(view?.missing_audio ?? []), [view?.missing_audio]);
   const typingBase = isDrums ? DRUM_BASE_NOTE : baseNote;
   const recording = transport?.recording ?? false;
 
@@ -195,6 +205,108 @@ export default function App({ backend }: AppProps) {
   );
 
   const endGesture = useCallback(() => void backend.endGesture(), [backend]);
+
+  // Waveforms for every audio file in the song, fetched once each.
+  useEffect(() => {
+    for (const t of project?.tracks ?? []) {
+      for (const c of t.clips) {
+        const file = c.audio?.file;
+        if (!file || peaksRequested.current.has(file) || missingAudio.has(file)) continue;
+        peaksRequested.current.add(file);
+        backend
+          .audioPeaks(file)
+          .then((p) => setPeaks((prev) => ({ ...prev, [file]: p })))
+          .catch(() => peaksRequested.current.delete(file));
+      }
+    }
+  }, [backend, project, missingAudio]);
+
+  // The microphone is open (and metered) while an audio track is selected.
+  useEffect(() => {
+    if (!isAudioTrack) return;
+    let alive = true;
+    void backend.monitorInput(true).then((s) => alive && setInput(s));
+    const timer = window.setInterval(() => {
+      backend
+        .inputStatus()
+        .then((s) => alive && setInput(s))
+        .catch(() => {});
+    }, INPUT_POLL_MS);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+      void backend.monitorInput(false);
+    };
+  }, [backend, isAudioTrack]);
+
+  /** Imports files one by one, then selects the last new clip. */
+  const importFiles = useCallback(
+    async (paths: string[], trackId: number | null, beats: number) => {
+      const usable = paths.filter((p) => AUDIO_EXTENSIONS.includes(p.split(".").pop()?.toLowerCase() ?? ""));
+      if (usable.length < paths.length) {
+        setError("Only audio files can be imported (WAV, MP3, M4A, FLAC, OGG)");
+      }
+      let latest: Project | undefined;
+      for (const path of usable) {
+        const v = await run(() => backend.importAudio(path, trackId, beats));
+        if (!v) break;
+        latest = applyView(v);
+      }
+      if (!latest) return;
+      const newest = latest.tracks
+        .flatMap((t) => t.clips.map((c) => ({ track: t.id, clip: c.id })))
+        .reduce((a, b) => (b.clip > a.clip ? b : a), { track: 0, clip: 0 });
+      if (newest.clip) {
+        setSelectedClipId(newest.clip);
+        setSelectedTrackId(newest.track);
+        setTab("instrument");
+      }
+    },
+    [backend, run, applyView],
+  );
+
+  const pickAndImport = useCallback(
+    async (trackId: number | null, beats: number) => {
+      const paths = await run(() => backend.pickAudioFiles());
+      if (paths && paths.length > 0) await importFiles(paths, trackId, beats);
+    },
+    [backend, run, importFiles],
+  );
+
+  // Files dragged from Explorer onto the timeline land where they're dropped.
+  // Latest playhead, for handlers that shouldn't re-subscribe on every poll.
+  const positionRef = useRef(0);
+  const dropTarget = useRef<(x: number, y: number) => { trackId: number | null; beats: number }>(() => ({
+    trackId: null,
+    beats: 0,
+  }));
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    void backend
+      .onFileDrop((paths, x, y) => {
+        const { trackId, beats } = dropTarget.current(x, y);
+        void importFiles(paths, trackId, beats);
+      })
+      .then((u) => {
+        unlisten = u;
+      });
+    return () => unlisten?.();
+  }, [backend, importFiles]);
+  useLayoutEffect(() => {
+    positionRef.current = transport?.position_beats ?? 0;
+    dropTarget.current = (x, y) => {
+      const bpb = project?.time_signature.numerator ?? 4;
+      const lane = document.elementFromPoint?.(x, y)?.closest<HTMLElement>(".lane[data-track]");
+      const lanes = document.querySelector<HTMLElement>(".lanes");
+      if (!lane || !lanes) {
+        return { trackId: null, beats: snapDown(Math.max(0, transport?.position_beats ?? 0), bpb) };
+      }
+      const id = Number(lane.dataset.track);
+      const track = project?.tracks.find((t) => t.id === id);
+      const beats = snapDown(Math.max(0, (x - lanes.getBoundingClientRect().left) / pixelsPerBeat), 1);
+      return { trackId: track?.instrument.kind === "audio" ? id : null, beats };
+    };
+  });
 
   const noteOn = useCallback(
     (note: number) => {
@@ -365,6 +477,13 @@ export default function App({ backend }: AppProps) {
         } else if (key === "d" && selectedClip) {
           e.preventDefault();
           void execute({ command: "duplicate_clip", clip_id: selectedClip.id, start_beats: null }).then(endGesture);
+        } else if (key === "e" && selectedClip) {
+          // Split the selected clip at the playhead.
+          e.preventDefault();
+          const at = positionRef.current;
+          if (at > selectedClip.start_beats && at < selectedClip.start_beats + selectedClip.length_beats) {
+            void execute({ command: "split_clip", clip_id: selectedClip.id, at_beats: at }).then(endGesture);
+          }
         } else if (key === "a" && tab === "pianoroll" && selectedClip) {
           e.preventDefault();
           setSelectedNotes(new Set(selectedClip.notes.map((n) => n.id)));
@@ -590,6 +709,9 @@ export default function App({ backend }: AppProps) {
           onEndGesture={endGesture}
           onLocate={(beats) => void backend.locate(beats)}
           onRemoveTrack={(t) => void removeTrack(t)}
+          peaks={peaks}
+          missingAudio={missingAudio}
+          onImportAudio={(trackId, beats) => void pickAndImport(trackId, beats)}
         />
       </main>
 
@@ -617,7 +739,7 @@ export default function App({ backend }: AppProps) {
         <nav className="tabs" role="tablist">
           {(
             [
-              ["instrument", `Instrument · ${selectedTrack.name}`],
+              ["instrument", `${isAudioTrack ? "Audio" : "Instrument"} · ${selectedTrack.name}`],
               ["pianoroll", selectedClip ? `Piano roll · ${selectedClip.name}` : "Piano roll"],
               ["mixer", "Mixer"],
             ] as [Tab, string][]
@@ -629,7 +751,25 @@ export default function App({ backend }: AppProps) {
         </nav>
 
         <div className="dock-body">
-          {tab === "instrument" && (
+          {tab === "instrument" && isAudioTrack && (
+            <AudioPanel
+              track={selectedTrack}
+              clip={clipTrack?.id === selectedTrack.id ? selectedClip : undefined}
+              peaks={selectedClip?.audio ? peaks[selectedClip.audio.file] : undefined}
+              missing={selectedClip?.audio ? missingAudio.has(selectedClip.audio.file) : false}
+              tempoBpm={project.tempo_bpm}
+              playheadBeats={position}
+              recording={recording}
+              input={input}
+              onInputDevice={(name) => void run(() => backend.setInputDevice(name)).then((s) => s && setInput(s))}
+              onCommand={execute}
+              onEndGesture={endGesture}
+              onImport={() => void pickAndImport(selectedTrack.id, snapDown(position, beatsPerBar))}
+              onRecord={() => void toggleRecord()}
+            />
+          )}
+
+          {tab === "instrument" && !isAudioTrack && (
             <div className="instrument-tab">
               <InstrumentPanel
                 track={selectedTrack}
@@ -673,7 +813,12 @@ export default function App({ backend }: AppProps) {
           )}
 
           {tab === "pianoroll" &&
-            (selectedClip && clipTrack ? (
+            (selectedClip?.audio ? (
+              <p className="empty-state">
+                This is an audio clip. Change its volume and fades in the Audio tab, and drag its edges on the timeline to
+                trim it.
+              </p>
+            ) : selectedClip && clipTrack ? (
               <PianoRoll
                 clip={selectedClip}
                 track={clipTrack}

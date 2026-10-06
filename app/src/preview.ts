@@ -8,6 +8,8 @@ import type {
   AudioStatus,
   Catalog,
   ClaudeStatus,
+  InputStatus,
+  Peaks,
   Clip,
   Command,
   Effect,
@@ -339,6 +341,8 @@ export function applyCommand(project: Project, command: Command): Project {
 export interface PreviewBackend extends Backend {
   /** Applies a Command as if Claude sent it, and fires the change event. */
   simulateRemoteChange(command: Command, description: string): void;
+  /** Acts as if files were dropped on the window at (x, y). */
+  simulateFileDrop(paths: string[], x: number, y: number): void;
 }
 
 export function createPreviewBackend(): PreviewBackend {
@@ -359,6 +363,7 @@ export function createPreviewBackend(): PreviewBackend {
     can_redo: redoStack.length > 0,
     dirty: project !== saved,
     file_path: filePath,
+    missing_audio: [],
   });
   const audio = (): AudioStatus => ({
     output_devices: ["Preview (no audio)"],
@@ -371,6 +376,18 @@ export function createPreviewBackend(): PreviewBackend {
   const position = () => (playing ? startBeats + ((performance.now() - startedAt) / 60000) * project.tempo_bpm : startBeats);
   const noop = async () => {};
   const changeListeners = new Set<(description: string) => void>();
+  const dropListeners = new Set<(paths: string[], x: number, y: number) => void>();
+  let inputOpen = false;
+  const input = (): InputStatus => ({
+    devices: ["Preview microphone"],
+    default_device: "Preview microphone",
+    active: inputOpen ? "Preview microphone" : null,
+    sample_rate_hz: inputOpen ? 48000 : null,
+    level: inputOpen ? 0.2 : 0,
+    error: null,
+  });
+  // Every "file" is a two-second tone; enough to draw and edit.
+  const PREVIEW_SECONDS = 2;
   const claude = (): ClaudeStatus => ({
     listening: false,
     error: "Claude needs the desktop app",
@@ -480,6 +497,58 @@ export function createPreviewBackend(): PreviewBackend {
     setOutputDevice: async () => audio(),
     refreshMidi: async () => audio(),
     onMidiNote: async () => () => {},
+    importAudio: async (path, trackId, startBeats) => {
+      const name = path.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "") ?? "Audio";
+      const audio = {
+        file: `${name}-0000beef.wav`,
+        file_seconds: PREVIEW_SECONDS,
+        offset_seconds: 0,
+        gain_db: 0,
+        fade_in_seconds: 0,
+        fade_out_seconds: 0,
+      };
+      let target = trackId;
+      let next = project;
+      if (target === null) {
+        target = next.next_id;
+        next = applyCommand(next, { command: "add_track", name, instrument: "audio", preset: null, index: null });
+      }
+      next = applyCommand(next, {
+        command: "add_audio_clip",
+        track_id: target,
+        start_beats: startBeats ?? 0,
+        audio,
+        length_beats: null,
+        name,
+      });
+      undoStack.push(project);
+      redoStack.length = 0;
+      project = next;
+      return view();
+    },
+    pickAudioFiles: async () => [],
+    audioPeaks: async (): Promise<Peaks> => {
+      const perSecond = 200;
+      const minMax: number[] = [];
+      for (let i = 0; i < PREVIEW_SECONDS * perSecond; i++) {
+        const a = 0.5 * Math.abs(Math.sin(i / 25));
+        minMax.push(-a, a);
+      }
+      return { per_second: perSecond, min_max: minMax, peak: 0.5, seconds: PREVIEW_SECONDS };
+    },
+    inputStatus: async () => input(),
+    monitorInput: async (on) => {
+      inputOpen = on;
+      return input();
+    },
+    setInputDevice: async () => input(),
+    onFileDrop: async (callback) => {
+      dropListeners.add(callback);
+      return () => dropListeners.delete(callback);
+    },
+    simulateFileDrop: (paths: string[], x: number, y: number) => {
+      for (const l of dropListeners) l(paths, x, y);
+    },
     claudeStatus: async () => claude(),
     claudeInstallDesktop: async () => {
       throw new Error("Connecting Claude needs the desktop app");

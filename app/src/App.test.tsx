@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { createPreviewBackend } from "./backend";
@@ -243,6 +243,93 @@ describe("Arranging", () => {
     expect(panel.textContent).toContain("Nothing yet this session.");
     fireEvent.click(screen.getByRole("button", { name: "Close Claude panel" }));
     expect(screen.queryByRole("dialog", { name: "Claude" })).toBeNull();
+  });
+});
+
+describe("Audio", () => {
+  async function dropRecording(backend = createPreviewBackend(), file = "C:\\Phone\\Voice Memo 3.m4a") {
+    await renderApp(backend);
+    await act(async () => {
+      backend.simulateFileDrop([file], 400, 100);
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    return backend;
+  }
+
+  it("adds an audio track with a microphone panel", async () => {
+    const backend = createPreviewBackend();
+    vi.spyOn(backend, "monitorInput");
+    await renderApp(backend);
+    await act(async () => {
+      fireEvent.click(screen.getByText("+ Audio track"));
+    });
+    expect(document.querySelectorAll(".lane").length).toBe(4);
+    fireEvent.click(trackHeader("Audio"));
+    expect(await screen.findByRole("tab", { name: "Audio · Audio" })).toBeTruthy();
+    expect(screen.getByLabelText("Audio input")).toBeTruthy();
+    expect(backend.monitorInput).toHaveBeenCalledWith(true);
+    // Leaving the audio track closes the microphone.
+    fireEvent.click(trackHeader("Keys"));
+    await waitFor(() => expect(backend.monitorInput).toHaveBeenCalledWith(false));
+  });
+
+  it("imports a dropped phone recording onto a new track and selects it", async () => {
+    await dropRecording();
+    expect(trackHeader("Voice Memo 3")).toBeTruthy();
+    const clip = document.querySelector(".clip.audio");
+    expect(clip?.textContent).toContain("Voice Memo 3");
+    expect(screen.getByRole("tab", { name: "Audio · Voice Memo 3" })).toBeTruthy();
+    expect(screen.getByLabelText("Clip gain")).toBeTruthy();
+  });
+
+  it("refuses files that aren't audio", async () => {
+    await dropRecording(createPreviewBackend(), "C:\\Docs\\notes.txt");
+    expect((await screen.findByRole("alert")).textContent).toContain("Only audio files");
+    expect(document.querySelector(".clip.audio")).toBeNull();
+  });
+
+  it("changes gain and normalizes", async () => {
+    const backend = await dropRecording();
+    const gain = screen.getByLabelText("Clip gain");
+    fireEvent.change(gain, { target: { value: "-6" } });
+    await waitFor(() => expect(screen.getByText("-6.0 dB")).toBeTruthy());
+    // The preview's audio peaks at 0.5 (-6 dBFS): normalize to -1 dB adds 5 dB.
+    await waitFor(() => expect((screen.getByText("Normalize") as HTMLButtonElement).disabled).toBe(false));
+    await act(async () => {
+      fireEvent.click(screen.getByText("Normalize"));
+    });
+    const clip = (await backend.getProject()).project.tracks[3].clips[0];
+    expect(clip.audio?.gain_db).toBeCloseTo(5.0, 1);
+  });
+
+  it("splits the selected clip at the playhead", async () => {
+    const backend = await dropRecording();
+    await act(async () => {
+      await backend.locate(1);
+      await new Promise((r) => setTimeout(r, 120));
+    });
+    const split = screen.getByText("Split at playhead") as HTMLButtonElement;
+    await waitFor(() => expect(split.disabled).toBe(false));
+    await act(async () => {
+      fireEvent.click(split);
+    });
+    const clips = (await backend.getProject()).project.tracks[3].clips;
+    expect(clips.map((c) => c.start_beats)).toEqual([0, 1]);
+    expect(clips[1].audio?.offset_seconds).toBeCloseTo(0.5);
+  });
+
+  it("trims a clip's start by dragging its left edge", async () => {
+    const backend = await dropRecording();
+    vi.spyOn(backend, "execute");
+    const trim = document.querySelector(".clip.audio .clip-trim") as HTMLElement;
+    await act(async () => {
+      fireEvent.pointerDown(trim, { clientX: 100, clientY: 10 });
+      fireEvent.pointerMove(document.querySelector(".timeline") as HTMLElement, { clientX: 124, clientY: 10 });
+      fireEvent.pointerUp(document.querySelector(".timeline") as HTMLElement);
+    });
+    expect(backend.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ command: "trim_clip_start", start_beats: 1 }),
+    );
   });
 });
 

@@ -1,7 +1,8 @@
 import { useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { meterPercent, snap, snapDown } from "../format";
-import type { Clip, Command, Project, Track } from "../types";
+import type { Clip, Command, Peaks, Project, Track } from "../types";
+import Waveform from "./Waveform";
 
 export const TRACK_HEIGHT = 60;
 const MIN_BARS = 32;
@@ -22,7 +23,17 @@ interface TimelineProps {
   onEndGesture: () => void;
   onLocate: (beats: number) => void;
   onRemoveTrack: (track: Track) => void;
+  /** Waveforms, by audio file name (loaded as needed). */
+  peaks: Readonly<Record<string, Peaks>>;
+  /** Audio files that can't be found. */
+  missingAudio: ReadonlySet<string>;
+  /** Asks for audio files and imports them onto `trackId` (null: new tracks) at `beats`. */
+  onImportAudio: (trackId: number | null, beats: number) => void;
 }
+
+const isAudio = (t: Track) => t.instrument.kind === "audio";
+
+const TRACK_ICONS: Record<Track["instrument"]["kind"], string> = { synth: "🎹", drums: "🥁", audio: "🎤" };
 
 type Drag =
   | {
@@ -34,6 +45,7 @@ type Drag =
       moved: boolean;
     }
   | { kind: "resize"; clip: Clip; x0: number; lastLength: number }
+  | { kind: "trim"; clip: Clip; x0: number; lastStart: number }
   | { kind: "loop"; anchor: number };
 
 /** The arrangement: track headers, clip lanes, ruler, loop region, playhead. */
@@ -65,13 +77,16 @@ export default function Timeline(props: TimelineProps) {
     return Math.max(0, Math.min(project.tracks.length - 1, i));
   };
 
-  const startClipDrag = (e: ReactPointerEvent, clip: Clip, trackIndex: number, resize: boolean) => {
+  const startClipDrag = (e: ReactPointerEvent, clip: Clip, trackIndex: number, edge: "move" | "end" | "start") => {
     e.stopPropagation();
     e.currentTarget.setPointerCapture?.(e.pointerId);
     props.onSelectClip(clip.id, project.tracks[trackIndex].id);
-    drag.current = resize
-      ? { kind: "resize", clip, x0: e.clientX, lastLength: clip.length_beats }
-      : {
+    drag.current =
+      edge === "end"
+        ? { kind: "resize", clip, x0: e.clientX, lastLength: clip.length_beats }
+        : edge === "start"
+          ? { kind: "trim", clip, x0: e.clientX, lastStart: clip.start_beats }
+          : {
           kind: "move",
           clip,
           x0: e.clientX,
@@ -86,7 +101,10 @@ export default function Timeline(props: TimelineProps) {
     if (!d) return;
     if (d.kind === "move") {
       const start = Math.max(0, d.clip.start_beats + snap((e.clientX - d.x0) / ppb, grid));
-      const trackIndex = trackIndexAt(e.clientY);
+      // Audio clips only go on audio tracks, note clips only on instrument tracks.
+      const over = trackIndexAt(e.clientY);
+      const trackIndex =
+        isAudio(project.tracks[over]) === Boolean(d.clip.audio) ? over : d.lastTrack;
       if (start !== d.lastStart || trackIndex !== d.lastTrack) {
         d.lastStart = start;
         d.lastTrack = trackIndex;
@@ -100,10 +118,31 @@ export default function Timeline(props: TimelineProps) {
         });
       }
     } else if (d.kind === "resize") {
-      const length = Math.max(grid, d.clip.length_beats + snap((e.clientX - d.x0) / ppb, grid));
+      // Audio edits snap finer (sixteenths), and stop at the end of the recording.
+      const g = d.clip.audio ? grid / 4 : grid;
+      let length = Math.max(g, d.clip.length_beats + snap((e.clientX - d.x0) / ppb, g));
+      if (d.clip.audio) {
+        const available = ((d.clip.audio.file_seconds - d.clip.audio.offset_seconds) * project.tempo_bpm) / 60;
+        length = Math.min(length, Math.max(available, g));
+      }
       if (length !== d.lastLength) {
         d.lastLength = length;
         void props.onCommand({ command: "resize_clip", clip_id: d.clip.id, length_beats: length });
+      }
+    } else if (d.kind === "trim") {
+      const g = d.clip.audio ? grid / 4 : grid;
+      const end = d.clip.start_beats + d.clip.length_beats;
+      // Can't reveal audio from before the recording started.
+      const earliest = d.clip.audio
+        ? d.clip.start_beats - (d.clip.audio.offset_seconds * project.tempo_bpm) / 60
+        : 0;
+      const start = Math.min(
+        end - g,
+        Math.max(earliest, 0, d.clip.start_beats + snap((e.clientX - d.x0) / ppb, g)),
+      );
+      if (start !== d.lastStart) {
+        d.lastStart = start;
+        void props.onCommand({ command: "trim_clip_start", clip_id: d.clip.id, start_beats: start });
       }
     } else {
       const here = snap(beatAt(e.clientX), beatsPerBar);
@@ -187,7 +226,7 @@ export default function Timeline(props: TimelineProps) {
                 onClick={() => props.onSelectTrack(t.id)}
               >
                 <span className="track-icon" aria-hidden>
-                  {t.instrument.kind === "drums" ? "🥁" : "🎹"}
+                  {TRACK_ICONS[t.instrument.kind]}
                 </span>
                 <div className="track-header-main">
                   {renaming === t.id ? (
@@ -287,6 +326,22 @@ export default function Timeline(props: TimelineProps) {
               >
                 + Drum track
               </button>
+              <button
+                className="small"
+                onClick={() =>
+                  void props.onCommand({ command: "add_track", name: "Audio", instrument: "audio", preset: null, index: null })
+                }
+                title="A track for recording your voice or an instrument, or for imported audio"
+              >
+                + Audio track
+              </button>
+              <button
+                className="small"
+                onClick={() => props.onImportAudio(null, snapDown(Math.max(0, props.playheadBeats), beatsPerBar))}
+                title="Bring in WAV, MP3, M4A (phone recordings), FLAC or OGG files. You can also drag files onto the timeline."
+              >
+                Import audio…
+              </button>
             </div>
           </div>
 
@@ -308,20 +363,37 @@ export default function Timeline(props: TimelineProps) {
                   props.onSelectTrack(t.id);
                   props.onSelectClip(null, t.id);
                 }}
-                onDoubleClick={(e) => void createClipAt(e, t)}
-                title="Double-click to add a clip"
+                onDoubleClick={(e) =>
+                  isAudio(t)
+                    ? props.onImportAudio(t.id, snapDown(beatAt(e.clientX), beatsPerBar))
+                    : void createClipAt(e, t)
+                }
+                title={isAudio(t) ? "Double-click to import audio here, or select the track and press R to record" : "Double-click to add a clip"}
               >
-                {t.clips.map((c) => (
-                  <ClipBox
-                    key={c.id}
-                    clip={c}
-                    ppb={ppb}
-                    selected={c.id === props.selectedClipId}
-                    drums={t.instrument.kind === "drums"}
-                    onPointerDown={(e, resize) => startClipDrag(e, c, i, resize)}
-                    onDoubleClick={() => props.onOpenClip(c.id)}
-                  />
-                ))}
+                {t.clips.map((c) =>
+                  c.audio ? (
+                    <AudioClipBox
+                      key={c.id}
+                      clip={c}
+                      ppb={ppb}
+                      tempoBpm={project.tempo_bpm}
+                      peaks={props.peaks[c.audio.file]}
+                      missing={props.missingAudio.has(c.audio.file)}
+                      selected={c.id === props.selectedClipId}
+                      onPointerDown={(e, edge) => startClipDrag(e, c, i, edge)}
+                    />
+                  ) : (
+                    <ClipBox
+                      key={c.id}
+                      clip={c}
+                      ppb={ppb}
+                      selected={c.id === props.selectedClipId}
+                      drums={t.instrument.kind === "drums"}
+                      onPointerDown={(e, resize) => startClipDrag(e, c, i, resize ? "end" : "move")}
+                      onDoubleClick={() => props.onOpenClip(c.id)}
+                    />
+                  ),
+                )}
               </div>
             ))}
             <div className="playhead" style={{ left: props.playheadBeats * ppb }} aria-hidden />
@@ -383,6 +455,58 @@ function ClipBox({ clip, ppb, selected, drums, onPointerDown, onDoubleClick }: C
         onPointerDown={(e) => onPointerDown(e, true)}
         title="Drag to change the clip length"
       />
+    </div>
+  );
+}
+
+interface AudioClipBoxProps {
+  clip: Clip;
+  ppb: number;
+  tempoBpm: number;
+  peaks: Peaks | undefined;
+  missing: boolean;
+  selected: boolean;
+  onPointerDown: (e: ReactPointerEvent, edge: "move" | "end" | "start") => void;
+}
+
+/** An audio clip: waveform, fades, and handles to trim either end. */
+function AudioClipBox({ clip, ppb, tempoBpm, peaks, missing, selected, onPointerDown }: AudioClipBoxProps) {
+  const audio = clip.audio;
+  if (!audio) return null;
+  const width = Math.max(4, clip.length_beats * ppb);
+  const secondsToPx = (s: number) => ((s * tempoBpm) / 60) * ppb;
+  const gain = 10 ** (audio.gain_db / 20);
+  const seconds = (clip.length_beats * 60) / tempoBpm;
+  return (
+    <div
+      className={`clip audio${selected ? " selected" : ""}${missing ? " missing" : ""}`}
+      style={{ left: clip.start_beats * ppb, width }}
+      onPointerDown={(e) => onPointerDown(e, "move")}
+      title={missing ? `${clip.name}: the audio file ${audio.file} is missing` : `${clip.name} — drag the edges to trim`}
+      data-clip={clip.id}
+    >
+      <span className="clip-name">
+        {missing && "⚠ "}
+        {clip.name}
+      </span>
+      {peaks && !missing && (
+        <Waveform
+          peaks={peaks}
+          offsetSeconds={audio.offset_seconds}
+          seconds={seconds}
+          gain={gain}
+          width={width}
+          height={TRACK_HEIGHT - 18}
+        />
+      )}
+      {audio.fade_in_seconds > 0 && (
+        <div className="clip-fade in" style={{ width: Math.min(width, secondsToPx(audio.fade_in_seconds)) }} aria-hidden />
+      )}
+      {audio.fade_out_seconds > 0 && (
+        <div className="clip-fade out" style={{ width: Math.min(width, secondsToPx(audio.fade_out_seconds)) }} aria-hidden />
+      )}
+      <div className="clip-trim" onPointerDown={(e) => onPointerDown(e, "start")} title="Drag to trim the start" />
+      <div className="clip-resize" onPointerDown={(e) => onPointerDown(e, "end")} title="Drag to trim the end" />
     </div>
   );
 }
