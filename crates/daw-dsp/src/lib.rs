@@ -4,11 +4,13 @@
 //! construction. All processing is single-sample (`next`) so callers decide
 //! their own block structure.
 
+mod biquad;
 mod envelope;
 mod filter;
 mod oscillator;
 mod util;
 
+pub use biquad::{Biquad, BiquadShape};
 pub use envelope::{Adsr, AdsrParams};
 pub use filter::{FilterMode, Svf};
 pub use oscillator::{Lfo, Oscillator, Waveform};
