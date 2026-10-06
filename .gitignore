@@ -32,3 +32,6 @@ target/
 *.flac
 *.msi
 *.exe
+
+# Small test recordings the decoder tests need.
+!crates/daw-audio/tests/fixtures/*
