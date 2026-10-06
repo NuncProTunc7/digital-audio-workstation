@@ -2,7 +2,7 @@
 
 A free, open-source DAW for making game music — record real instruments, compose with built-in synths, drums, bass, and keys, read and write sheet music, and export straight into Godot. Claude Desktop and Claude Code can control every part of it through MCP.
 
-**Status:** Phase 0 (skeleton). The app opens, edits tempo and time signature with undo/redo, and plays a test tone. See [`docs/PLAN.md`](docs/PLAN.md) for the roadmap.
+**Status:** Phase 1 (make sound). Play the built-in Keys, Bass, and Drums with the on-screen piano, your computer keyboard, drum pads, or a MIDI keyboard; shape sounds with presets and sliders; play/stop with a metronome. See [`docs/PLAN.md`](docs/PLAN.md) for the roadmap.
 
 ## Try it on Windows
 

@@ -16,7 +16,7 @@ Instructions for AI coding agents (Claude Code and others) working in this repos
 
 ## Stack
 
-- Rust workspace in `crates/` (engine, DSP, instruments, model, MCP).
+- Rust workspace in `crates/`: `daw-model` (project, Commands, instrument catalog), `daw-dsp` (oscillators, filters, envelopes), `daw-instruments` (Synth, DrumMachine), `daw-engine` (real-time processor, Engine handle, sound card, MIDI input, offline render), `daw-cli` (`npt` headless tool).
 - Tauri 2 app in `app/`: `app/src/` is the React + TypeScript + Vite UI, `app/src-tauri/` is the Rust shell.
 - In a plain browser (`npm --prefix app run dev`), the UI uses an in-memory preview backend (`app/src/backend.ts`) so it can be developed without the engine.
 - Audio I/O: cpal (WASAPI; ASIO in Phase 6). MIDI: midir. MCP: rmcp.
@@ -37,6 +37,8 @@ npm --prefix app run tauri dev               # run the desktop app with hot relo
 npm --prefix app run tauri build             # release build + Windows installer (target/release/bundle/nsis/)
 cargo run -p daw-cli -- render-test-tone --out tone.wav   # headless render
 cargo run -p daw-cli -- schema               # JSON Schema of every Command
+cargo run -p daw-cli -- instruments          # instrument parameters, presets, drum pads (JSON)
+cargo run -p daw-cli -- render-demo --out demo.wav   # 10 s groove on Keys, Bass, Drums
 ```
 
 Linux builds need: `libwebkit2gtk-4.1-dev libasound2-dev libgtk-3-dev librsvg2-dev libayatana-appindicator3-dev libxdo-dev`.
@@ -56,11 +58,14 @@ Use lock-free queues (`rtrb`) to talk to the audio thread. Pre-allocate buffers.
 
 ### 2. Commands are the only way to change a project
 - All edits — from UI, shortcuts, or MCP — go through a `Command` in `daw-model`.
+- Live actions (notes, play/stop, metronome, device choice) are not project edits: they go straight to the `Engine` and are not undoable. Don't use them to change saved state.
+- Instrument parameters and presets are data in `daw-model/src/instrument.rs` (append-only order: the index is the engine's parameter id). The DSP in `daw-instruments` matches on parameter ids. After changing either, regenerate the UI copy: `cargo run -p daw-cli -- instruments > app/src/generated/instruments.json` (a test fails if you forget).
 - Each Command: `serde` + `schemars` derive, a doc comment (it becomes the MCP tool description Claude reads), `apply`, and `undo`.
 - Adding a UI feature without a Command is a bug. The MCP tool list is generated from Commands; do not hand-write MCP tools that bypass them.
 
 ### 3. Tests
 - New DSP or instrument code: add a headless render test (no NaN/inf, no clipping beyond expectations, deterministic output).
+- Anything reachable from the audio callback must keep `crates/daw-engine/tests/no_alloc.rs` passing (it fails on any heap allocation during processing). Extend it when you add new engine messages.
 - New Command: add a JSON round-trip + apply/undo test.
 - Bug fix: add a test that fails before the fix.
 - Tests must not require a sound card or MIDI device.

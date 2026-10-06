@@ -38,6 +38,7 @@
 | Layout | Linear timeline first (GarageBand-style) | Simpler; suits writing complete tracks. |
 | Plugins (later) | **CLAP first, then VST3** | Both are open (CLAP: MIT; VST3: MIT since SDK 3.8, Oct 2025). |
 | Internal audio format | 32-bit float, 48 kHz default, stereo buses | Industry norm; matches Godot's mixer. |
+| Tempo convention | BPM counts the time signature's beat (quarter notes in 4/4, eighth notes in 6/8); the metronome clicks every beat | Simple and predictable; revisit if compound-meter users want dotted-quarter clicks. |
 | Project file | Folder: `MySong.daw/project.json` + `audio/` | Human-readable, diff-able, easy for Claude to inspect. |
 
 ## 3. Architecture
@@ -68,6 +69,7 @@
 ```
 
 ### Key design rules
+0. **Project edits vs. live actions.** Commands change the song (saved, undoable). Live actions change only what you hear right now: playing notes, play/stop, metronome, audio device. Both will be exposed to Claude in Phase 3; only Commands go in the undo history.
 1. **One command system for everyone.** The UI, keyboard shortcuts, and Claude all go through the same Command bus. If a button exists, Claude can press it. This also gives us undo/redo and crash-safe autosave.
 2. **Commands are defined once.** Each Command is a Rust type with a JSON schema (`serde` + `schemars`). The MCP tool list is generated from those types, so the UI and AI never drift apart.
 3. **The real-time thread never waits.** No memory allocation, locks, file I/O, or logging on the audio thread. The core builds a new render graph off-thread and swaps it in via a lock-free queue; old graphs are freed off-thread.
@@ -99,10 +101,10 @@ All share one voice engine (polyphony, voice stealing, MIDI CC, pitch bend, sust
 
 | Instrument | v1 design | Ideas to borrow from |
 |---|---|---|
-| **Synth** | 3 oscillators (saw/square/tri/sine/noise, band-limited) + sub, multimode filter (ladder + state-variable), 2 ADSR envelopes, 2 LFOs, small mod matrix, unison/detune, glide | LMMS TripleOscillator, Surge XT (GPL-3) filters/oscillators |
+| **Synth** | **Built (Phase 1):** 2 band-limited oscillators (sine/saw/square/triangle) + sub + noise, state-variable filter (LP/BP/HP) with envelope, key tracking and LFO, amp + filter ADSR, vibrato, poly (16 voices) or mono with legato glide, sustain pedal, pitch bend, 10 presets. **Later:** third oscillator, ladder filter, second LFO, mod matrix, unison | LMMS TripleOscillator, Surge XT (GPL-3) filters/oscillators |
 | **Keys** | (a) FM electric piano + organ models (no samples needed); (b) acoustic piano via the Sampler using the **Salamander Grand Piano** (CC-BY 3.0) as an optional download | Dexed (GPL-3) FM ideas; Salamander attribution required |
-| **Drums** | 16-pad drum machine. Each pad is either a synthesized voice (kick, snare, hats, clap, tom, 808-style) or a sample. Built-in step sequencer plus piano-roll editing. Choke groups (open/closed hat). | LMMS Kicker; classic 808/909 circuit models |
-| **Bass** | Mono synth tuned for bass: glide, sub-osc, drive, filter env presets (sub, pluck, reese, acid). Later: sampled electric bass via Sampler. | Synth engine above with bass-focused presets |
+| **Drums** | **Built (Phase 1):** 16 synthesized pads on General MIDI notes 36–51 (kick, rim, 2 snares, clap, 6 toms, 3 hi-hats with choke, crash, ride), group levels, tune/decay controls, 3 kits. **Later:** sample pads, step sequencer | LMMS Kicker; classic 808/909 circuit models |
+| **Bass** | **Built (Phase 1):** the Synth in mono mode with bass presets (Sub Bass, Fat Bass, Acid Bass). **Later:** drive, sampled electric bass via Sampler | Synth engine above with bass-focused presets |
 | **Sampler** | SFZ-format player (velocity layers, round robins, loop points) | sfizz (BSD-2) as reference |
 
 ### Playing without a MIDI keyboard
@@ -166,8 +168,8 @@ Each phase ends with a Windows installer you can download from GitHub Actions an
 | Phase | Deliverable | You can… |
 |---|---|---|
 | **0. Skeleton** ✅ | Rust workspace, Tauri app opens, CI builds a Windows installer, headless render test | Install and open an empty app |
-| **1. Make sound** | Audio device selection (WASAPI), transport, metronome, Synth instrument, **on-screen piano + computer-keyboard playing + clickable drum pads**, MIDI keyboard input | Play and record the synth with your mouse or computer keyboard (no MIDI hardware needed) |
-| **2. Arrange** | Timeline, MIDI clips, piano roll, Drums + Bass + Keys, mixer with basic effects, save/load, undo/redo | Write a full instrumental track |
+| **1. Make sound** ✅ | Audio device selection (WASAPI), play/stop transport, metronome, Synth (keys, pads, leads, basses) and Drum machine instruments with presets, **on-screen piano + computer-keyboard playing + clickable drum pads**, MIDI keyboard input | Play the Keys, Bass, and Drums tracks with your mouse, computer keyboard, or a MIDI keyboard; shape sounds with presets and sliders |
+| **2. Arrange** | Timeline, MIDI clips, **recording what you play into clips**, piano roll, add/remove tracks, mixer with basic effects, save/load | Record and write a full instrumental track |
 | **3. Claude** | Control server, MCP bridge, full tool list, analysis tools | Ask Claude to build or remix a track |
 | **4. Record** | Audio input recording, latency compensation, audio clip editing, import audio files | Record guitar/vocals and mix them in |
 | **5. Godot + notation** | Loop/stem/adaptive export, MusicXML/MIDI import-export, notation view | Drop music straight into your game; turn sheet music into tracks |
