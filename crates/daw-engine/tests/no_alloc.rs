@@ -318,6 +318,68 @@ fn audio_thread_never_allocates() {
     processor.set_output_time(2_000_000_000);
     assert_eq!(process_counting(&mut processor, &mut out), 0, "audio edits");
 
+    // A sampler playing a (tiny) sample pack, with the pedal and pitch bend.
+    let dir = tempfile::tempdir().expect("tmp");
+    let tone: Vec<f32> = (0..24_000).map(|i| (i as f32 * 0.05).sin() * 0.5).collect();
+    daw_audio::write_wav(
+        &dir.path().join("c4.wav"),
+        &daw_audio::AudioData {
+            sample_rate_hz: 44_100,
+            channels: vec![tone.clone(), tone],
+        },
+    )
+    .expect("wav");
+    let sfz = dir.path().join("pack.sfz");
+    std::fs::write(&sfz, "<region> sample=c4.wav lokey=0 hikey=127 pitch_keycenter=60 loop_mode=loop_continuous loop_start=100 loop_end=20000\n").expect("sfz");
+    session
+        .execute(Command::AddTrack {
+            name: "Piano".into(),
+            instrument: InstrumentKind::Sampler,
+            preset: None,
+            index: None,
+        })
+        .expect("sampler");
+    let piano = session.project().tracks.last().expect("piano").id;
+    session
+        .execute(Command::LoadSamplePack {
+            track_id: piano,
+            path: Some(sfz.display().to_string()),
+        })
+        .expect("pack");
+    engine.sync(session.project());
+    let start = std::time::Instant::now();
+    while !matches!(
+        daw_sampler::pack_status(&sfz),
+        daw_sampler::PackStatus::Ready { .. }
+    ) {
+        assert!(start.elapsed().as_secs() < 10, "pack never loaded");
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    // Let the processor take the new tracks (and hand the old ones back).
+    process_counting(&mut processor, &mut out);
+    engine.play();
+    engine.send(EngineMessage::ControlChange {
+        track_id: piano,
+        controller: 64,
+        value: 127,
+    });
+    for n in 0..60 {
+        engine.note_on(piano, 30 + n, 0.8);
+    }
+    engine.send(EngineMessage::PitchBend {
+        track_id: piano,
+        semitones: -2.0,
+    });
+    for n in 0..60 {
+        engine.note_off(piano, 30 + n);
+    }
+    engine.send(EngineMessage::ControlChange {
+        track_id: piano,
+        controller: 64,
+        value: 0,
+    });
+    assert_eq!(process_counting(&mut processor, &mut out), 0, "sampler");
+
     // Swapping the whole track set: the old set must be handed back, not freed.
     session
         .execute(Command::SetInstrument {

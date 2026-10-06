@@ -76,6 +76,14 @@ fn fixture() -> Project {
     }
     .apply(&mut p)
     .expect("lane");
+    Command::AddTrack {
+        name: "Piano".into(),
+        instrument: InstrumentKind::Sampler,
+        preset: None,
+        index: None,
+    }
+    .apply(&mut p)
+    .expect("sampler");
     p
 }
 
@@ -279,6 +287,10 @@ fn sample_commands(p: &Project) -> Vec<Command> {
             track_id: 1,
             lane_id: LANE,
             enabled: false,
+        },
+        Command::LoadSamplePack {
+            track_id: 13,
+            path: Some("C:\\Samples\\Salamander\\SalamanderGrandPiano.sfz".into()),
         },
         Command::RemoveAutomationLane {
             track_id: 1,
@@ -579,6 +591,7 @@ fn set_instrument_fills_missing_params_with_defaults() {
         kind: InstrumentKind::Synth,
         preset: "Custom".into(),
         params: [("filter.cutoff_hz".to_owned(), 300.0)].into(),
+        sample_pack: None,
     };
     Command::SetInstrument {
         track_id: 1,
@@ -893,4 +906,18 @@ fn automation_drag_is_one_undo_step() {
         s.project().track(1).expect("t").automation[0].points.len(),
         2
     );
+}
+
+#[test]
+fn sample_packs_are_sfz_files_on_sampler_tracks() {
+    let base = fixture();
+    for (track_id, path) in [(1, Some("a.sfz")), (13, Some("piano.wav")), (13, Some(""))] {
+        let mut p = base.clone();
+        let r = Command::LoadSamplePack {
+            track_id,
+            path: path.map(str::to_owned),
+        }
+        .apply(&mut p);
+        assert!(r.is_err(), "{track_id} {path:?}");
+    }
 }

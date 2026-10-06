@@ -327,6 +327,12 @@ export function applyCommand(project: Project, command: Command): Project {
       if (command.fade_out_seconds !== null) a.fade_out_seconds = command.fade_out_seconds;
       break;
     }
+    case "load_sample_pack": {
+      const t = track(command.track_id);
+      if (t.instrument.kind !== "sampler") throw new Error(`"${t.name}" isn't a sampler track`);
+      t.instrument.sample_pack = command.path;
+      break;
+    }
     case "add_automation_lane": {
       const t = track(command.track_id);
       t.automation ??= [];
@@ -570,6 +576,8 @@ export function createPreviewBackend(): PreviewBackend {
     },
     exportMusicXml: noop,
     pickFolder: async () => null,
+    pickSamplePack: async () => null,
+    samplePackStatus: async () => ({ state: "ready", name: "Preview", zones: 0, megabytes: 0 }),
     exportGodot: async (options) => {
       const name = (options.name ?? project.name).toLowerCase().replace(/[^a-z0-9]+/g, "_");
       const folder = options.folder ?? "music";

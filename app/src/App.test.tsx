@@ -434,6 +434,25 @@ describe("Automation", () => {
   });
 });
 
+describe("Sampler", () => {
+  it("adds a sampler track and loads a sample pack", async () => {
+    const backend = createPreviewBackend();
+    vi.spyOn(backend, "pickSamplePack").mockResolvedValue("D:\\Samples\\Salamander\\SalamanderGrandPiano.sfz");
+    await renderApp(backend);
+    await act(async () => {
+      fireEvent.click(screen.getByText("+ Sampler track"));
+    });
+    fireEvent.click(trackHeader("Piano"));
+    expect(await screen.findByText("No sample pack loaded yet: this track is silent.")).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Load sample pack…" }));
+    });
+    const piano = (await backend.getProject()).project.tracks[3];
+    expect(piano.instrument.sample_pack).toBe("D:\\Samples\\Salamander\\SalamanderGrandPiano.sfz");
+    expect(await screen.findByText("SalamanderGrandPiano.sfz")).toBeTruthy();
+  });
+});
+
 async function waitForElement(selector: string): Promise<Element> {
   for (let i = 0; i < 50; i++) {
     const el = document.querySelector(selector);

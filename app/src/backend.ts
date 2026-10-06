@@ -15,6 +15,7 @@ import type {
   InputStatus,
   Peaks,
   ProjectView,
+  SamplePackStatus,
   TransportStatus,
 } from "./types";
 
@@ -102,6 +103,9 @@ export interface Backend {
   /** Reads sheet music (.musicxml, .xml, .mxl) into new tracks. */
   importMusicXml(path: string): Promise<ProjectView>;
   exportMusicXml(path: string, trackIds: number[] | null): Promise<void>;
+  /** Shows an open dialog for an .sfz sample pack; null if cancelled. */
+  pickSamplePack(): Promise<string | null>;
+  samplePackStatus(path: string): Promise<SamplePackStatus>;
   /** Shows a folder picker; null if cancelled. */
   pickFolder(title: string): Promise<string | null>;
   exportGodot(options: GodotOptions): Promise<ExportReport>;
@@ -189,6 +193,15 @@ export const tauriBackend: Backend = {
   importMusicXml: (path) => invoke("import_musicxml", { path }),
   exportMusicXml: (path, trackIds) => invoke("export_musicxml", { path, trackIds }),
   sheetMusic: (trackIds) => invoke("sheet_music", { trackIds }),
+  pickSamplePack: async () => {
+    const picked = await open({
+      multiple: false,
+      directory: false,
+      filters: [{ name: "SFZ sample pack", extensions: ["sfz"] }],
+    });
+    return typeof picked === "string" ? picked : null;
+  },
+  samplePackStatus: (path) => invoke("sample_pack_status", { path }),
   pickFolder: async (title) => {
     const picked = await open({ directory: true, multiple: false, title });
     return typeof picked === "string" ? picked : null;

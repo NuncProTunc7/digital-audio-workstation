@@ -1,6 +1,7 @@
-import type { Catalog, Track } from "../types";
+import type { Catalog, SamplePackStatus, Track } from "../types";
 import DrumPads from "./DrumPads";
 import ParamControl from "./ParamControl";
+import SamplePack from "./SamplePack";
 
 interface InstrumentPanelProps {
   track: Track;
@@ -11,6 +12,8 @@ interface InstrumentPanelProps {
   onPreset: (preset: string) => void;
   onPadHit: (note: number) => void;
   onPadRelease: (note: number) => void;
+  onChooseSamplePack: () => void;
+  samplePackStatus: (path: string) => Promise<SamplePackStatus>;
 }
 
 /** Preset picker plus every parameter of the selected track's instrument. */
@@ -23,6 +26,8 @@ export default function InstrumentPanel({
   onPreset,
   onPadHit,
   onPadRelease,
+  onChooseSamplePack,
+  samplePackStatus,
 }: InstrumentPanelProps) {
   const description = catalog.instruments.find((i) => i.kind === track.instrument.kind);
   if (!description) return null;
@@ -40,7 +45,9 @@ export default function InstrumentPanel({
     <section className="instrument-panel" aria-label={`${track.name} instrument`}>
       <header className="instrument-header">
         <h2>{track.name}</h2>
-        <span className="instrument-kind">{track.instrument.kind === "drums" ? "Drum machine" : "Synth"}</span>
+        <span className="instrument-kind">
+          {track.instrument.kind === "drums" ? "Drum machine" : track.instrument.kind === "sampler" ? "Sampler" : "Synth"}
+        </span>
         <label className="field">
           <span>Preset</span>
           <select
@@ -68,6 +75,9 @@ export default function InstrumentPanel({
           <DrumPads pads={catalog.drum_pads} activeNotes={activeNotes} onHit={onPadHit} onRelease={onPadRelease} />
         )}
         <div className="param-groups">
+          {track.instrument.kind === "sampler" && (
+            <SamplePack track={track} onChoose={onChooseSamplePack} status={samplePackStatus} />
+          )}
           {[...groups.entries()].map(([group, specs]) => (
             <fieldset key={group} className="param-group">
               <legend>{group}</legend>

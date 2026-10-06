@@ -10,7 +10,12 @@ authors.workspace = true
 [dependencies]
 daw-dsp = { path = "../daw-dsp" }
 daw-model.workspace = true
+daw-sampler = { path = "../daw-sampler" }
 serde.workspace = true
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+tempfile = "3.27.0"
+daw-audio.workspace = true

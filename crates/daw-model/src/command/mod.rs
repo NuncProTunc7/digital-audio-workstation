@@ -265,6 +265,13 @@ pub enum Command {
         fade_out_seconds: Option<f64>,
     },
 
+    /// Choose the SFZ sample pack a sampler track plays (a downloaded piano,
+    /// bass, ...): the absolute path of its .sfz file, or null to unload.
+    LoadSamplePack {
+        track_id: TrackId,
+        path: Option<String>,
+    },
+
     // ---- Automation ----
     /// Add an automation lane that moves one of a track's settings over
     /// time: volume (dB), pan (-1..1), an instrument parameter, or a
@@ -510,6 +517,9 @@ impl Command {
                 fade_in_seconds,
                 fade_out_seconds,
             } => audio::set(project, clip_id, gain_db, fade_in_seconds, fade_out_seconds),
+            C::LoadSamplePack { track_id, path } => {
+                instruments::load_sample_pack(project, track_id, path)
+            }
             C::AddAutomationLane {
                 track_id,
                 target,

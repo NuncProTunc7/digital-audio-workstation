@@ -554,6 +554,83 @@
           "description": "Recorded or imported audio."
         }
       ]
+    },
+    {
+      "kind": "sampler",
+      "params": [
+        {
+          "id": "master.gain_db",
+          "name": "Volume",
+          "group": "Output",
+          "min": -36.0,
+          "max": 12.0,
+          "default": 0.0,
+          "unit": "decibels",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "tune.cents",
+          "name": "Fine tune",
+          "group": "Pitch",
+          "min": -100.0,
+          "max": 100.0,
+          "default": 0.0,
+          "unit": "cents",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "tune.semitones",
+          "name": "Transpose",
+          "group": "Pitch",
+          "min": -24.0,
+          "max": 24.0,
+          "default": 0.0,
+          "unit": "semitones",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "amp.attack_s",
+          "name": "Attack",
+          "group": "Envelope",
+          "min": 0.0,
+          "max": 2.0,
+          "default": 0.0,
+          "unit": "seconds",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "amp.release_s",
+          "name": "Release",
+          "group": "Envelope",
+          "min": 0.01,
+          "max": 5.0,
+          "default": 0.4,
+          "unit": "seconds",
+          "log_scale": true,
+          "choices": []
+        },
+        {
+          "id": "velocity.sensitivity",
+          "name": "Velocity",
+          "group": "Envelope",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 1.0,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        }
+      ],
+      "presets": [
+        {
+          "name": "Sample pack",
+          "description": "Plays the loaded SFZ sample pack as recorded."
+        }
+      ]
     }
   ],
   "effects": [

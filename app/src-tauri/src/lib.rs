@@ -612,6 +612,12 @@ fn export_godot(
     daw_control::export_godot(&*state, &options)
 }
 
+/// Whether a sampler's pack has loaded (or why not).
+#[tauri::command]
+fn sample_pack_status(path: String) -> serde_json::Value {
+    daw_control::sample_pack_status(Path::new(&path))
+}
+
 /// Renders the song to a WAV file.
 // Off the main thread: decoding and rendering can take seconds.
 #[tauri::command(async)]
@@ -963,7 +969,8 @@ pub fn run() {
             import_musicxml,
             export_musicxml,
             sheet_music,
-            export_godot
+            export_godot,
+            sample_pack_status
         ])
         .run(tauri::generate_context!());
     if let Err(e) = result {

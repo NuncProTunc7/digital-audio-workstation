@@ -879,6 +879,12 @@ export default function App({ backend }: AppProps) {
                 onPreset={(preset) => void execute({ command: "load_preset", track_id: selectedTrack.id, preset })}
                 onPadHit={noteOn}
                 onPadRelease={noteOff}
+                onChooseSamplePack={() =>
+                  void run(() => backend.pickSamplePack()).then((path) => {
+                    if (path) void execute({ command: "load_sample_pack", track_id: selectedTrack.id, path }).then(endGesture);
+                  })
+                }
+                samplePackStatus={backend.samplePackStatus}
               />
               <div className="keyboard-dock">
                 <div className="keyboard-help">

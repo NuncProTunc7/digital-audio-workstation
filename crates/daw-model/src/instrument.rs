@@ -18,13 +18,17 @@ pub enum InstrumentKind {
     /// Plays recorded and imported audio (voice, guitar, phone recordings)
     /// instead of notes. Its clips hold audio, not MIDI.
     Audio,
+    /// Plays a sampled instrument from an SFZ sample pack on disk (a real
+    /// piano, bass, strings...). Set the pack with load_sample_pack.
+    Sampler,
 }
 
 impl InstrumentKind {
-    pub const ALL: [InstrumentKind; 3] = [
+    pub const ALL: [InstrumentKind; 4] = [
         InstrumentKind::Synth,
         InstrumentKind::Drums,
         InstrumentKind::Audio,
+        InstrumentKind::Sampler,
     ];
 
     /// Audio tracks hold audio clips; every other kind holds note clips.
@@ -41,6 +45,9 @@ pub struct Instrument {
     pub preset: String,
     /// Parameter values keyed by parameter id (see `describe_instrument`).
     pub params: BTreeMap<String, f64>,
+    /// For samplers: the SFZ file of the sample pack, as an absolute path.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sample_pack: Option<String>,
 }
 
 impl Instrument {
@@ -58,6 +65,7 @@ impl Instrument {
             kind,
             preset: preset_def.name.to_owned(),
             params,
+            sample_pack: None,
         })
     }
 
@@ -564,8 +572,73 @@ pub fn param_specs(kind: InstrumentKind) -> &'static [ParamSpec] {
         InstrumentKind::Synth => SYNTH_PARAMS,
         InstrumentKind::Drums => DRUM_PARAMS,
         InstrumentKind::Audio => &[],
+        InstrumentKind::Sampler => SAMPLER_PARAMS,
     }
 }
+
+/// Sampler parameters. The order is the engine's parameter index: append only.
+pub const SAMPLER_PARAMS: &[ParamSpec] = &[
+    p(
+        "master.gain_db",
+        "Volume",
+        "Output",
+        -36.0,
+        12.0,
+        0.0,
+        Unit::Decibels,
+        false,
+    ),
+    p(
+        "tune.cents",
+        "Fine tune",
+        "Pitch",
+        -100.0,
+        100.0,
+        0.0,
+        Unit::Cents,
+        false,
+    ),
+    p(
+        "tune.semitones",
+        "Transpose",
+        "Pitch",
+        -24.0,
+        24.0,
+        0.0,
+        Unit::Semitones,
+        false,
+    ),
+    p(
+        "amp.attack_s",
+        "Attack",
+        "Envelope",
+        0.0,
+        2.0,
+        0.0,
+        Unit::Seconds,
+        false,
+    ),
+    p(
+        "amp.release_s",
+        "Release",
+        "Envelope",
+        0.01,
+        5.0,
+        0.4,
+        Unit::Seconds,
+        true,
+    ),
+    p(
+        "velocity.sensitivity",
+        "Velocity",
+        "Envelope",
+        0.0,
+        1.0,
+        1.0,
+        Unit::Percent,
+        false,
+    ),
+];
 
 pub fn spec(kind: InstrumentKind, id: &str) -> Option<&'static ParamSpec> {
     param_specs(kind).iter().find(|s| s.id == id)
@@ -784,8 +857,17 @@ pub fn presets(kind: InstrumentKind) -> &'static [Preset] {
         InstrumentKind::Synth => SYNTH_PRESETS,
         InstrumentKind::Drums => DRUM_PRESETS,
         InstrumentKind::Audio => AUDIO_PRESETS,
+        InstrumentKind::Sampler => SAMPLER_PRESETS,
     }
 }
+
+/// Samplers sound like their sample pack; this preset just resets the
+/// controls.
+pub const SAMPLER_PRESETS: &[Preset] = &[Preset {
+    name: "Sample pack",
+    description: "Plays the loaded SFZ sample pack as recorded.",
+    values: &[],
+}];
 
 /// Audio tracks have no sound settings of their own; this single "preset"
 /// keeps them uniform with instrument tracks.

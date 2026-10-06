@@ -39,11 +39,13 @@ pub(super) fn load_preset(
         .track_mut(track_id)
         .ok_or(CommandError::UnknownTrack(track_id))?;
     let kind = track.instrument.kind;
-    let loaded =
+    let mut loaded =
         Instrument::from_preset(kind, &preset).ok_or_else(|| CommandError::UnknownPreset {
             kind: kind_name(kind),
             preset,
         })?;
+    // A preset changes the controls, not which samples are loaded.
+    loaded.sample_pack = track.instrument.sample_pack.clone();
     let old = std::mem::replace(&mut track.instrument, loaded);
     Ok(Command::SetInstrument {
         track_id,
@@ -88,4 +90,33 @@ pub(crate) fn complete_instrument(mut inst: Instrument) -> Result<Instrument, Co
             .or_insert(spec.default);
     }
     Ok(inst)
+}
+
+pub(super) fn load_sample_pack(
+    project: &mut Project,
+    track_id: TrackId,
+    path: Option<String>,
+) -> Result<Command, CommandError> {
+    let track = project
+        .track_mut(track_id)
+        .ok_or(CommandError::UnknownTrack(track_id))?;
+    if track.instrument.kind != InstrumentKind::Sampler {
+        return Err(super::invalid(
+            "track",
+            format!("\"{}\" isn't a sampler track", track.name),
+        ));
+    }
+    if let Some(p) = &path
+        && !(p.len() > 4 && p.len() < 4096 && p.to_ascii_lowercase().ends_with(".sfz"))
+    {
+        return Err(super::invalid(
+            "sample pack",
+            format!("must be the path of an .sfz file, got \"{p}\""),
+        ));
+    }
+    let old = std::mem::replace(&mut track.instrument.sample_pack, path);
+    Ok(Command::LoadSamplePack {
+        track_id,
+        path: old,
+    })
 }

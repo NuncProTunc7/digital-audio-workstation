@@ -236,11 +236,11 @@ impl Engine {
         );
 
         let same_layout = synced.tracks.len() == project.tracks.len()
-            && synced
-                .tracks
-                .iter()
-                .zip(&project.tracks)
-                .all(|(a, b)| a.id == b.id && a.instrument.kind == b.instrument.kind);
+            && synced.tracks.iter().zip(&project.tracks).all(|(a, b)| {
+                a.id == b.id
+                    && a.instrument.kind == b.instrument.kind
+                    && a.instrument.sample_pack == b.instrument.sample_pack
+            });
         if same_layout {
             for (old, new) in synced.tracks.iter().zip(&project.tracks) {
                 self.sync_track(old, new, project.tempo_bpm);

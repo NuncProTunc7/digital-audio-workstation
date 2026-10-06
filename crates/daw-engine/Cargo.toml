@@ -26,6 +26,7 @@ thiserror.workspace = true
 
 [dev-dependencies]
 daw-audio.workspace = true
+daw-sampler = { path = "../daw-sampler" }
 tempfile = "3.27.0"
 
 [lints]

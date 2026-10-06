@@ -5,6 +5,7 @@
 //! whose methods never allocate, lock, or do I/O.
 
 mod drums;
+mod sampler;
 mod synth;
 
 pub use drums::{DRUM_PADS, DrumGroup, DrumMachine, DrumPad};
@@ -44,6 +45,13 @@ pub fn create(instrument: &Instrument, sample_rate_hz: f32) -> Box<dyn Instrumen
         InstrumentKind::Drums => Box::new(DrumMachine::new(sample_rate_hz)),
         // Audio tracks get their sound from audio clips, played by the engine.
         InstrumentKind::Audio => Box::new(Silent),
+        InstrumentKind::Sampler => Box::new(sampler::Sampler::new(
+            sample_rate_hz,
+            instrument
+                .sample_pack
+                .as_deref()
+                .map(|p| daw_sampler::load_cached(std::path::Path::new(p))),
+        )),
     };
     for (index, spec) in param_specs(instrument.kind).iter().enumerate() {
         let value = instrument.value(spec.id).unwrap_or(spec.default);

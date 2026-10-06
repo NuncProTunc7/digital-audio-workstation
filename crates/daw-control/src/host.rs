@@ -103,7 +103,11 @@ fn handle_inner<H: Host>(host: &H, request: Request) -> Result<Value, String> {
                 .project()
                 .track(track_id)
                 .ok_or_else(|| format!("there is no track with id {track_id}"))?;
-            Ok(track_detail(track))
+            let mut v = track_detail(track);
+            if let Some(pack) = &track.instrument.sample_pack {
+                v["sample_pack_status"] = json!(sample_pack_status(Path::new(pack)));
+            }
+            Ok(v)
         }
         Request::GetClip { clip_id } => {
             let session = host.session()?;
@@ -263,6 +267,30 @@ fn handle_inner<H: Host>(host: &H, request: Request) -> Result<Value, String> {
             }
             Ok(json!({ "recording": false, "clip_id": clip_id }))
         }
+    }
+}
+
+/// How a sampler's pack is doing, as JSON for the UI and Claude.
+pub fn sample_pack_status(path: &Path) -> Value {
+    use daw_sampler::PackStatus as S;
+    match daw_sampler::pack_status(path) {
+        S::NotLoaded => json!({ "state": "not_loaded" }),
+        S::Loading => json!({ "state": "loading" }),
+        S::Ready {
+            name,
+            zones,
+            megabytes,
+            layers_kept,
+            layers_total,
+        } => json!({
+            "state": "ready",
+            "name": name,
+            "zones": zones,
+            "megabytes": megabytes,
+            "layers_kept": layers_kept,
+            "layers_total": layers_total,
+        }),
+        S::Failed(e) => json!({ "state": "failed", "error": e }),
     }
 }
 

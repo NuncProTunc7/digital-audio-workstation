@@ -16,6 +16,7 @@ daw-export = { path = "../daw-export" }
 daw-instruments = { path = "../daw-instruments" }
 daw-model.workspace = true
 daw-notation = { path = "../daw-notation" }
+daw-sampler = { path = "../daw-sampler" }
 dirs = "6"
 getrandom = "0.3"
 hound.workspace = true

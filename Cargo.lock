@@ -808,6 +808,7 @@ dependencies = [
  "daw-instruments",
  "daw-model",
  "daw-notation",
+ "daw-sampler",
  "dirs 6.0.0",
  "getrandom 0.3.4",
  "hound",
@@ -840,6 +841,7 @@ dependencies = [
  "daw-effects",
  "daw-instruments",
  "daw-model",
+ "daw-sampler",
  "midir",
  "rtrb",
  "tempfile",
@@ -864,9 +866,12 @@ dependencies = [
 name = "daw-instruments"
 version = "0.1.0"
 dependencies = [
+ "daw-audio",
  "daw-dsp",
  "daw-model",
+ "daw-sampler",
  "serde",
+ "tempfile",
 ]
 
 [[package]]
@@ -900,6 +905,15 @@ dependencies = [
  "roxmltree",
  "thiserror 2.0.21",
  "zip",
+]
+
+[[package]]
+name = "daw-sampler"
+version = "0.1.0"
+dependencies = [
+ "daw-audio",
+ "tempfile",
+ "thiserror 2.0.21",
 ]
 
 [[package]]

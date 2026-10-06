@@ -6,13 +6,26 @@ export interface TimeSignature {
   denominator: number;
 }
 
-export type InstrumentKind = "synth" | "drums" | "audio";
+export type InstrumentKind = "synth" | "drums" | "audio" | "sampler";
 export type EffectKind = "eq" | "compressor" | "reverb" | "delay" | "chorus" | "distortion" | "limiter";
 
 export interface Instrument {
   kind: InstrumentKind;
   preset: string;
   params: Record<string, number>;
+  /** Samplers: absolute path of the SFZ file. */
+  sample_pack?: string | null;
+}
+
+/** Whether a sampler's pack has loaded. */
+export interface SamplePackStatus {
+  state: "not_loaded" | "loading" | "ready" | "failed";
+  name?: string;
+  zones?: number;
+  megabytes?: number;
+  layers_kept?: number;
+  layers_total?: number;
+  error?: string;
 }
 
 export interface Effect {
@@ -190,6 +203,7 @@ export type Command =
       fade_in_seconds: Opt<number>;
       fade_out_seconds: Opt<number>;
     }
+  | { command: "load_sample_pack"; track_id: number; path: string | null }
   | { command: "add_automation_lane"; track_id: number; target: AutomationTarget; points: AutomationPoint[] }
   | { command: "remove_automation_lane"; track_id: number; lane_id: number }
   | { command: "set_automation_points"; track_id: number; lane_id: number; points: AutomationPoint[] }

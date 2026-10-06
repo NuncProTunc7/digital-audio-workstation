@@ -36,7 +36,7 @@ interface TimelineProps {
 
 const isAudio = (t: Track) => t.instrument.kind === "audio";
 
-const TRACK_ICONS: Record<Track["instrument"]["kind"], string> = { synth: "🎹", drums: "🥁", audio: "🎤" };
+const TRACK_ICONS: Record<Track["instrument"]["kind"], string> = { synth: "🎹", drums: "🥁", audio: "🎤", sampler: "🎻" };
 
 type Drag =
   | {
@@ -382,6 +382,15 @@ export default function Timeline(props: TimelineProps) {
                 }
               >
                 + Drum track
+              </button>
+              <button
+                className="small"
+                onClick={() =>
+                  void props.onCommand({ command: "add_track", name: "Piano", instrument: "sampler", preset: null, index: null })
+                }
+                title="Plays a sample pack: a real recorded piano, bass, strings..."
+              >
+                + Sampler track
               </button>
               <button
                 className="small"
