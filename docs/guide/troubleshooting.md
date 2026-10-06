@@ -6,6 +6,7 @@
 | Crackles or dropouts | Close other audio apps; look at the CPU meter in the status bar; remove heavy effects (reverb) from tracks that don't need them. |
 | Recording is silent | Pick the right **Input** in the Audio tab; check Windows privacy settings allow microphone access. |
 | Recording hears the song | Wear headphones. |
+| Recordings land late | Common with Bluetooth headsets. Drag the clip slightly left, or record with wired earbuds. A calibration button is planned. |
 | "Missing audio" when opening a song | The `<Song name> Audio` folder wasn't moved with the `.nptune` file. Put it back next to the song. |
 | Sampler track is silent | Load a sample pack; wait for *loading…* to finish; check the panel for an error. |
 | Claude can't find the app | Open Nunc Pro Tune first. In Claude Desktop, quit fully and reopen after setup. |

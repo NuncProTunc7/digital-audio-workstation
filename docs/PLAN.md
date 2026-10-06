@@ -183,7 +183,7 @@ Each phase ends with a Windows installer you can download from GitHub Actions an
 | **3. Claude** ✅ | Control server, MCP bridge, full tool list, analysis tools | Ask Claude to build or remix a track |
 | **4. Record** ✅ | Audio tracks; import audio (phone m4a/AAC and ALAC, mp3, wav, flac, ogg) by button or drag-and-drop; microphone recording lined up with the beat; waveforms; trim, split, clip gain, fades, normalize; audio kept in a `Song Audio` folder beside the project; Claude can import, edit, record, and analyze audio | Record guitar/vocals (or bring them over from your phone) and mix them in |
 | **5. Godot + notation** ✅ | Godot export (seamless OGG/WAV loops with tail wrap, stems, `AudioStreamSynchronized` layers, `AudioStreamInteractive` sections, loudness normalization, `.import` settings), MIDI import/export, MusicXML import/export (incl. `.mxl`), sheet music view | Drop music straight into your game; turn sheet music into tracks |
-| **6. Expand** (in progress) | ✅ Automation lanes (volume, pan, any instrument or effect setting); ✅ SFZ sampler for recorded pianos/basses (memory-capped velocity layers); ✅ time-stretch (audio clips can follow tempo, pitch kept); next: CLAP then VST3 hosting, ASIO and multi-input recording | Use outside plugins, record a band |
+| **6. Expand** (in progress; see §13 for what comes first) | ✅ Automation lanes (volume, pan, any instrument or effect setting); ✅ SFZ sampler for recorded pianos/basses (memory-capped velocity layers); ✅ time-stretch (audio clips can follow tempo, pitch kept); next: CLAP then VST3 hosting, ASIO and multi-input recording | Use outside plugins, record a band |
 
 Phase 3 (Claude) comes before recording on purpose: once Claude can drive the app, it can help test everything that follows.
 
@@ -232,7 +232,71 @@ Check each source file's own header before porting; projects sometimes mix licen
 ## 12. Owner answers
 
 - **Name:** Nunc Pro Tune. No existing software or GitHub repo found with that name (Oct 2026 search; not a formal trademark clearance).
-- **Recording gear:** built-in / headset mic → WASAPI is enough for v1. Recommend headphones while recording so the click and backing tracks don't bleed into the mic.
+- **Recording gear:** **Bluetooth** headset (confirmed Oct 2026) → WASAPI is enough for v1, but Bluetooth adds latency the automatic alignment may not see; see §13 item 2. Recommend headphones while recording so the click and backing tracks don't bleed into the mic.
 - **MIDI keyboard:** none for now → on-screen piano and musical typing are Phase 1 requirements.
 - **Godot version:** **4.6**. Godot export targets 4.6; verify `.import`/`.tres` formats against it.
 - **Claude clients:** Claude Desktop and Claude Code.
+
+## 13. Next work, in order (agreed Oct 2026)
+
+A design review found gaps that matter more than plugin hosting. Do these **before** CLAP/VST3 and ASIO, in this order. Each item lists what to build and how to know it's done. Items 1–4 were promised by this plan (§3 rule 1, §11 risks) but not built.
+
+### A. Protect the work (do first)
+
+**1. Autosave and crash recovery** (§3 rule 1 promised "crash-safe autosave").
+- Every 60 s while the project is dirty, and on each `end_gesture` after 10 s of idle, write `<app data>/autosave/<project-key>.nptune` off the UI thread (atomic: temp file + rename). Audio already lives in the project's Audio folder or `unsaved-audio/`, so only the JSON is written.
+- A clean exit or a save deletes the autosave. On launch, if one exists and is newer than its project file, offer "Recover unsaved work from <time>?" → open it as dirty, keeping the original path.
+- Keep the last 3 manual saves as `Song.nptune.bak1..3` beside the file (rotating), so a bad save can be undone.
+- Done when a test kills the host mid-edit, relaunches, and recovers the edit; and `.bak` files rotate.
+
+**2. Recording latency for Bluetooth** (owner records with a Bluetooth headset; §11 top risk).
+- Bluetooth output and mic add roughly 100–250 ms that device timestamps often don't report [Confidence: Med]. Also, a Bluetooth headset using its mic switches to the hands-free profile: low-quality mono, and output quality drops while recording. Tell the user; recommend wired earbuds for recording if they have them.
+- Add a per-input-device **recording offset (ms)** setting (−500..+500), stored in app settings (not the project; it's about the hardware). `place_take` adds it.
+- Add **Calibrate**: plays clicks through the output, records them through the mic, finds the delay by cross-correlation, and sets the offset. The user holds the headset mic near the earcup. Fallback: a "tap along" calibration (tap Space with 8 clicks; median offset).
+- Detect Bluetooth by device name ("Hands-Free", "Headset", "AG Audio", "Bluetooth") and show a one-line warning in the Audio tab linking to Calibrate.
+- Commands: none (device setting, live action). Expose `calibrate_latency` / `set_input_offset` to Claude as control tools.
+- Done when the loopback test with an artificial 180 ms delay places takes within 5 ms after calibration.
+
+**3. Sound card buffer size** (§11 glitch mitigation).
+- Status-bar device menu: buffer 128/256/512/1024/2048 frames (`cpal::BufferSize::Fixed`, falling back to default if refused), saved in app settings. Show the resulting latency in ms. Suggest a bigger buffer when the CPU meter goes past 80% or underruns are counted.
+- Done when changing it restarts the stream without losing the project, and the status bar reports the new latency.
+
+**4. Diagnostic report** (§11 "owner can't debug").
+- A **Copy diagnostic report** button (Claude panel and status bar) and a `diagnostic_report` control tool: app version, Windows version, output/input devices, sample rate, buffer, measured latency/offset, CPU peak, underrun count, MIDI devices, loaded sample packs, last 50 log lines (from a ring buffer filled off the audio thread), and recent errors. No file paths beyond the project name.
+- Done when the report pastes as plain text and Claude can fetch it.
+
+### B. Game music
+
+**5. Intro, then loop.** Many game tracks play an intro once and then loop the body.
+- No new model field: reuse the loop region and add an export option **"Play from the song start, loop the loop region"**. Render from 0 to loop end; fold the tail onto the loop start (not sample 0).
+- Godot: OGG `.import` gets `loop_offset=<seconds of loop start>`; WAV `smpl` chunk gets `loop_begin=<frame>`. Verify with Godot 4.6 headless as in Phase 5.
+- Done when an export test shows a seamless join at the loop start and Godot reports the offset.
+
+**6. Section markers.** Adaptive "explore/combat" export is Claude-only today.
+- Model: `Project.markers: Vec<Marker { id, name, start_beats }>` with Commands `AddMarker`, `MoveMarker`, `RenameMarker`, `RemoveMarker`/`RestoreMarker` (+ round-trip tests, preview.ts cases). A section runs from its marker to the next one (or the song end).
+- UI: a marker strip under the ruler (double-click to add, drag, double-click name to rename). Godot dialog: "Sections from markers" builds an `AudioStreamInteractive`.
+- Done when the dialog exports sections the user marked by hand.
+
+**7. Orchestral and acoustic sounds.**
+- Guide page and Sampler panel link to free packs: *VSCO 2 Community Edition* (strings, brass, woodwinds, percussion; CC0, verify before bundling), Salamander Grand Piano (CC-BY 3.0), and Sonatina Symphonic Orchestra (check license). Prefer an in-app downloader that fetches from the publisher (no redistribution) once one is confirmed reachable.
+- Add composing-playbook recipes that use them (orchestral exploration, epic boss).
+
+**8. Group tracks and shared effects (sends/buses).**
+- Model: `Bus { id, name, mixer, effects }`; tracks gain `output: Master | Bus(id)` and `sends: Vec<Send { bus, level_db, pre_fader }>`. Engine: buses processed after tracks, before master, with preallocated buffers (keep `no_alloc.rs` green). Commands for add/remove/route/send.
+- Godot stems can then be per bus (drums, music, ambience).
+
+**9. Tempo changes mid-song** (low priority). A tempo map (`Vec<(beats, bpm)>`), beats↔seconds conversion everywhere that assumes one tempo (engine, recording alignment, export, analysis, MIDI/MusicXML tempo events).
+
+### C. Smaller
+
+**10. User presets:** `SavePreset` saves the track's instrument settings under a name in app data; listed after factory presets; Claude gets `save_preset`.
+**11. Humanize:** `HumanizeNotes { clip_id, note_ids, timing_beats, velocity }` with a seeded random so undo/redo is exact.
+**12. Key signature:** `Project.key` (`SetKey`), shown in the top bar, written to MusicXML/MIDI, and given to Claude in `get_song`.
+
+### D. Getting builds to the owner
+
+**13. Releases and auto-update.** A tag (`v0.x.y`) builds the installer and publishes a GitHub Release (no login needed, doesn't expire). Add `tauri-plugin-updater` with a signing key in repository secrets; the app checks on launch and offers "Update and restart". Unsaved work is protected by item 1.
+**14. Code signing** (optional, costs money: certificate ~$100–400/yr or Azure Trusted Signing [Confidence: Med]). Removes the SmartScreen warning. Owner decides.
+
+### Then
+CLAP, then VST3 hosting, and ASIO, once the owner says which plugins or audio interface they'll use.

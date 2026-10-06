@@ -10,7 +10,7 @@
 
 1. **+ Audio track**, and select it.
 2. In the **Audio** tab, choose the **Input** device and check the **Microphone** meter moves when you speak. Aim for the loud parts reaching about three quarters of the meter, never pinned at the top.
-3. Wear headphones, so the mic doesn't record the song.
+3. Wear headphones, so the mic doesn't record the song. **Bluetooth headsets** delay what you hear and what you record, so takes may land a little late, and Windows switches them to a lower-quality mode while the mic is on. Wired earbuds give the best timing. (A latency calibration button is planned; meanwhile drag a late take slightly left.)
 4. Press **R**. The song plays; perform; press **R** again. The take lines up with the beat you heard.
 
 ## Editing recordings
