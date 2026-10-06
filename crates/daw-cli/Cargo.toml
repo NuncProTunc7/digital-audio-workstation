@@ -1,0 +1,25 @@
+[package]
+name = "daw-cli"
+description = "Nunc Pro Tune headless command-line tool: render, inspect, and test without the UI."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "npt"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+daw-engine.workspace = true
+daw-model.workspace = true
+hound.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

@@ -1,0 +1,20 @@
+[package]
+name = "daw-engine"
+description = "Nunc Pro Tune real-time audio engine and headless renderer."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[features]
+default = ["device"]
+# Sound card output via cpal. Off for headless builds that never touch hardware.
+device = ["dep:cpal"]
+
+[dependencies]
+cpal = { workspace = true, optional = true }
+thiserror.workspace = true
+
+[lints]
+workspace = true

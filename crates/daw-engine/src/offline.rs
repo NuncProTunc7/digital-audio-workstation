@@ -1,0 +1,92 @@
+//! Rendering without a sound card, for tests, CI, and file export.
+
+use crate::ToneGenerator;
+
+/// Renders `seconds` of a test tone as interleaved stereo samples.
+///
+/// The tone fades in at the start and fades out at the end, exactly as it
+/// would when started and stopped live.
+pub fn render_test_tone(sample_rate_hz: u32, freq_hz: f64, gain: f32, seconds: f64) -> Vec<f32> {
+    const CHANNELS: usize = 2;
+    let total_frames = (seconds.max(0.0) * f64::from(sample_rate_hz)).round() as usize;
+    // Start fading out early enough that the fade completes inside the render.
+    let fade_frames = (sample_rate_hz as usize / 100).max(1);
+    let stop_frame = total_frames.saturating_sub(fade_frames);
+
+    let mut tone = ToneGenerator::new(sample_rate_hz, freq_hz, gain);
+    let mut out = vec![0.0; total_frames * CHANNELS];
+    tone.set_on(true);
+    let (head, tail) = out.split_at_mut(stop_frame * CHANNELS);
+    tone.process(head, CHANNELS);
+    tone.set_on(false);
+    tone.process(tail, CHANNELS);
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::DEFAULT_SAMPLE_RATE_HZ;
+
+    const SR: u32 = DEFAULT_SAMPLE_RATE_HZ;
+
+    fn render() -> Vec<f32> {
+        render_test_tone(SR, 440.0, 0.5, 1.0)
+    }
+
+    #[test]
+    fn has_expected_length() {
+        assert_eq!(render().len(), SR as usize * 2);
+    }
+
+    #[test]
+    fn all_samples_are_finite_and_within_gain() {
+        for (i, s) in render().iter().enumerate() {
+            assert!(s.is_finite(), "sample {i} is {s}");
+            assert!(s.abs() <= 0.5 + 1e-6, "sample {i} is {s}");
+        }
+    }
+
+    #[test]
+    fn reaches_requested_peak() {
+        let peak = render().iter().fold(0.0f32, |m, s| m.max(s.abs()));
+        assert!((peak - 0.5).abs() < 0.01, "peak {peak}");
+    }
+
+    #[test]
+    fn starts_and_ends_silent_without_clicks() {
+        let samples = render();
+        assert_eq!(samples[0], 0.0);
+        assert_eq!(*samples.last().expect("non-empty"), 0.0);
+        // A click is a large jump between neighbouring samples. A 440 Hz sine
+        // at gain 0.5 moves at most 0.5 * 2π * 440 / 48000 ≈ 0.029 per sample.
+        let max_jump = samples
+            .chunks(2)
+            .map(|f| f[0])
+            .collect::<Vec<_>>()
+            .windows(2)
+            .fold(0.0f32, |m, w| m.max((w[1] - w[0]).abs()));
+        assert!(max_jump < 0.03, "max jump {max_jump}");
+    }
+
+    #[test]
+    fn frequency_is_correct() {
+        // Count upward zero crossings in the left channel over one second.
+        let left: Vec<f32> = render().chunks(2).map(|f| f[0]).collect();
+        let crossings = left
+            .windows(2)
+            .filter(|w| w[0] < 0.0 && w[1] >= 0.0)
+            .count();
+        assert!((438..=441).contains(&crossings), "{crossings} crossings");
+    }
+
+    #[test]
+    fn rendering_is_deterministic() {
+        assert_eq!(render(), render());
+    }
+
+    #[test]
+    fn channels_are_identical() {
+        assert!(render().chunks(2).all(|f| f[0] == f[1]));
+    }
+}
