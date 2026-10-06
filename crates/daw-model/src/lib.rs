@@ -10,6 +10,7 @@ mod file;
 pub mod instrument;
 mod project;
 mod session;
+pub mod summary;
 
 pub use command::{Command, CommandError, NoteEdit, NoteInput, command_schema};
 pub use effect::{Effect, EffectKind};

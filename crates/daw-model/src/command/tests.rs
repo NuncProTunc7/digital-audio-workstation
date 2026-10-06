@@ -497,3 +497,62 @@ fn schema_carries_descriptions_for_claude() {
         assert!(schema.contains(needle), "schema is missing {needle}");
     }
 }
+
+#[test]
+fn batch_applies_as_one_step_and_undoes_in_reverse() {
+    let mut s = Session::new(fixture());
+    let before = s.project().clone();
+    s.execute(Command::Batch {
+        commands: vec![
+            Command::SetTempo { bpm: 90.0 },
+            Command::AddTrack {
+                name: "Lead".into(),
+                instrument: InstrumentKind::Synth,
+                preset: Some("Bright Lead".into()),
+                index: None,
+            },
+            Command::RenameProject {
+                name: "Boss".into(),
+            },
+        ],
+    })
+    .expect("batch");
+    assert_eq!(s.project().tempo_bpm, 90.0);
+    assert_eq!(s.project().tracks.len(), 4);
+    assert!(s.undo());
+    assert_eq!(s.project().tracks, before.tracks);
+    assert_eq!(s.project().tempo_bpm, before.tempo_bpm);
+    assert!(!s.can_undo());
+    assert!(s.redo());
+    assert_eq!(s.project().name, "Boss");
+}
+
+#[test]
+fn failed_batch_changes_nothing_and_names_the_step() {
+    let base = fixture();
+    let mut p = base.clone();
+    let err = Command::Batch {
+        commands: vec![
+            Command::SetTempo { bpm: 90.0 },
+            Command::AddTrack {
+                name: "Lead".into(),
+                instrument: InstrumentKind::Synth,
+                preset: None,
+                index: None,
+            },
+            Command::DeleteClip { clip_id: 999 },
+        ],
+    }
+    .apply(&mut p)
+    .expect_err("fails");
+    let mut restored = p.clone();
+    restored.next_id = base.next_id;
+    assert_eq!(restored, base);
+    let message = err.to_string();
+    assert!(message.contains("step 3 (delete_clip)"), "{message}");
+}
+
+#[test]
+fn command_name_is_snake_case() {
+    assert_eq!(Command::SetTempo { bpm: 1.0 }.name(), "set_tempo");
+}

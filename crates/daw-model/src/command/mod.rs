@@ -252,6 +252,12 @@ pub enum Command {
         semitones: i32,
         note_ids: Option<Vec<NoteId>>,
     },
+
+    // ---- Grouping ----
+    /// Apply several commands in order as ONE undoable step. If any command
+    /// fails, none of them are applied. Use this for multi-step edits such as
+    /// "add a track, give it a preset, and write a clip".
+    Batch { commands: Vec<Command> },
 }
 
 /// Why a Command was rejected. A rejected Command leaves the project unchanged.
@@ -287,6 +293,12 @@ pub enum CommandError {
     IdInUse(Id),
     #[error("a project can have at most {0} tracks")]
     TooManyTracks(usize),
+    #[error("step {} ({command}) failed: {source}; nothing was changed", index + 1)]
+    BatchStep {
+        index: usize,
+        command: String,
+        source: Box<CommandError>,
+    },
 }
 
 pub(crate) fn invalid(what: &str, reason: impl Into<String>) -> CommandError {
@@ -410,7 +422,16 @@ impl Command {
                 semitones,
                 note_ids,
             } => notes::transpose(project, clip_id, semitones, note_ids),
+            C::Batch { commands } => batch(project, commands),
         }
+    }
+
+    /// The command's snake_case name, as used in JSON and MCP tool names.
+    pub fn name(&self) -> String {
+        serde_json::to_value(self)
+            .ok()
+            .and_then(|v| v.get("command").and_then(|c| c.as_str()).map(str::to_owned))
+            .unwrap_or_default()
     }
 
     /// True when `next` edits the same thing as `self` in the same way, so a
@@ -495,6 +516,30 @@ impl Command {
             _ => false,
         }
     }
+}
+
+/// Applies commands in order; on failure, rolls back the ones already applied.
+fn batch(project: &mut Project, commands: Vec<Command>) -> Result<Command, CommandError> {
+    let mut inverses = Vec::with_capacity(commands.len());
+    for (index, command) in commands.into_iter().enumerate() {
+        let name = command.name();
+        match command.apply(project) {
+            Ok(inverse) => inverses.push(inverse),
+            Err(source) => {
+                for inverse in inverses.into_iter().rev() {
+                    // Inverses of successful applies are valid by construction.
+                    let _ = inverse.apply(project);
+                }
+                return Err(CommandError::BatchStep {
+                    index,
+                    command: name,
+                    source: Box::new(source),
+                });
+            }
+        }
+    }
+    inverses.reverse();
+    Ok(Command::Batch { commands: inverses })
 }
 
 /// JSON Schema for [`Command`]. The MCP server turns each variant into a tool.
