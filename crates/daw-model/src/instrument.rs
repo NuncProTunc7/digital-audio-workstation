@@ -70,6 +70,8 @@ pub enum Unit {
     Cents,
     /// Stored 0.0–1.0, shown as 0–100%.
     Percent,
+    /// Compression ratio, shown as "4:1".
+    Ratio,
 }
 
 /// Static description of one instrument parameter.
@@ -101,7 +103,7 @@ impl ParamSpec {
 }
 
 #[allow(clippy::too_many_arguments)] // A table row; named args would be noisier.
-const fn p(
+pub(crate) const fn p(
     id: &'static str,
     name: &'static str,
     group: &'static str,
@@ -124,7 +126,7 @@ const fn p(
     }
 }
 
-const fn choice(
+pub(crate) const fn choice(
     id: &'static str,
     name: &'static str,
     group: &'static str,

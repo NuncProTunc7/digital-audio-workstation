@@ -9,6 +9,9 @@ pub struct Session {
     redo_stack: Vec<Command>,
     // The most recent Command executed, for merging slider drags.
     last_executed: Option<Command>,
+    // Bumped on every change; compared with `saved_revision` for "unsaved".
+    revision: u64,
+    saved_revision: u64,
 }
 
 impl Session {
@@ -18,7 +21,24 @@ impl Session {
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
             last_executed: None,
+            revision: 0,
+            saved_revision: 0,
         }
+    }
+
+    /// Replaces the open project (New / Open) and clears history.
+    pub fn replace_project(&mut self, project: Project) {
+        *self = Session::new(project);
+    }
+
+    /// True when there are changes since the last save (or since opening).
+    pub fn is_dirty(&self) -> bool {
+        self.revision != self.saved_revision
+    }
+
+    /// Records that the current state has been saved.
+    pub fn mark_saved(&mut self) {
+        self.saved_revision = self.revision;
     }
 
     pub fn project(&self) -> &Project {
@@ -42,6 +62,7 @@ impl Session {
         }
         self.redo_stack.clear();
         self.last_executed = Some(applied);
+        self.revision += 1;
         Ok(())
     }
 
@@ -58,6 +79,7 @@ impl Session {
             &mut self.project,
             &mut self.undo_stack,
             &mut self.redo_stack,
+            &mut self.revision,
         )
     }
 
@@ -68,6 +90,7 @@ impl Session {
             &mut self.project,
             &mut self.redo_stack,
             &mut self.undo_stack,
+            &mut self.revision,
         )
     }
 
@@ -79,7 +102,12 @@ impl Session {
         !self.redo_stack.is_empty()
     }
 
-    fn step(project: &mut Project, from: &mut Vec<Command>, to: &mut Vec<Command>) -> bool {
+    fn step(
+        project: &mut Project,
+        from: &mut Vec<Command>,
+        to: &mut Vec<Command>,
+        revision: &mut u64,
+    ) -> bool {
         let Some(command) = from.pop() else {
             return false;
         };
@@ -88,6 +116,7 @@ impl Session {
         match command.apply(project) {
             Ok(inverse) => {
                 to.push(inverse);
+                *revision += 1;
                 true
             }
             Err(_) => false,
