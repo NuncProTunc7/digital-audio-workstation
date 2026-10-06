@@ -10,6 +10,10 @@ A free, open-source DAW for making game music — record real instruments, compo
 2. Download the **nunc-pro-tune-windows-installer** artifact and unzip it.
 3. Run the `Nunc Pro Tune_…_x64-setup.exe` installer. Windows SmartScreen may warn about an unsigned app: choose **More info → Run anyway**.
 
+## Try the demo song
+
+In the app, click **Open** and choose `examples/Demo Groove.nptune` from this repository (download it from GitHub first). It has chords, a bass line, and a beat on a 4-bar loop.
+
 ## Build from source
 
 See the Commands section of [`AGENTS.md`](AGENTS.md).

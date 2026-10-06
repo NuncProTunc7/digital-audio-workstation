@@ -184,6 +184,16 @@ mod tests {
     }
 
     #[test]
+    fn example_project_matches_the_demo() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/Demo Groove.nptune");
+        let shipped = daw_model::load_project(&path).expect("example loads");
+        assert!(
+            shipped == demo::project(),
+            "examples/Demo Groove.nptune is stale. Regenerate it with:\n  cargo run -p daw-cli -- demo-project --out \"examples/Demo Groove.nptune\""
+        );
+    }
+
+    #[test]
     fn demo_renders_cleanly() {
         let samples =
             daw_engine::offline::render_song(&demo::project(), DEFAULT_SAMPLE_RATE_HZ, 1.0);
