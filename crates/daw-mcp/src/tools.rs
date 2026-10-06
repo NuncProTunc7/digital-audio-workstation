@@ -14,6 +14,9 @@ const HIDDEN_COMMANDS: &[&str] = &[
     "restore_automation_lane",
 ];
 
+/// The tool that reads the built-in user guide (answered by the bridge itself).
+pub const READ_GUIDE: &str = "read_guide";
+
 /// A tool: its name, description, and JSON Schema for its arguments.
 #[derive(Debug, Clone)]
 pub struct ToolDef {
@@ -351,6 +354,15 @@ fn extra_tools() -> Vec<ToolDef> {
                 &[],
             ),
             false,
+        ),
+        tool(
+            READ_GUIDE,
+            "Read the Nunc Pro Tune user guide. Pages: README (contents), lessons (a course to teach the user), basics, writing-music, audio, mixing, sheet-music, godot, claude, composing (Claude's playbook: workflow, game-music recipes, mix targets), troubleshooting. Works without the app running.",
+            object_schema(
+                json!({ "page": { "type": "string", "description": "Page name, e.g. \"composing\". Omit for the contents." } }),
+                &[],
+            ),
+            true,
         ),
         tool(
             "stop_recording",

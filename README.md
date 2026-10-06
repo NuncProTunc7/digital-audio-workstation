@@ -4,6 +4,8 @@ A free, open-source DAW for making game music — record real instruments, compo
 
 **Status:** Phase 5 (Godot + sheet music). Export seamless loops straight into your Godot project, see and export sheet music, and bring in MIDI or MusicXML files. Phase 4 added recording: Record your voice or an instrument, or bring in recordings from your phone, and mix them with the built-in instruments. Claude can build, edit, play, listen to, and export your songs through MCP. Before that: write songs on a timeline with clips, record what you play, edit notes in a piano roll, mix with volume, pan, mute/solo and seven effects, loop a region, and save/open `.nptune` project files. Built-in Keys, Bass, and Drums play from the on-screen piano, your computer keyboard, drum pads, or a MIDI keyboard. See [`docs/PLAN.md`](docs/PLAN.md) for the roadmap.
 
+**New here?** Read the [guide](docs/guide/README.md), or ask Claude to "teach me lesson 1".
+
 ## Try it on Windows
 
 1. Open the repository's **Actions** tab on GitHub and pick the latest green **CI** run.

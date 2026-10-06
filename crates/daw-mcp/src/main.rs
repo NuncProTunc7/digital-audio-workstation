@@ -4,6 +4,7 @@
 //! running Nunc Pro Tune app over its local control channel. It holds no
 //! state of its own, so the app can be restarted at any time.
 
+mod guide;
 mod tools;
 
 use std::sync::Arc;
@@ -38,6 +39,9 @@ split_clip, trim_clip_start, move_clip, and resize_clip. Audio keeps its own spe
 the tempo changes.
 
 Working well:
+- Before composing, read_guide(\"composing\") for the workflow, game-music recipes, and mix \
+targets. When the user wants to learn, read_guide(\"lessons\") and teach one step at a time; \
+the other pages explain every button, so use them to answer how-to questions accurately.
 - Start with get_song. Use describe_instruments before changing sounds (parameter ids, \
 ranges, presets).
 - Use batch to make a multi-step change one undo step (e.g. add a track, load a preset, \
@@ -73,6 +77,14 @@ impl Bridge {
     /// Runs one tool call against the app. Never fails at the MCP level:
     /// problems come back as readable tool errors Claude can act on.
     fn call_blocking(name: &str, args: serde_json::Map<String, Value>) -> CallToolResult {
+        // The guide is built in, so it works even when the app isn't running.
+        if name == tools::READ_GUIDE {
+            let page = args.get("page").and_then(Value::as_str);
+            return match guide::read(page) {
+                Ok(text) => CallToolResult::success(vec![ContentBlock::text(text)]),
+                Err(e) => CallToolResult::error(vec![ContentBlock::text(e)]),
+            };
+        }
         let request = match tools::to_request(name, args) {
             Ok(r) => r,
             Err(e) => return CallToolResult::error(vec![ContentBlock::text(e)]),

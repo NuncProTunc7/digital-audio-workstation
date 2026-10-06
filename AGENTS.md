@@ -11,6 +11,7 @@ Instructions for AI coding agents (Claude Code and others) working in this repos
 - The owner is **not a programmer**. They test builds and judge how things sound and feel.
 - Explain changes in plain language: what they can now do, how to try it, what to listen for.
 - Ask before changing anything in the "Locked decisions" table in `docs/PLAN.md`.
+- The user guide is `docs/guide/` (built into `npt-mcp` as the `read_guide` tool, so Claude Desktop can read it). When a feature adds or changes something the owner can see or do, update the matching guide page in the same change; a new page must be added to `crates/daw-mcp/src/guide.rs` (a test checks).
 - Bug reports will be descriptive ("it crackles when I add reverb"). Turn them into a reproducible test before fixing.
 - The owner works on **Windows**. Every feature must work there first.
 
