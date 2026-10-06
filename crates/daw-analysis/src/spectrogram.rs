@@ -12,8 +12,10 @@ const RANGE_DB: f32 = 80.0;
 pub fn spectrogram_png(stereo: &[f32], sample_rate_hz: u32, width: u32, height: u32) -> Vec<u8> {
     let (w, h) = (width.max(1) as usize, height.max(1) as usize);
     let mono: Vec<f32> = stereo
-        .chunks_exact(2)
-        .map(|f| 0.5 * (f[0] + f[1]))
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|&[l, r]| 0.5 * (l + r))
         .collect();
     let fft = FftPlanner::<f32>::new().plan_fft_forward(FFT_SIZE);
     let window: Vec<f32> = (0..FFT_SIZE)

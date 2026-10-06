@@ -89,8 +89,8 @@ pub fn measure(stereo: &[f32], sample_rate_hz: u32) -> Measurements {
     let sample_peak = peak_of(&|m, c| m.sample_peak(c));
 
     let (mut sum_sq, mut sum_l2, mut sum_r2, mut sum_lr) = (0.0f64, 0.0f64, 0.0f64, 0.0f64);
-    for f in stereo.chunks_exact(2) {
-        let (l, r) = (f64::from(f[0]), f64::from(f[1]));
+    for &[l, r] in stereo.as_chunks::<2>().0 {
+        let (l, r) = (f64::from(l), f64::from(r));
         sum_sq += l * l + r * r;
         sum_l2 += l * l;
         sum_r2 += r * r;
@@ -125,8 +125,10 @@ pub fn measure(stereo: &[f32], sample_rate_hz: u32) -> Measurements {
 fn band_shares(stereo: &[f32], sample_rate_hz: u32) -> Vec<Band> {
     const N: usize = 4096;
     let mono: Vec<f32> = stereo
-        .chunks_exact(2)
-        .map(|f| 0.5 * (f[0] + f[1]))
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|&[l, r]| 0.5 * (l + r))
         .collect();
     let mut totals = [0.0f64; BANDS.len()];
     if mono.len() >= N {
