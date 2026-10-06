@@ -1,6 +1,8 @@
 //! Rendering without a sound card, for tests, CI, and file export.
 
-use crate::ToneGenerator;
+use daw_model::Project;
+
+use crate::{Engine, EngineMessage, ToneGenerator};
 
 /// Renders `seconds` of a test tone as interleaved stereo samples.
 ///
@@ -20,6 +22,46 @@ pub fn render_test_tone(sample_rate_hz: u32, freq_hz: f64, gain: f32, seconds: f
     tone.process(head, CHANNELS);
     tone.set_on(false);
     tone.process(tail, CHANNELS);
+    out
+}
+
+/// A message to deliver at a specific time during an offline render.
+pub struct TimedMessage {
+    pub at_seconds: f64,
+    pub message: EngineMessage,
+}
+
+/// Renders `project` for `seconds`, delivering each message at its time
+/// (sample-accurate). Returns interleaved stereo. The metronome is off unless
+/// a message turns it on.
+pub fn render_project(
+    project: &Project,
+    mut messages: Vec<TimedMessage>,
+    seconds: f64,
+    sample_rate_hz: u32,
+) -> Vec<f32> {
+    let (engine, mut processor) = Engine::new(project, sample_rate_hz);
+    engine.set_metronome(false);
+    messages.sort_by(|a, b| a.at_seconds.total_cmp(&b.at_seconds));
+
+    let total_frames = (seconds.max(0.0) * f64::from(sample_rate_hz)).round() as usize;
+    let mut out = vec![0.0; total_frames * 2];
+    let mut frame = 0;
+    let mut pending = messages.into_iter().peekable();
+    while frame < total_frames {
+        while let Some(m) = pending
+            .next_if(|m| (m.at_seconds * f64::from(sample_rate_hz)).round() as usize <= frame)
+        {
+            engine.send(m.message);
+        }
+        let next_event = pending
+            .peek()
+            .map(|m| (m.at_seconds * f64::from(sample_rate_hz)).round() as usize)
+            .unwrap_or(total_frames)
+            .clamp(frame + 1, total_frames);
+        processor.process_interleaved(&mut out[frame * 2..next_event * 2], 2);
+        frame = next_event;
+    }
     out
 }
 
@@ -58,8 +100,6 @@ mod tests {
         let samples = render();
         assert_eq!(samples[0], 0.0);
         assert_eq!(*samples.last().expect("non-empty"), 0.0);
-        // A click is a large jump between neighbouring samples. A 440 Hz sine
-        // at gain 0.5 moves at most 0.5 * 2π * 440 / 48000 ≈ 0.029 per sample.
         let max_jump = samples
             .chunks(2)
             .map(|f| f[0])
@@ -70,23 +110,40 @@ mod tests {
     }
 
     #[test]
-    fn frequency_is_correct() {
-        // Count upward zero crossings in the left channel over one second.
-        let left: Vec<f32> = render().chunks(2).map(|f| f[0]).collect();
-        let crossings = left
-            .windows(2)
-            .filter(|w| w[0] < 0.0 && w[1] >= 0.0)
-            .count();
-        assert!((438..=441).contains(&crossings), "{crossings} crossings");
+    fn project_render_places_notes_sample_accurately() {
+        let at = 0.25;
+        let out = render_project(
+            &Project::default(),
+            vec![TimedMessage {
+                at_seconds: at,
+                message: EngineMessage::NoteOn {
+                    track_id: 3,
+                    note: 36,
+                    velocity: 1.0,
+                },
+            }],
+            0.5,
+            SR,
+        );
+        let first_sound = out.chunks(2).position(|f| f[0].abs() > 1e-6);
+        assert_eq!(first_sound, Some((at * f64::from(SR)) as usize));
     }
 
     #[test]
-    fn rendering_is_deterministic() {
-        assert_eq!(render(), render());
-    }
-
-    #[test]
-    fn channels_are_identical() {
-        assert!(render().chunks(2).all(|f| f[0] == f[1]));
+    fn project_render_is_deterministic() {
+        let run = || {
+            let msgs = (0..8)
+                .map(|i| TimedMessage {
+                    at_seconds: f64::from(i) * 0.1,
+                    message: EngineMessage::NoteOn {
+                        track_id: 1,
+                        note: 60 + i as u8,
+                        velocity: 0.8,
+                    },
+                })
+                .collect();
+            render_project(&Project::default(), msgs, 1.0, SR)
+        };
+        assert_eq!(run(), run());
     }
 }

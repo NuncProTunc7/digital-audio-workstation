@@ -9,11 +9,16 @@ authors.workspace = true
 
 [features]
 default = ["device"]
-# Sound card output via cpal. Off for headless builds that never touch hardware.
-device = ["dep:cpal"]
+# Sound card output (cpal) and MIDI input (midir). Off for headless builds
+# that never touch hardware.
+device = ["dep:cpal", "dep:midir"]
 
 [dependencies]
 cpal = { workspace = true, optional = true }
+daw-instruments = { path = "../daw-instruments" }
+daw-model.workspace = true
+midir = { version = "0.11", optional = true }
+rtrb = "0.4"
 thiserror.workspace = true
 
 [lints]
