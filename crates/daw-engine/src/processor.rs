@@ -370,6 +370,13 @@ impl AudioProcessor {
             if looping && self.position_beats >= self.loop_end - 1e-9 {
                 let over = self.position_beats - self.loop_end;
                 self.seek(self.loop_start + over);
+                // The wrap lands a sliver past the loop start (a beat is
+                // rarely a whole number of samples). Events in that sliver,
+                // like a downbeat exactly on the loop start, must still play;
+                // they fire at the top of the next segment.
+                for t in self.tracks.iter_mut() {
+                    t.cursor = first_event_at(t, self.loop_start);
+                }
             }
             start = end;
         }

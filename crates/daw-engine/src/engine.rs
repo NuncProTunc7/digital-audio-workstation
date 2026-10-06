@@ -487,6 +487,33 @@ mod tests {
     }
 
     #[test]
+    fn notes_on_the_loop_start_play_on_every_lap() {
+        // At 44.1 kHz a beat isn't a whole number of samples, so the loop
+        // wraps a hair past its start; the downbeat must still play.
+        const SR_441: u32 = 44_100;
+        let mut s = kick_session();
+        s.execute(Command::SetLoop {
+            enabled: Some(true),
+            start_beats: Some(0.0),
+            end_beats: Some(4.0),
+        })
+        .expect("loop");
+        let (engine, mut p) = Engine::new(s.project(), SR_441);
+        engine.set_metronome(false);
+        engine.play();
+        let n = (5.9 * f64::from(SR_441)) as usize;
+        let mut out = vec![0.0; n * 2];
+        p.process_interleaved(&mut out, 2);
+        let found = onsets(&left(&out), 0.05, 4_000);
+        // A kick on every beat of each two-second lap (within 2 samples:
+        // later laps start a fraction of a sample late).
+        assert_eq!(found.len(), 12, "{found:?}");
+        for (k, &onset) in found.iter().enumerate() {
+            assert!(onset.abs_diff(k * 22_050) <= 2, "kick {k} at {onset}");
+        }
+    }
+
+    #[test]
     fn mute_and_solo() {
         let mut s = kick_session();
         let (engine, mut p) = Engine::new(s.project(), SR);
