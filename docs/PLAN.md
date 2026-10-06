@@ -1,6 +1,6 @@
 # Nunc Pro Tune — Project Plan
 
-**Status:** Phases 0–4 built (see §8). Decisions below are agreed with the owner.
+**Status:** Phases 0–5 built (see §8). Decisions below are agreed with the owner.
 **License:** GPL-3.0-or-later.
 
 ## 1. What we are building
@@ -122,11 +122,11 @@ Only use sample content that is CC0, CC-BY, or similar, and record its license i
 
 | Feature | How |
 |---|---|
-| Show any MIDI track as notation | Quantize notes → MusicXML → render with OpenSheetMusicDisplay |
-| Import MusicXML (from MuseScore, online libraries, etc.) | `daw-notation` parses it into tracks and notes |
+| Show any MIDI track as notation | ✅ Quantize notes (sixteenth grid, one voice with chords, ties across bars, treble/bass/percussion clef) → MusicXML → render with OpenSheetMusicDisplay in the Sheet music tab |
+| Import MusicXML (from MuseScore, online libraries, etc.) | ✅ `daw-notation` parses partwise scores (voices, chords, ties, backup/forward, tempo, meter, drum parts, `.mxl`) into one track per part |
 | Import a **photo or PDF** of sheet music | Claude reads the image and writes MusicXML, then calls the `import_musicxml` tool. Dense scores may need a manual check. A dedicated optical music recognition (OMR) engine such as Audiveris (AGPL) could be added later. |
-| Export notation | MusicXML (opens in MuseScore for printing) and PDF |
-| MIDI files | Import/export `.mid` |
+| Export notation | ✅ MusicXML (opens in MuseScore for printing); PDF later (print from MuseScore meanwhile) |
+| MIDI files | ✅ Import/export `.mid` (type 1, drums on channel 10, General MIDI programs) |
 
 ## 6. Godot export
 
@@ -139,7 +139,7 @@ Only use sample content that is CC0, CC-BY, or similar, and record its license i
 | Loudness | Normalize to a target LUFS so every track in the game matches |
 | Export to project | Point at a Godot project folder; files land in `res://music/...` |
 
-The exact Godot `.import` and `.tres` formats must be verified against the Godot 4.x version you use before we build Phase 5.
+**Built (Phase 5).** Formats were checked against the Godot 4.6 source (`docs/godot-formats.md`) and the exporter's output was imported by a real Godot 4.6 headless run: loops, BPM/beat counts, layer and section resources all load as intended. Loops are rendered with their reverb/echo tail folded back onto the start, at 44.1 kHz (Godot's mix rate), normalized to -16 LUFS by default without peaks above -1 dBFS. Re-exporting keeps the `uid` Godot assigned, so scenes referencing the music don't break.
 
 ## 7. Claude control (MCP)
 
@@ -164,9 +164,9 @@ Planned tool groups (✅ = built; the rest arrive with their phase):
 | Audio | ✅ `import_audio`, `add_audio_clip`, `set_audio_clip` (gain, fades), `split_clip`, `trim_clip_start`, `record_audio`, `stop_recording`; later `time_stretch` |
 | Mixer | ✅ `set_track_mixer`, `set_master_volume`, `add_effect`, `set_effect_param`, `set_effect_enabled`; later `add_send`, `automate` |
 | Transport | ✅ `play`, `stop`, `locate`, `set_loop`, `set_metronome`, `transport_status` |
-| Notation | `import_musicxml`, `export_musicxml`, `import_midi`, `export_midi` |
+| Notation | ✅ `import_musicxml`, `export_musicxml`, `import_midi`, `export_midi` |
 | Analysis ("Claude's ears") | ✅ `analyze_mix` → LUFS, true peak, spectrum balance, stereo, per-track levels, hints, spectrogram |
-| Export | ✅ `export_wav`; later `export_stems`, `export_godot` |
+| Export | ✅ `export_wav`, `export_godot` (loops, stems, layers, sections) |
 | Sound design | ✅ `describe_instruments` (params, presets, drum pads, effects); later `save_preset` |
 
 **Safety:** the control server listens on localhost only, needs a token stored in the user's app data folder, and every AI edit is undoable.
@@ -182,7 +182,7 @@ Each phase ends with a Windows installer you can download from GitHub Actions an
 | **2. Arrange** ✅ | Timeline with clips (create, move between tracks, resize, duplicate, delete), loop region, **recording what you play into clips**, piano roll (add/move/resize notes, quantize, transpose, velocity), add/rename/delete tracks, mixer (volume, pan, mute, solo, 7 effects per track and on the master), save/open/new project files, `npt render` to WAV | Record and write a full instrumental track |
 | **3. Claude** ✅ | Control server, MCP bridge, full tool list, analysis tools | Ask Claude to build or remix a track |
 | **4. Record** ✅ | Audio tracks; import audio (phone m4a/AAC and ALAC, mp3, wav, flac, ogg) by button or drag-and-drop; microphone recording lined up with the beat; waveforms; trim, split, clip gain, fades, normalize; audio kept in a `Song Audio` folder beside the project; Claude can import, edit, record, and analyze audio | Record guitar/vocals (or bring them over from your phone) and mix them in |
-| **5. Godot + notation** | Loop/stem/adaptive export, MusicXML/MIDI import-export, notation view | Drop music straight into your game; turn sheet music into tracks |
+| **5. Godot + notation** ✅ | Godot export (seamless OGG/WAV loops with tail wrap, stems, `AudioStreamSynchronized` layers, `AudioStreamInteractive` sections, loudness normalization, `.import` settings), MIDI import/export, MusicXML import/export (incl. `.mxl`), sheet music view | Drop music straight into your game; turn sheet music into tracks |
 | **6. Expand** | ASIO for audio interfaces, CLAP then VST3 hosting, multi-input recording, sampled piano/bass packs, automation lanes, time-stretch | Use outside plugins, record a band |
 
 Phase 3 (Claude) comes before recording on purpose: once Claude can drive the app, it can help test everything that follows.

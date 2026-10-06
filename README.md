@@ -2,7 +2,7 @@
 
 A free, open-source DAW for making game music — record real instruments, compose with built-in synths, drums, bass, and keys, read and write sheet music, and export straight into Godot. Claude Desktop and Claude Code can control every part of it through MCP.
 
-**Status:** Phase 4 (record). Record your voice or an instrument, or bring in recordings from your phone, and mix them with the built-in instruments. Claude can build, edit, play, listen to, and export your songs through MCP. Before that: write songs on a timeline with clips, record what you play, edit notes in a piano roll, mix with volume, pan, mute/solo and seven effects, loop a region, and save/open `.nptune` project files. Built-in Keys, Bass, and Drums play from the on-screen piano, your computer keyboard, drum pads, or a MIDI keyboard. See [`docs/PLAN.md`](docs/PLAN.md) for the roadmap.
+**Status:** Phase 5 (Godot + sheet music). Export seamless loops straight into your Godot project, see and export sheet music, and bring in MIDI or MusicXML files. Phase 4 added recording: Record your voice or an instrument, or bring in recordings from your phone, and mix them with the built-in instruments. Claude can build, edit, play, listen to, and export your songs through MCP. Before that: write songs on a timeline with clips, record what you play, edit notes in a piano roll, mix with volume, pan, mute/solo and seven effects, loop a region, and save/open `.nptune` project files. Built-in Keys, Bass, and Drums play from the on-screen piano, your computer keyboard, drum pads, or a MIDI keyboard. See [`docs/PLAN.md`](docs/PLAN.md) for the roadmap.
 
 ## Try it on Windows
 
@@ -20,6 +20,16 @@ In the app, click **Open** and choose `examples/Demo Groove.nptune` from this re
 - **With your mic:** click **+ Audio track**, select it, check the **Microphone** meter moves when you speak, then press **R** (or ● Record). The song plays and you record along; press **R** again to stop. Wear headphones so the mic doesn't hear the song.
 - **Editing:** drag a clip's left or right edge to trim it, **Ctrl+E** splits the selected clip at the playhead, and the Audio panel has gain, fade in/out and **Normalize**.
 - Audio is saved in a `<Song name> Audio` folder next to your `.nptune` file. Keep them together when you move or back up a song.
+
+## Put music in your Godot game
+
+**Export ▾ → To Godot (loops, stems)…**, pick your Godot project folder once, then **Export**. You get looping OGG files in `res://music/` that Godot loops on its own (no clicks at the loop point; reverb carries over), at a consistent game-music loudness. Tick **stems** for one file per track plus an `AudioStreamSynchronized` (`*_layers.tres`) to fade instruments in and out from code. Claude can also export named sections (say *explore* and *combat*) as an `AudioStreamInteractive` that switches on the next bar.
+
+## Sheet music and MIDI
+
+- The **Sheet music** tab shows the selected track (or all tracks) as notation; **Export MusicXML…** opens in MuseScore for printing.
+- **Import…** (or drag and drop) takes MIDI files and MusicXML (`.musicxml`, `.xml`, `.mxl`); each part becomes a track.
+- Have a photo or PDF of a score? Give it to Claude and ask it to turn it into tracks.
 
 ## Connect Claude
 

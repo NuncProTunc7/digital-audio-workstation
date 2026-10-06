@@ -21,7 +21,10 @@ These public designs were implemented from scratch; listed for credit.
 
 Rust and npm dependencies are listed in `Cargo.lock` and `app/package-lock.json`
 and keep their own licenses. Notable: symphonia (MPL-2.0, GPL-compatible) for
-decoding audio files, rubato (MIT/Apache-2.0) for resampling.
+decoding audio files, rubato (MIT/Apache-2.0) for resampling, midly (Unlicense)
+for MIDI files, roxmltree (MIT/Apache-2.0) and zip (MIT) for MusicXML, vorbis_rs
+(BSD-3-Clause, bundling the BSD-licensed aoTuV/libvorbis and libogg) for OGG
+encoding, and OpenSheetMusicDisplay (BSD-3-Clause) for drawing sheet music.
 
 Test audio in `crates/daw-audio/tests/fixtures/` was generated for this project
 (CC0).
