@@ -43,18 +43,26 @@ fn build_automation(track: &Track) -> Vec<AutoCurve> {
 /// Flattens all clips on a track. Notes are cut at their clip's end; at the
 /// same beat, note-offs come before note-ons so repeated notes retrigger.
 /// Audio clips whose file can't be loaded are left out (silent).
-pub fn build_sequence(track: &Track, audio: &AudioPool, sample_rate_hz: u32) -> Sequence {
+/// Clips that follow the tempo are stretched to `tempo_bpm`.
+pub fn build_sequence(
+    track: &Track,
+    audio: &AudioPool,
+    sample_rate_hz: u32,
+    tempo_bpm: f64,
+) -> Sequence {
     let mut events = Vec::new();
     let sr = f64::from(sample_rate_hz);
     let mut regions = Vec::new();
     for clip in &track.clips {
         if let Some(a) = &clip.audio {
-            if let Ok(buffer) = audio.buffer(&a.file, sample_rate_hz) {
+            // Following the tempo: slower songs stretch the audio longer.
+            let ratio = a.source_bpm.map_or(1.0, |src| src / tempo_bpm);
+            if let Ok(buffer) = audio.stretched(&a.file, sample_rate_hz, ratio) {
                 regions.push(AudioRegionPlay {
                     start_beats: clip.start_beats,
                     end_beats: clip.start_beats + clip.length_beats,
                     buffer,
-                    offset_frames: a.offset_seconds * sr,
+                    offset_frames: a.offset_seconds * sr * ratio,
                     gain: if a.gain_db <= daw_model::MIN_VOLUME_DB {
                         0.0
                     } else {
@@ -133,7 +141,7 @@ mod tests {
             ],
             audio: None,
         }]);
-        let s = build_sequence(&t, &AudioPool::in_temp_dir(), 48_000);
+        let s = build_sequence(&t, &AudioPool::in_temp_dir(), 48_000, 120.0);
         let summary: Vec<(f64, u8, bool)> = s
             .events
             .iter()
@@ -160,7 +168,7 @@ mod tests {
             notes: vec![note(1, 60, 0.0, 1.0), note(2, 60, 1.0, 1.0)],
             audio: None,
         }]);
-        let s = build_sequence(&t, &AudioPool::in_temp_dir(), 48_000);
+        let s = build_sequence(&t, &AudioPool::in_temp_dir(), 48_000, 120.0);
         assert_eq!(s.events[1].beat, 1.0);
         assert_eq!(s.events[1].velocity, 0.0);
         assert!(s.events[2].velocity > 0.0);

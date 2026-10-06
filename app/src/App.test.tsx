@@ -318,6 +318,16 @@ describe("Audio", () => {
     expect(clips[1].audio?.offset_seconds).toBeCloseTo(0.5);
   });
 
+  it("lets a clip follow the song tempo", async () => {
+    const backend = await dropRecording();
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText("Follow song tempo"));
+    });
+    const clip = (await backend.getProject()).project.tracks[3].clips[0];
+    expect(clip.audio?.source_bpm).toBe(120);
+    expect(screen.getByText("(recorded at 120 BPM)")).toBeTruthy();
+  });
+
   it("trims a clip's start by dragging its left edge", async () => {
     const backend = await dropRecording();
     vi.spyOn(backend, "execute");

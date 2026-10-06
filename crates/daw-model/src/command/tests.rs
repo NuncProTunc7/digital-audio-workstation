@@ -21,6 +21,7 @@ fn region(file: &str, seconds: f64) -> crate::project::AudioRegion {
         gain_db: 0.0,
         fade_in_seconds: 0.0,
         fade_out_seconds: 0.0,
+        source_bpm: None,
     }
 }
 
@@ -287,6 +288,10 @@ fn sample_commands(p: &Project) -> Vec<Command> {
             track_id: 1,
             lane_id: LANE,
             enabled: false,
+        },
+        Command::SetClipTempo {
+            clip_id: AUDIO_CLIP,
+            source_bpm: Some(120.0),
         },
         Command::LoadSamplePack {
             track_id: 13,
@@ -920,4 +925,37 @@ fn sample_packs_are_sfz_files_on_sampler_tracks() {
         .apply(&mut p);
         assert!(r.is_err(), "{track_id} {path:?}");
     }
+}
+
+#[test]
+fn clips_that_follow_tempo_measure_the_file_in_their_own_tempo() {
+    let mut p = fixture();
+    Command::SetClipTempo {
+        clip_id: AUDIO_CLIP,
+        source_bpm: Some(120.0),
+    }
+    .apply(&mut p)
+    .expect("follow");
+    Command::SetTempo { bpm: 60.0 }
+        .apply(&mut p)
+        .expect("slower");
+    // Still 8 beats long, and splitting at beat 2 is 1 s into the file
+    // (the recording's 120 BPM), not 2 s (the song's 60 BPM).
+    Command::SplitClip {
+        clip_id: AUDIO_CLIP,
+        at_beats: 2.0,
+    }
+    .apply(&mut p)
+    .expect("split");
+    let second = &p.track(10).expect("t").clips[1];
+    assert!((second.audio.as_ref().expect("a").offset_seconds - 1.0).abs() < 1e-9);
+    assert!(
+        Command::SetClipTempo {
+            clip_id: clip_id(&p),
+            source_bpm: Some(120.0)
+        }
+        .apply(&mut p)
+        .is_err(),
+        "note clips can't be stretched"
+    );
 }

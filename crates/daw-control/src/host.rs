@@ -314,6 +314,7 @@ pub fn import_audio<H: Host>(
         gain_db: 0.0,
         fade_in_seconds: 0.0,
         fade_out_seconds: 0.0,
+        source_bpm: None,
     };
     let (command, track_id) = match track_id {
         Some(id) => (
@@ -450,6 +451,7 @@ pub fn end_take<H: Host>(
                 gain_db: 0.0,
                 fade_in_seconds: 0.0,
                 fade_out_seconds: 0.0,
+                source_bpm: None,
             },
             length_beats: None,
             name: None,

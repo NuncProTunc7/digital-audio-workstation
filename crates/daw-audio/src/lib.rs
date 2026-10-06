@@ -11,6 +11,7 @@ mod decode;
 mod peaks;
 mod pool;
 mod resample;
+mod stretch;
 mod wav;
 
 use std::path::PathBuf;
@@ -21,6 +22,7 @@ pub use decode::decode_file;
 pub use peaks::{PEAKS_PER_SECOND, Peaks, peaks};
 pub use pool::{AudioPool, ImportedAudio, audio_folder_for};
 pub use resample::resample;
+pub use stretch::time_stretch;
 pub use wav::{WavWriter, read_wav, write_wav};
 
 /// File extensions [`decode_file`] understands, lower case.

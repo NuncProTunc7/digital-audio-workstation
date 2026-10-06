@@ -32,6 +32,7 @@ function formatSeconds(s: number): string {
 export default function AudioPanel(props: AudioPanelProps) {
   const { track, clip, input } = props;
   const audio = clip?.audio ?? undefined;
+  // Real playing time of the clip (stretched clips play at the song tempo).
   const clipSeconds = clip ? (clip.length_beats * 60) / props.tempoBpm : 0;
   const maxFade = Math.max(0.01, Math.min(10, clipSeconds / 2));
   const insideClip =
@@ -166,6 +167,24 @@ export default function AudioPanel(props: AudioPanelProps) {
                   onKeyUp={props.onEndGesture}
                 />
                 <span className="param-value">{formatSeconds(audio.fade_out_seconds)}</span>
+              </label>
+              <label className="dialog-check" title="Stretch the clip (keeping its pitch) when you change the song's tempo">
+                <input
+                  type="checkbox"
+                  aria-label="Follow song tempo"
+                  checked={audio.source_bpm != null}
+                  onChange={(e) => {
+                    void props
+                      .onCommand({
+                        command: "set_clip_tempo",
+                        clip_id: clip.id,
+                        source_bpm: e.target.checked ? props.tempoBpm : null,
+                      })
+                      .then(props.onEndGesture);
+                  }}
+                />
+                Follow song tempo
+                {audio.source_bpm != null && <span className="muted">(recorded at {audio.source_bpm} BPM)</span>}
               </label>
               <div className="button-row">
                 <button

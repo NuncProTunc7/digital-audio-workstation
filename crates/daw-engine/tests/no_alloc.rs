@@ -99,6 +99,7 @@ fn audio_thread_never_allocates() {
                 gain_db: -3.0,
                 fade_in_seconds: 0.05,
                 fade_out_seconds: 0.2,
+                source_bpm: None,
             },
             length_beats: Some(1.5),
             name: None,

@@ -77,7 +77,46 @@ pub(crate) fn check_region(r: &AudioRegion) -> Result<(), CommandError> {
     }
     check_gain(r.gain_db)?;
     check_seconds("fade in", r.fade_in_seconds, MAX_AUDIO_SECONDS)?;
-    check_seconds("fade out", r.fade_out_seconds, MAX_AUDIO_SECONDS)
+    check_seconds("fade out", r.fade_out_seconds, MAX_AUDIO_SECONDS)?;
+    if let Some(bpm) = r.source_bpm {
+        check_source_bpm(bpm)?;
+    }
+    Ok(())
+}
+
+fn check_source_bpm(bpm: f64) -> Result<(), CommandError> {
+    if bpm.is_finite()
+        && (crate::project::MIN_TEMPO_BPM..=crate::project::MAX_TEMPO_BPM).contains(&bpm)
+    {
+        Ok(())
+    } else {
+        Err(invalid(
+            "recorded tempo",
+            format!("must be between 20 and 999 BPM, got {bpm}"),
+        ))
+    }
+}
+
+pub(super) fn set_clip_tempo(
+    project: &mut Project,
+    clip_id: ClipId,
+    source_bpm: Option<f64>,
+) -> Result<Command, CommandError> {
+    if let Some(bpm) = source_bpm {
+        check_source_bpm(bpm)?;
+    }
+    let clip = project
+        .clip_mut(clip_id)
+        .ok_or(CommandError::UnknownClip(clip_id))?;
+    let region = clip
+        .audio
+        .as_mut()
+        .ok_or_else(|| invalid("clip", "is a note clip; only audio clips can be stretched"))?;
+    let old = std::mem::replace(&mut region.source_bpm, source_bpm);
+    Ok(Command::SetClipTempo {
+        clip_id,
+        source_bpm: old,
+    })
 }
 
 /// Audio clips live only on audio tracks, and note clips only elsewhere.
@@ -99,7 +138,7 @@ pub(crate) fn check_clip_fits(kind: InstrumentKind, clip: &Clip) -> Result<(), C
 
 /// Clip length that plays the rest of the file at this tempo.
 pub(crate) fn natural_length_beats(region: &AudioRegion, tempo_bpm: f64) -> f64 {
-    (region.remaining_seconds() * tempo_bpm / 60.0).max(MIN_LENGTH_BEATS)
+    (region.remaining_seconds() / region.file_seconds_per_beat(tempo_bpm)).max(MIN_LENGTH_BEATS)
 }
 
 pub(super) fn add(
@@ -268,7 +307,7 @@ pub(super) fn split(
         n.start_beats -= cut;
     }
     if let (Some(a), Some(b)) = (first.audio.as_mut(), second.audio.as_mut()) {
-        b.offset_seconds = a.offset_seconds + cut * 60.0 / tempo_bpm;
+        b.offset_seconds = a.offset_seconds + cut * a.file_seconds_per_beat(tempo_bpm);
         a.fade_out_seconds = 0.0;
         b.fade_in_seconds = 0.0;
         if b.offset_seconds >= b.file_seconds {
@@ -299,7 +338,7 @@ pub(super) fn trim_start(
     edited.length_beats = end - start_beats;
     check_length("clip length", edited.length_beats)?;
     if let Some(a) = edited.audio.as_mut() {
-        let offset = a.offset_seconds + delta * 60.0 / project.tempo_bpm;
+        let offset = a.offset_seconds + delta * a.file_seconds_per_beat(project.tempo_bpm);
         // Allow a hair of float error when dragging back to the file start.
         if offset < -1e-6 {
             return Err(invalid(

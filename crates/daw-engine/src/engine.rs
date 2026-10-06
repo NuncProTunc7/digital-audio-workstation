@@ -107,7 +107,12 @@ impl Engine {
         {
             self.send(EngineMessage::ReplaceSequence {
                 track_id: t.id,
-                sequence: Box::new(build_sequence(t, &self.audio, self.sample_rate_hz as u32)),
+                sequence: Box::new(build_sequence(
+                    t,
+                    &self.audio,
+                    self.sample_rate_hz as u32,
+                    project.tempo_bpm,
+                )),
             });
         }
     }
@@ -242,8 +247,9 @@ impl Engine {
                     && a.instrument.sample_pack == b.instrument.sample_pack
             });
         if same_layout {
+            let tempo_changed = synced.tempo_bpm != project.tempo_bpm;
             for (old, new) in synced.tracks.iter().zip(&project.tracks) {
-                self.sync_track(old, new, project.tempo_bpm);
+                self.sync_track(old, new, project.tempo_bpm, tempo_changed);
             }
         } else {
             self.send(EngineMessage::ReplaceTracks(build_tracks(
@@ -255,7 +261,7 @@ impl Engine {
         *synced = project.clone();
     }
 
-    fn sync_track(&self, old: &Track, new: &Track, tempo_bpm: f64) {
+    fn sync_track(&self, old: &Track, new: &Track, tempo_bpm: f64, tempo_changed: bool) {
         for (index, spec) in param_specs(new.instrument.kind).iter().enumerate() {
             let value = new.instrument.value(spec.id);
             if old.instrument.value(spec.id) != value {
@@ -275,10 +281,21 @@ impl Engine {
         }
         self.sync_chain(Some(new.id), &os.effects, &ns.effects, tempo_bpm);
         let automation_changed = old.automation != new.automation;
-        if old.clips != new.clips || automation_changed {
+        // Clips that follow the tempo need re-stretching when it changes.
+        let restretch = tempo_changed
+            && new
+                .clips
+                .iter()
+                .any(|c| c.audio.as_ref().is_some_and(|a| a.source_bpm.is_some()));
+        if old.clips != new.clips || automation_changed || restretch {
             self.send(EngineMessage::ReplaceSequence {
                 track_id: new.id,
-                sequence: Box::new(build_sequence(new, &self.audio, self.sample_rate_hz as u32)),
+                sequence: Box::new(build_sequence(
+                    new,
+                    &self.audio,
+                    self.sample_rate_hz as u32,
+                    tempo_bpm,
+                )),
             });
         }
         if automation_changed {
@@ -383,7 +400,12 @@ fn build_tracks(project: &Project, sample_rate_hz: f32, audio: &AudioPool) -> Bo
                 t.id,
                 daw_instruments::create(&t.instrument, sample_rate_hz),
                 build_chain(&t.mixer.effects, project.tempo_bpm, sample_rate_hz),
-                Box::new(build_sequence(t, audio, sample_rate_hz as u32)),
+                Box::new(build_sequence(
+                    t,
+                    audio,
+                    sample_rate_hz as u32,
+                    project.tempo_bpm,
+                )),
                 strip_settings(&t.mixer),
                 sample_rate_hz,
             )

@@ -156,7 +156,8 @@ export default function Timeline(props: TimelineProps) {
       const g = d.clip.audio ? grid / 4 : grid;
       let length = Math.max(g, d.clip.length_beats + snap((e.clientX - d.x0) / ppb, g));
       if (d.clip.audio) {
-        const available = ((d.clip.audio.file_seconds - d.clip.audio.offset_seconds) * project.tempo_bpm) / 60;
+        const fileBpm = d.clip.audio.source_bpm ?? project.tempo_bpm;
+        const available = ((d.clip.audio.file_seconds - d.clip.audio.offset_seconds) * fileBpm) / 60;
         length = Math.min(length, Math.max(available, g));
       }
       if (length !== d.lastLength) {
@@ -168,7 +169,7 @@ export default function Timeline(props: TimelineProps) {
       const end = d.clip.start_beats + d.clip.length_beats;
       // Can't reveal audio from before the recording started.
       const earliest = d.clip.audio
-        ? d.clip.start_beats - (d.clip.audio.offset_seconds * project.tempo_bpm) / 60
+        ? d.clip.start_beats - (d.clip.audio.offset_seconds * (d.clip.audio.source_bpm ?? project.tempo_bpm)) / 60
         : 0;
       const start = Math.min(
         end - g,
@@ -567,17 +568,24 @@ function AudioClipBox({ clip, ppb, tempoBpm, peaks, missing, selected, onPointer
   const width = Math.max(4, clip.length_beats * ppb);
   const secondsToPx = (s: number) => ((s * tempoBpm) / 60) * ppb;
   const gain = 10 ** (audio.gain_db / 20);
-  const seconds = (clip.length_beats * 60) / tempoBpm;
+  // How much of the file the clip shows (at the recording's own tempo when
+  // it follows the song's).
+  const seconds = (clip.length_beats * 60) / (audio.source_bpm ?? tempoBpm);
   return (
     <div
       className={`clip audio${selected ? " selected" : ""}${missing ? " missing" : ""}`}
       style={{ left: clip.start_beats * ppb, width }}
       onPointerDown={(e) => onPointerDown(e, "move")}
-      title={missing ? `${clip.name}: the audio file ${audio.file} is missing` : `${clip.name} — drag the edges to trim`}
+      title={
+        missing
+          ? `${clip.name}: the audio file ${audio.file} is missing`
+          : `${clip.name} — drag the edges to trim${audio.source_bpm ? ` (follows the tempo; recorded at ${audio.source_bpm} BPM)` : ""}`
+      }
       data-clip={clip.id}
     >
       <span className="clip-name">
         {missing && "⚠ "}
+        {audio.source_bpm ? "⇿ " : ""}
         {clip.name}
       </span>
       {peaks && !missing && (

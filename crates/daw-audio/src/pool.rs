@@ -38,7 +38,8 @@ pub struct AudioPool {
     project_folder: RwLock<Option<PathBuf>>,
     /// Audio added in memory (tests, freshly finished recordings).
     memory: Mutex<HashMap<String, Arc<AudioData>>>,
-    buffers: Mutex<HashMap<(String, u32), Arc<AudioBuffer>>>,
+    /// Keyed by file, sample rate, and stretch ratio (in 1/10000ths).
+    buffers: Mutex<HashMap<(String, u32, i64), Arc<AudioBuffer>>>,
     peaks: Mutex<HashMap<String, Arc<Peaks>>>,
 }
 
@@ -119,12 +120,30 @@ impl AudioPool {
 
     /// The file's audio at `sample_rate_hz`, ready for the engine. Cached.
     pub fn buffer(&self, file: &str, sample_rate_hz: u32) -> Result<Arc<AudioBuffer>, AudioError> {
-        let key = (file.to_owned(), sample_rate_hz);
+        self.stretched(file, sample_rate_hz, 1.0)
+    }
+
+    /// The file's audio at `sample_rate_hz`, stretched to `ratio` times its
+    /// length with its pitch unchanged (for clips that follow the tempo).
+    /// Cached, so a tempo change costs one stretch per clip file.
+    pub fn stretched(
+        &self,
+        file: &str,
+        sample_rate_hz: u32,
+        ratio: f64,
+    ) -> Result<Arc<AudioBuffer>, AudioError> {
+        let ratio_key = (ratio * 10_000.0).round() as i64;
+        let key = (file.to_owned(), sample_rate_hz, ratio_key);
         if let Some(b) = self.buffers.lock().ok().and_then(|c| c.get(&key).cloned()) {
             return Ok(b);
         }
-        let data = (*self.load(file)?).clone();
-        let buffer = Arc::new(AudioBuffer::from_data(resample(data, sample_rate_hz)?));
+        let data = resample((*self.load(file)?).clone(), sample_rate_hz)?;
+        let data = if ratio_key == 10_000 {
+            data
+        } else {
+            crate::time_stretch(&data, ratio_key as f64 / 10_000.0)
+        };
+        let buffer = Arc::new(AudioBuffer::from_data(data));
         if let Ok(mut c) = self.buffers.lock() {
             c.insert(key, Arc::clone(&buffer));
         }

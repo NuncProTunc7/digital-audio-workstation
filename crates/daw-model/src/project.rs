@@ -348,8 +348,9 @@ pub const MAX_CLIP_GAIN_DB: f64 = 24.0;
 
 /// The part of an audio file an audio clip plays, and how.
 ///
-/// Audio keeps its own speed: changing the tempo moves where clips start
-/// (they stay on their beat) but does not stretch the audio.
+/// By default audio keeps its own speed: changing the tempo moves where
+/// clips start (they stay on their beat) but does not stretch the audio.
+/// With `source_bpm` set, the clip stretches to follow the tempo.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct AudioRegion {
     /// File name inside the project's audio folder ("<Song> Audio").
@@ -368,12 +369,21 @@ pub struct AudioRegion {
     /// Fade-out length at the clip end, in seconds.
     #[serde(default)]
     pub fade_out_seconds: f64,
+    /// When set, the clip follows the song's tempo: it was recorded at this
+    /// tempo and is stretched (pitch unchanged) to match the current one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_bpm: Option<f64>,
 }
 
 impl AudioRegion {
     /// Seconds of audio left after `offset_seconds`.
     pub fn remaining_seconds(&self) -> f64 {
         (self.file_seconds - self.offset_seconds).max(0.0)
+    }
+
+    /// Seconds of the file that one beat on the timeline covers.
+    pub fn file_seconds_per_beat(&self, tempo_bpm: f64) -> f64 {
+        60.0 / self.source_bpm.unwrap_or(tempo_bpm)
     }
 }
 

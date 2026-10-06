@@ -124,6 +124,7 @@ mod tests {
                 gain_db: -3.0,
                 fade_in_seconds: 0.0,
                 fade_out_seconds: 0.5,
+                source_bpm: None,
             }),
         };
         let b = clip_brief(&c);

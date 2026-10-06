@@ -254,6 +254,14 @@ pub enum Command {
         /// Optional name; defaults to the file name.
         name: Option<String>,
     },
+    /// Make an audio clip follow the song's tempo, stretching it without
+    /// changing its pitch. `source_bpm` is the tempo it was recorded at
+    /// (usually the song's current tempo, so nothing changes until the
+    /// tempo does); null plays it at its own speed again.
+    SetClipTempo {
+        clip_id: ClipId,
+        source_bpm: Option<f64>,
+    },
     /// Change an audio clip's volume and fades. Omitted fields keep their value.
     SetAudioClip {
         clip_id: ClipId,
@@ -511,6 +519,10 @@ impl Command {
                 length_beats,
                 name,
             } => audio::add(project, track_id, start_beats, audio, length_beats, name),
+            C::SetClipTempo {
+                clip_id,
+                source_bpm,
+            } => audio::set_clip_tempo(project, clip_id, source_bpm),
             C::SetAudioClip {
                 clip_id,
                 gain_db,

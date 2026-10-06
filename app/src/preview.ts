@@ -282,7 +282,7 @@ export function applyCommand(project: Project, command: Command): Project {
       c.length_beats = cut;
       c.notes = c.notes.filter((n) => n.start_beats < cut);
       if (c.audio && second.audio) {
-        second.audio.offset_seconds = c.audio.offset_seconds + (cut * 60) / p.tempo_bpm;
+        second.audio.offset_seconds = c.audio.offset_seconds + (cut * 60) / (c.audio.source_bpm ?? p.tempo_bpm);
         c.audio.fade_out_seconds = 0;
         second.audio.fade_in_seconds = 0;
       }
@@ -295,7 +295,7 @@ export function applyCommand(project: Project, command: Command): Project {
       const delta = command.start_beats - c.start_beats;
       if (delta >= c.length_beats) throw new Error("clip length must stay positive");
       if (c.audio) {
-        const offset = c.audio.offset_seconds + (delta * 60) / p.tempo_bpm;
+        const offset = c.audio.offset_seconds + (delta * 60) / (c.audio.source_bpm ?? p.tempo_bpm);
         if (offset < -1e-6) throw new Error("can't move before the beginning of the recording");
         c.audio.offset_seconds = Math.max(0, offset);
       }
@@ -325,6 +325,12 @@ export function applyCommand(project: Project, command: Command): Project {
       if (command.gain_db !== null) a.gain_db = command.gain_db;
       if (command.fade_in_seconds !== null) a.fade_in_seconds = command.fade_in_seconds;
       if (command.fade_out_seconds !== null) a.fade_out_seconds = command.fade_out_seconds;
+      break;
+    }
+    case "set_clip_tempo": {
+      const a = clipOf(command.clip_id)[1].audio;
+      if (!a) throw new Error("only audio clips can be stretched");
+      a.source_bpm = command.source_bpm;
       break;
     }
     case "load_sample_pack": {

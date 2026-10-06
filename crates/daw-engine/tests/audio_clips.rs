@@ -32,6 +32,7 @@ fn region(file: &str, seconds: f64) -> AudioRegion {
         gain_db: 0.0,
         fade_in_seconds: 0.0,
         fade_out_seconds: 0.0,
+        source_bpm: None,
     }
 }
 
@@ -231,4 +232,47 @@ fn volume_automation_fades_a_track_in_and_removal_restores_the_fader() {
     p.process_interleaved(&mut buf, 2);
     let tail = buf[8_000..].iter().fold(0.0f32, |m, x| m.max(x.abs()));
     assert!((tail - 0.5).abs() < 0.01, "after removal {tail}");
+}
+
+#[test]
+fn clips_that_follow_tempo_stretch_with_it_and_keep_their_pitch() {
+    use daw_model::Session;
+    // A 120 BPM "recording": a 440 Hz blip on every beat (0.5 s apart).
+    let blips: Vec<f32> = (0..SR as usize * 2)
+        .map(|i| {
+            let t = i % (SR as usize / 2);
+            if t < 4_800 {
+                0.5 * (std::f32::consts::TAU * 440.0 * i as f32 / SR as f32).sin()
+            } else {
+                0.0
+            }
+        })
+        .collect();
+    let pool = pool_with("blips.wav", blips);
+    let mut s = Session::new(project(region("blips.wav", 2.0), 0.0, None));
+    let clip = s.project().tracks[0].clips[0].id;
+    s.execute(Command::SetClipTempo {
+        clip_id: clip,
+        source_bpm: Some(120.0),
+    })
+    .expect("follow");
+    s.execute(Command::SetTempo { bpm: 60.0 })
+        .expect("half speed");
+    let out = left(&render_project(s.project(), &pool, play_from(0.0), 4.0, SR));
+    // Blips now land a second apart...
+    let starts: Vec<usize> = (0..4)
+        .map(|b| b * SR as usize)
+        .filter(|&at| out[at + 2_000..at + 6_000].iter().any(|x| x.abs() > 0.3))
+        .collect();
+    assert_eq!(starts.len(), 4, "blips at each second");
+    let gap = &out[SR as usize / 2 + 2_000..SR as usize - 2_000];
+    assert!(gap.iter().all(|x| x.abs() < 0.05), "silence between blips");
+    // ...and still sound at 440 Hz.
+    let blip = &out[1_000..8_000];
+    let crossings = blip
+        .windows(2)
+        .filter(|w| w[0] <= 0.0 && w[1] > 0.0)
+        .count();
+    let hz = crossings as f32 * SR as f32 / blip.len() as f32;
+    assert!((hz - 440.0).abs() < 15.0, "{hz} Hz");
 }

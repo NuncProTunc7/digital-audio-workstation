@@ -60,6 +60,8 @@ export interface AudioRegion {
   gain_db: number;
   fade_in_seconds: number;
   fade_out_seconds: number;
+  /** Set when the clip follows the song tempo: the tempo it was recorded at. */
+  source_bpm?: number | null;
 }
 
 export interface Clip {
@@ -203,6 +205,7 @@ export type Command =
       fade_in_seconds: Opt<number>;
       fade_out_seconds: Opt<number>;
     }
+  | { command: "set_clip_tempo"; clip_id: number; source_bpm: number | null }
   | { command: "load_sample_pack"; track_id: number; path: string | null }
   | { command: "add_automation_lane"; track_id: number; target: AutomationTarget; points: AutomationPoint[] }
   | { command: "remove_automation_lane"; track_id: number; lane_id: number }
