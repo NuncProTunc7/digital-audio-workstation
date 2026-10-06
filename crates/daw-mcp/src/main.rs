@@ -60,6 +60,8 @@ over time (fade-ins, filter sweeps, swelling reverb); points are (beats, value).
 sample_pack_status in get_track. Audio clips can follow tempo changes with set_clip_tempo.
 - Games: export_godot writes seamless loops (plus optional stems and adaptive-music \
 resources) straight into the user's Godot project, already set to loop.
+- Recording timing: if the user's takes land late (common with Bluetooth headsets), run \
+calibrate_recording (explain the clapping first) or set recording_delay.
 - Don't open or start a new project without asking if the user may have unsaved work.";
 
 #[derive(Clone)]

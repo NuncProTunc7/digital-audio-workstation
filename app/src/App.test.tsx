@@ -273,6 +273,48 @@ describe("Audio", () => {
     await waitFor(() => expect(backend.monitorInput).toHaveBeenCalledWith(false));
   });
 
+  it("sets the recording delay and explains calibration results", async () => {
+    const backend = createPreviewBackend();
+    vi.spyOn(backend, "setRecordingOffset");
+    vi.spyOn(backend, "calibrateRecording").mockResolvedValue({
+      offset_ms: 185,
+      claps: 8,
+      spread_ms: 7,
+      saved: true,
+      device: "Preview microphone",
+    });
+    await renderApp(backend);
+    await act(async () => {
+      fireEvent.click(screen.getByText("+ Audio track"));
+    });
+    fireEvent.click(trackHeader("Audio"));
+    const field = (await screen.findByLabelText("Recording delay")) as HTMLInputElement;
+    await act(async () => {
+      fireEvent.change(field, { target: { value: "120" } });
+    });
+    expect(backend.setRecordingOffset).toHaveBeenCalledWith(120);
+    await waitFor(() => expect(field.value).toBe("120"));
+    await act(async () => {
+      fireEvent.click(screen.getByText("Calibrate…"));
+    });
+    expect(await screen.findByText(/Measured 185 ms from 8 claps/)).toBeTruthy();
+  });
+
+  it("offers to recover unsaved work after a crash, once", async () => {
+    const backend = createPreviewBackend();
+    vi.spyOn(backend, "recoveryCheck").mockResolvedValue({
+      name: "Boss Theme",
+      project_path: null,
+      saved_at_ms: Date.now(),
+    });
+    vi.spyOn(backend, "confirm").mockResolvedValue(true);
+    vi.spyOn(backend, "recoveryResolve");
+    await renderApp(backend);
+    await waitFor(() => expect(backend.recoveryResolve).toHaveBeenCalledWith(true));
+    expect(backend.confirm).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(backend.confirm).mock.calls[0][0]).toContain("Boss Theme");
+  });
+
   it("imports a dropped phone recording onto a new track and selects it", async () => {
     await dropRecording();
     expect(trackHeader("Voice Memo 3")).toBeTruthy();

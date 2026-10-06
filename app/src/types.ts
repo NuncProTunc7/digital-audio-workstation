@@ -242,6 +242,35 @@ export interface InputStatus {
   /** Peak level since the last poll, 0–1. */
   level: number;
   error: string | null;
+  /** How late this microphone's recordings arrive, and the correction. */
+  delay: RecordingDelay | null;
+}
+
+/** A microphone's recording delay correction (mirrors `daw_control::RecordingDelay`). */
+export interface RecordingDelay {
+  device: string | null;
+  /** Takes are moved this much earlier (ms). */
+  offset_ms: number;
+  /** The device looks like a Bluetooth headset. */
+  bluetooth: boolean;
+}
+
+/** What clapping along measured (mirrors `daw_control::CalibrationResult`). */
+export interface CalibrationResult {
+  offset_ms: number;
+  claps: number;
+  spread_ms: number;
+  /** Steady enough, and now in use. */
+  saved: boolean;
+  device: string | null;
+}
+
+/** Unsaved work left by a run that didn't close properly. */
+export interface Recoverable {
+  name: string;
+  project_path: string | null;
+  /** Milliseconds since the Unix epoch. */
+  saved_at_ms: number;
 }
 
 export type Unit = "none" | "hertz" | "seconds" | "decibels" | "semitones" | "cents" | "percent" | "ratio";

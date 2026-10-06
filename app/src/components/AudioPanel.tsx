@@ -1,4 +1,5 @@
-import type { Clip, Command, InputStatus, Peaks, Track } from "../types";
+import { useState } from "react";
+import type { CalibrationResult, Clip, Command, InputStatus, Peaks, Track } from "../types";
 import { meterPercent } from "../format";
 
 const DEFAULT_INPUT = "__default__";
@@ -18,6 +19,10 @@ interface AudioPanelProps {
   recording: boolean;
   input: InputStatus | null;
   onInputDevice: (name: string | null) => void;
+  /** Sets the microphone's recording delay (ms). */
+  onRecordingOffset: (ms: number) => void;
+  /** Runs clap-along calibration; undefined if it failed (the error is shown elsewhere). */
+  onCalibrate: () => Promise<CalibrationResult | undefined>;
   onCommand: (command: Command) => Promise<unknown>;
   onEndGesture: () => void;
   onImport: () => void;
@@ -31,6 +36,16 @@ function formatSeconds(s: number): string {
 /** The dock for an audio track: microphone, recording, and clip settings. */
 export default function AudioPanel(props: AudioPanelProps) {
   const { track, clip, input } = props;
+  const [calibrating, setCalibrating] = useState(false);
+  const [calibration, setCalibration] = useState<CalibrationResult | null>(null);
+  const delay = input?.delay ?? null;
+  const calibrate = async () => {
+    setCalibrating(true);
+    setCalibration(null);
+    const result = await props.onCalibrate();
+    setCalibrating(false);
+    setCalibration(result ?? null);
+  };
   const audio = clip?.audio ?? undefined;
   // Real playing time of the clip (stretched clips play at the song tempo).
   const clipSeconds = clip ? (clip.length_beats * 60) / props.tempoBpm : 0;
@@ -94,6 +109,49 @@ export default function AudioPanel(props: AudioPanelProps) {
           {input?.error && (
             <p className="error" role="alert">
               {input.error}
+            </p>
+          )}
+          {delay?.bluetooth && delay.offset_ms === 0 && (
+            <p className="warning" role="note">
+              This looks like a Bluetooth headset. Bluetooth delays what you hear and record, so takes land late.
+              Click <b>Calibrate…</b> once to fix it, or record with wired earbuds.
+            </p>
+          )}
+          <div className="field recording-delay">
+            <label htmlFor="recording-delay">Recording delay</label>
+            <input
+              id="recording-delay"
+              type="number"
+              min={-500}
+              max={500}
+              step={5}
+              value={delay?.offset_ms ?? 0}
+              disabled={!delay?.device || calibrating}
+              onChange={(e) => {
+                const ms = Number(e.target.value);
+                if (Number.isFinite(ms)) props.onRecordingOffset(ms);
+              }}
+              title="How late this microphone's recordings arrive; takes are moved this much earlier"
+            />
+            <span className="unit">ms</span>
+            <button
+              onClick={() => void calibrate()}
+              disabled={calibrating || props.recording}
+              title="Measure the delay: clap along with some clicks"
+            >
+              Calibrate…
+            </button>
+          </div>
+          {calibrating && (
+            <p className="calibrating" role="status">
+              Listen to the first 4 clicks, then <b>clap on each of the next 8</b>.
+            </p>
+          )}
+          {calibration && (
+            <p className={calibration.saved ? "muted hint" : "warning"} role="status">
+              {calibration.saved
+                ? `Measured ${calibration.offset_ms} ms from ${calibration.claps} claps. Recordings on this microphone now line up.`
+                : `Your claps were uneven (±${calibration.spread_ms} ms), so nothing changed. Try again, clapping sharply right on the clicks.`}
             </p>
           )}
           <button className={props.recording ? "record recording" : "record"} onClick={props.onRecord}>

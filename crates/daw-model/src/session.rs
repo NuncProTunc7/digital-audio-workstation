@@ -41,6 +41,18 @@ impl Session {
         self.saved_revision = self.revision;
     }
 
+    /// Marks the project as having unsaved changes (e.g. work recovered
+    /// after a crash), until the next save.
+    pub fn mark_unsaved(&mut self) {
+        self.saved_revision = u64::MAX;
+    }
+
+    /// Changes whenever the project does, so callers can tell whether it
+    /// changed since they last looked.
+    pub fn revision(&self) -> u64 {
+        self.revision
+    }
+
     pub fn project(&self) -> &Project {
         &self.project
     }

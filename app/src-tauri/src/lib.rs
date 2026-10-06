@@ -15,8 +15,10 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, RwLock};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
+use daw_control::autosave::{self, AutosaveSlot, Recoverable};
 use daw_control::claude_setup;
-use daw_control::{ControlServer, Host};
+use daw_control::settings::{self, Settings};
+use daw_control::{CalibrationResult, ControlServer, Host, RecordingDelay};
 use daw_engine::capture::AudioRecorder;
 use daw_engine::device::{self, AudioInput, AudioOutput};
 use daw_engine::midi::{MidiEvent, MidiInputs};
@@ -59,6 +61,13 @@ struct AppState {
     /// When Claude last talked to the app, and what it did recently.
     last_remote: Mutex<Option<Instant>>,
     remote_log: Mutex<VecDeque<RemoteActivity>>,
+    /// This computer's settings (recording delays).
+    settings: Mutex<Settings>,
+    /// This run's autosave of unsaved work.
+    autosave: Mutex<AutosaveSlot>,
+    /// Unsaved work left by a run that didn't close properly, until the
+    /// user recovers or declines it.
+    recoverable: Mutex<Option<Recoverable>>,
 }
 
 /// One thing Claude did, for the activity list.
@@ -94,6 +103,9 @@ impl Default for AppState {
             control_error: Mutex::new(None),
             last_remote: Mutex::new(None),
             remote_log: Mutex::new(VecDeque::new()),
+            settings: Mutex::new(Settings::load(&settings::settings_path())),
+            autosave: Mutex::new(AutosaveSlot::new(autosave::autosave_dir())),
+            recoverable: Mutex::new(None),
         }
     }
 }
@@ -177,6 +189,63 @@ impl daw_control::Host for AppState {
         }
         Ok(clip)
     }
+
+    fn metronome_on(&self) -> bool {
+        self.metronome_on.load(Ordering::Relaxed)
+    }
+
+    fn recording_offset_ms(&self) -> f64 {
+        let device = self.input_name();
+        self.settings
+            .lock()
+            .ok()
+            .zip(device)
+            .map_or(0.0, |(s, d)| s.recording_offset_ms(&d))
+    }
+
+    fn recording_delay(&self, set_ms: Option<f64>) -> Result<RecordingDelay, String> {
+        let device = self.input_name();
+        if let Some(ms) = set_ms {
+            let d = device
+                .as_deref()
+                .ok_or("there is no microphone to set a delay for")?;
+            let mut s = self
+                .settings
+                .lock()
+                .map_err(|_| "settings are unavailable")?;
+            s.set_recording_offset_ms(d, ms);
+            s.save(&settings::settings_path())?;
+        }
+        Ok(RecordingDelay {
+            offset_ms: self.recording_offset_ms(),
+            bluetooth: device.as_deref().is_some_and(settings::looks_bluetooth),
+            device,
+        })
+    }
+
+    fn calibrate_recording(&self) -> Result<CalibrationResult, String> {
+        self.ensure_input()?;
+        let device = self.input_name();
+        let measured = {
+            let mut recorder = self
+                .recorder
+                .lock()
+                .map_err(|_| "recording state is unavailable")?;
+            let recorder = recorder
+                .as_mut()
+                .ok_or("no microphone is open; check the input in the Audio tab")?;
+            daw_control::calibrate::calibrate_recording(self, recorder)?
+        };
+        let saved = measured.is_reliable() && device.is_some();
+        if saved {
+            self.recording_delay(Some(measured.offset_ms))?;
+        }
+        Ok(CalibrationResult {
+            measured,
+            saved,
+            device,
+        })
+    }
 }
 
 impl AppState {
@@ -254,6 +323,31 @@ impl AppState {
                 *error = Some(message.clone());
                 Err(message)
             }
+        }
+    }
+
+    /// The microphone in use: the open one, else the chosen or default one.
+    fn input_name(&self) -> Option<String> {
+        let open = self
+            .input
+            .lock()
+            .ok()
+            .and_then(|i| i.as_ref().map(|i| i.device_name().to_owned()));
+        open.or_else(|| self.input_device.lock().ok().and_then(|n| n.clone()))
+            .or_else(device::default_input_device_name)
+    }
+
+    /// Writes unsaved work to the autosave if it changed.
+    fn autosave(&self) {
+        if let Ok(mut slot) = self.autosave.lock() {
+            let _ = slot.update(self);
+        }
+    }
+
+    /// Forgets the autosave once the work is saved or deliberately replaced.
+    fn discard_autosave(&self) {
+        if let Ok(mut slot) = self.autosave.lock() {
+            slot.discard();
         }
     }
 
@@ -349,12 +443,14 @@ fn get_project(state: State<'_, AppState>) -> Result<ProjectView, String> {
 #[tauri::command]
 fn new_project(state: State<'_, AppState>) -> Result<ProjectView, String> {
     daw_control::new_project(&*state)?;
+    state.discard_autosave();
     get_project(state)
 }
 
 #[tauri::command]
 fn open_project(state: State<'_, AppState>, path: String) -> Result<ProjectView, String> {
     daw_control::open_project(&*state, Path::new(&path))?;
+    state.discard_autosave();
     get_project(state)
 }
 
@@ -362,6 +458,27 @@ fn open_project(state: State<'_, AppState>, path: String) -> Result<ProjectView,
 #[tauri::command]
 fn save_project(state: State<'_, AppState>, path: Option<String>) -> Result<ProjectView, String> {
     daw_control::save_project(&*state, path.as_deref().map(Path::new))?;
+    state.discard_autosave();
+    get_project(state)
+}
+
+/// Unsaved work from a run that didn't close properly, if any.
+#[tauri::command]
+fn recovery_check(state: State<'_, AppState>) -> Option<Recoverable> {
+    state.recoverable.lock().ok().and_then(|r| r.clone())
+}
+
+/// Opens the recovered work (`recover`), or deletes it.
+#[tauri::command]
+fn recovery_resolve(state: State<'_, AppState>, recover: bool) -> Result<ProjectView, String> {
+    let found = state.recoverable.lock().ok().and_then(|mut r| r.take());
+    if let Some(found) = found {
+        if recover {
+            autosave::recover(&*state, &found)?;
+        } else {
+            autosave::discard_recoverable(&found);
+        }
+    }
     get_project(state)
 }
 
@@ -646,6 +763,8 @@ struct InputStatus {
     /// Peak level since the last call, 0.0–1.0.
     level: f32,
     error: Option<String>,
+    /// The microphone's recording delay correction.
+    delay: Option<RecordingDelay>,
 }
 
 #[tauri::command]
@@ -664,7 +783,20 @@ fn input_status(state: State<'_, AppState>) -> InputStatus {
             .and_then(|r| r.as_ref().map(AudioRecorder::take_level))
             .unwrap_or(0.0),
         error: state.input_error.lock().ok().and_then(|e| e.clone()),
+        delay: state.recording_delay(None).ok(),
     }
+}
+
+/// Sets how late the current microphone's recordings arrive (ms).
+#[tauri::command]
+fn set_recording_offset(state: State<'_, AppState>, ms: f64) -> Result<RecordingDelay, String> {
+    state.recording_delay(Some(ms))
+}
+
+/// The user claps along with clicks; measures (and keeps) the delay.
+#[tauri::command(async)]
+fn calibrate_recording(state: State<'_, AppState>) -> Result<CalibrationResult, String> {
+    state.calibrate_recording()
 }
 
 /// Opens (true) or closes (false) the microphone, for the input meter.
@@ -906,6 +1038,20 @@ pub fn run() {
         .setup(|app| {
             let state = app.state::<AppState>();
             let _ = state.app.set(app.handle().clone());
+            if let Ok(slot) = state.autosave.lock()
+                && let Ok(mut r) = state.recoverable.lock()
+            {
+                *r = autosave::find_recoverable(&slot);
+            }
+            let handle = app.handle().clone();
+            let _ = std::thread::Builder::new()
+                .name("npt-autosave".into())
+                .spawn(move || {
+                    loop {
+                        std::thread::sleep(autosave::AUTOSAVE_INTERVAL);
+                        handle.state::<AppState>().autosave();
+                    }
+                });
             start_control(app.handle());
             // Sound problems are shown in the status bar, not fatal.
             let _ = state.start_audio(None);
@@ -970,11 +1116,24 @@ pub fn run() {
             export_musicxml,
             sheet_music,
             export_godot,
-            sample_pack_status
+            sample_pack_status,
+            recovery_check,
+            recovery_resolve,
+            set_recording_offset,
+            calibrate_recording
         ])
-        .run(tauri::generate_context!());
-    if let Err(e) = result {
-        eprintln!("Nunc Pro Tune failed to start: {e}");
-        std::process::exit(1);
+        .build(tauri::generate_context!());
+    match result {
+        Ok(app) => app.run(|handle, event| {
+            // A clean exit leaves nothing to recover (the user already
+            // chose to save or discard).
+            if let tauri::RunEvent::Exit = event {
+                handle.state::<AppState>().discard_autosave();
+            }
+        }),
+        Err(e) => {
+            eprintln!("Nunc Pro Tune failed to start: {e}");
+            std::process::exit(1);
+        }
     }
 }

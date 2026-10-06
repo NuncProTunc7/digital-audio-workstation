@@ -1425,6 +1425,29 @@ button.tiny.power.on {
   font-size: 12px;
 }
 
+.audio-panel .warning,
+.audio-panel .calibrating {
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.audio-panel .calibrating {
+  animation: pulse 1s infinite;
+}
+
+.audio-panel .recording-delay {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.audio-panel .recording-delay input {
+  width: 64px;
+}
+
 .button-row {
   display: flex;
   gap: 6px;

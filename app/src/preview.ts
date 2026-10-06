@@ -20,6 +20,7 @@ import type {
   NoteInput,
   Project,
   ProjectView,
+  RecordingDelay,
   Track,
 } from "./types";
 
@@ -421,6 +422,8 @@ export function createPreviewBackend(): PreviewBackend {
   const changeListeners = new Set<(description: string) => void>();
   const dropListeners = new Set<(paths: string[], x: number, y: number) => void>();
   let inputOpen = false;
+  let offsetMs = 0;
+  const delay = (): RecordingDelay => ({ device: "Preview microphone", offset_ms: offsetMs, bluetooth: false });
   const input = (): InputStatus => ({
     devices: ["Preview microphone"],
     default_device: "Preview microphone",
@@ -428,6 +431,7 @@ export function createPreviewBackend(): PreviewBackend {
     sample_rate_hz: inputOpen ? 48000 : null,
     level: inputOpen ? 0.2 : 0,
     error: null,
+    delay: delay(),
   });
   // Every "file" is a two-second tone; enough to draw and edit.
   const PREVIEW_SECONDS = 2;
@@ -619,6 +623,15 @@ export function createPreviewBackend(): PreviewBackend {
       return input();
     },
     setInputDevice: async () => input(),
+    setRecordingOffset: async (ms) => {
+      offsetMs = Math.max(-500, Math.min(500, ms));
+      return delay();
+    },
+    calibrateRecording: async () => {
+      throw new Error("Calibrating needs the desktop app");
+    },
+    recoveryCheck: async () => null,
+    recoveryResolve: async () => view(),
     onFileDrop: async (callback) => {
       dropListeners.add(callback);
       return () => dropListeners.delete(callback);

@@ -239,23 +239,21 @@ Check each source file's own header before porting; projects sometimes mix licen
 
 ## 13. Next work, in order (agreed Oct 2026)
 
-A design review found gaps that matter more than plugin hosting. Do these **before** CLAP/VST3 and ASIO, in this order. Each item lists what to build and how to know it's done. Items 1–4 were promised by this plan (§3 rule 1, §11 risks) but not built.
+A design review found gaps that matter more than plugin hosting. Do these **before** CLAP/VST3 and ASIO, in this order. Items 1–2 are done; **next is item 3**. Each item lists what to build and how to know it's done. Items 1–4 were promised by this plan (§3 rule 1, §11 risks) but not built.
 
 ### A. Protect the work (do first)
 
-**1. Autosave and crash recovery** (§3 rule 1 promised "crash-safe autosave").
-- Every 60 s while the project is dirty, and on each `end_gesture` after 10 s of idle, write `<app data>/autosave/<project-key>.nptune` off the UI thread (atomic: temp file + rename). Audio already lives in the project's Audio folder or `unsaved-audio/`, so only the JSON is written.
-- A clean exit or a save deletes the autosave. On launch, if one exists and is newer than its project file, offer "Recover unsaved work from <time>?" → open it as dirty, keeping the original path.
-- Keep the last 3 manual saves as `Song.nptune.bak1..3` beside the file (rotating), so a bad save can be undone.
-- Done when a test kills the host mid-edit, relaunches, and recovers the edit; and `.bak` files rotate.
+**1. Autosave and crash recovery** ✅ (built Oct 2026; §3 rule 1 promised it).
+- `daw_control::autosave`: every 30 s, if the project is dirty and changed, the app writes `<app data>/autosave/<run>.nptune` plus a `<run>.json` describing it (project path, audio folder, time). Writes happen outside the session lock. Save, New, Open, a clean exit, or a clean session removes it.
+- At launch, the newest autosave from another run is offered ("Recover your unsaved changes to …?"). It's skipped if its song file was saved after it, or if it's over two weeks old. Recovered work opens marked unsaved, keeps its original file path, and its unsaved recordings still play (the old run's audio folder is reused).
+- Every save keeps the last 3 versions as `Song.nptune.bak1..3` beside the song.
+- Verified: unit tests (crash → recover, stale, cleanup, backups) and live: edit, wait for the autosave, `kill -9` the app, relaunch, answer Yes; the song came back with its changes.
 
-**2. Recording latency for Bluetooth** (owner records with a Bluetooth headset; §11 top risk).
-- Bluetooth output and mic add roughly 100–250 ms that device timestamps often don't report [Confidence: Med]. Also, a Bluetooth headset using its mic switches to the hands-free profile: low-quality mono, and output quality drops while recording. Tell the user; recommend wired earbuds for recording if they have them.
-- Add a per-input-device **recording offset (ms)** setting (−500..+500), stored in app settings (not the project; it's about the hardware). `place_take` adds it.
-- Add **Calibrate**: plays clicks through the output, records them through the mic, finds the delay by cross-correlation, and sets the offset. The user holds the headset mic near the earcup. Fallback: a "tap along" calibration (tap Space with 8 clicks; median offset).
-- Detect Bluetooth by device name ("Hands-Free", "Headset", "AG Audio", "Bluetooth") and show a one-line warning in the Audio tab linking to Calibrate.
-- Commands: none (device setting, live action). Expose `calibrate_latency` / `set_input_offset` to Claude as control tools.
-- Done when the loopback test with an artificial 180 ms delay places takes within 5 ms after calibration.
+**2. Recording latency for Bluetooth** ✅ (built Oct 2026; the owner records with a Bluetooth headset; §11 top risk).
+- Per-input-device **recording delay** (−500..+500 ms) in `<app data>/settings.json` (`daw_control::settings`), not the project, because it belongs to the hardware. `end_take` moves takes that much earlier.
+- **Calibrate…** (`daw_control::calibrate`): plays only metronome clicks at 80 BPM. The user lets 4 go by and claps on the next 8 while the mic records. Each clap's distance from its beat is measured on the timeline the take would have been placed on, and the median is the delay. Claps were chosen over hearing the click itself because Bluetooth headsets cancel echo, which would hide a played-back click from their own mic. The result is kept only if at least 4 claps were heard within ±40 ms of each other.
+- The Audio tab warns when the input's name looks like Bluetooth and no delay is set. Claude has `recording_delay` and `calibrate_recording`.
+- Verified live through a PulseAudio loopback adding about 160 ms: takes landed 158 ms late, calibration measured 167 ms, and the next take landed 4.5 ms off the beat (the loopback itself drifts by ~10 ms).
 
 **3. Sound card buffer size** (§11 glitch mitigation).
 - Status-bar device menu: buffer 128/256/512/1024/2048 frames (`cpal::BufferSize::Fixed`, falling back to default if refused), saved in app settings. Show the resulting latency in ms. Suggest a bigger buffer when the CPU meter goes past 80% or underruns are counted.

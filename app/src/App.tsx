@@ -112,6 +112,24 @@ export default function App({ backend }: AppProps) {
       .catch((e: unknown) => setError(String(e)));
   }, [backend]);
 
+  // Offer back work left unsaved when the app last closed unexpectedly
+  // (once, even though development mode runs effects twice).
+  const recoveryAsked = useRef(false);
+  useEffect(() => {
+    if (recoveryAsked.current) return;
+    recoveryAsked.current = true;
+    void (async () => {
+      const found = await backend.recoveryCheck().catch(() => null);
+      if (!found) return;
+      const when = new Date(found.saved_at_ms).toLocaleString();
+      const recover = await backend.confirm(
+        `Nunc Pro Tune didn't close properly last time. Recover your unsaved changes to "${found.name}" from ${when}?`,
+      );
+      const v = await run(() => backend.recoveryResolve(recover));
+      if (v) setView(v);
+    })();
+  }, [backend, run]);
+
   useEffect(() => {
     const timer = window.setInterval(() => {
       backend
@@ -859,6 +877,17 @@ export default function App({ backend }: AppProps) {
               recording={recording}
               input={input}
               onInputDevice={(name) => void run(() => backend.setInputDevice(name)).then((s) => s && setInput(s))}
+              onRecordingOffset={(ms) =>
+                void run(() => backend.setRecordingOffset(ms)).then(
+                  (delay) => delay && setInput((i) => (i ? { ...i, delay } : i)),
+                )
+              }
+              onCalibrate={async () => {
+                const result = await run(() => backend.calibrateRecording());
+                const s = await run(() => backend.inputStatus());
+                if (s) setInput(s);
+                return result;
+              }}
               onCommand={execute}
               onEndGesture={endGesture}
               onImport={() => void pickAndImport(selectedTrack.id, snapDown(position, beatsPerBar))}

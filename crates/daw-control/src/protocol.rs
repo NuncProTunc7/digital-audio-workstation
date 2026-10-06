@@ -71,6 +71,13 @@ pub enum Request {
     },
     /// Stop recording; the take becomes a clip.
     StopRecording,
+    /// Read (or set, with `ms`) how late the current microphone's
+    /// recordings arrive.
+    RecordingDelay {
+        ms: Option<f64>,
+    },
+    /// Measure the recording delay: the user claps along with clicks.
+    CalibrateRecording,
     /// Read a .mid file into new tracks.
     ImportMidi {
         path: String,

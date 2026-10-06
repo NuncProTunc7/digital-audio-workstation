@@ -356,6 +356,21 @@ fn extra_tools() -> Vec<ToolDef> {
             false,
         ),
         tool(
+            "recording_delay",
+            "Read or set how late the current microphone's recordings arrive, in ms (-500 to 500). Takes are moved this much earlier so they line up with the beat. Bluetooth headsets typically need 100-250 ms; prefer calibrate_recording over guessing. Returns the device, offset_ms, and whether it looks like Bluetooth.",
+            object_schema(
+                json!({ "ms": num("New delay in ms; omit to just read it.") }),
+                &[],
+            ),
+            false,
+        ),
+        tool(
+            "calibrate_recording",
+            "Measure the microphone's recording delay. Tell the user first: put the headset on, and when the clicks start, listen to 4 clicks, then clap on each of the next 8. Takes about 10 seconds and silences the song meanwhile. Returns offset_ms, claps heard, spread_ms, and saved (true when steady enough and now in use). If not saved, ask the user to try again, clapping more clearly.",
+            object_schema(json!({}), &[]),
+            false,
+        ),
+        tool(
             READ_GUIDE,
             "Read the Nunc Pro Tune user guide. Pages: README (contents), lessons (a course to teach the user), basics, writing-music, audio, mixing, sheet-music, godot, claude, composing (Claude's playbook: workflow, game-music recipes, mix targets), troubleshooting. Works without the app running.",
             object_schema(
@@ -444,6 +459,8 @@ pub fn to_request(name: &str, args: Map<String, Value>) -> Result<Request, Strin
             track_id: get_id("track_id")?,
         },
         "stop_recording" => Request::StopRecording,
+        "recording_delay" => Request::RecordingDelay { ms: get_f64("ms") },
+        "calibrate_recording" => Request::CalibrateRecording,
         "import_midi" => Request::ImportMidi {
             path: get_str("path").ok_or("path is required")?,
         },

@@ -42,9 +42,10 @@ Goal: record a melody with your computer keyboard.
 Goal: put your voice (or an instrument) on the loop.
 
 1. **+ Audio track**, select it, check the **Microphone** meter in the Audio tab.
-2. Headphones on. **R**, perform, **R**.
-3. Trim the edges, add a short **Fade in** and **Fade out**, **Normalize**.
-4. Or: record on your phone, send the file to your PC, drag it onto the timeline.
+2. Headphones on. Bluetooth headset? Click **Calibrate…** first and clap along with the clicks.
+3. **R**, perform, **R**.
+4. Trim the edges, add a short **Fade in** and **Fade out**, **Normalize**.
+5. Or: record on your phone, send the file to your PC, drag it onto the timeline.
 
 ## Lesson 5: Mix it
 

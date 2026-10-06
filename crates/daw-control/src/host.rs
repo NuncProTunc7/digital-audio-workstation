@@ -34,6 +34,45 @@ pub trait Host: Send + Sync {
     fn stop_audio_recording(&self) -> Result<Option<ClipId>, String> {
         Err("nothing is recording".into())
     }
+    /// Whether the user has the metronome on (restored after calibrating).
+    fn metronome_on(&self) -> bool {
+        false
+    }
+    /// How late the current microphone's recordings arrive (ms); takes are
+    /// moved this much earlier.
+    fn recording_offset_ms(&self) -> f64 {
+        0.0
+    }
+    /// The current microphone's recording delay, after setting it to `ms`
+    /// when given.
+    fn recording_delay(&self, _set_ms: Option<f64>) -> Result<RecordingDelay, String> {
+        Err("this copy of Nunc Pro Tune can't record audio".into())
+    }
+    /// Has the user clap along with clicks to measure the recording delay,
+    /// and keeps the result when it's reliable.
+    fn calibrate_recording(&self) -> Result<CalibrationResult, String> {
+        Err("this copy of Nunc Pro Tune can't record audio".into())
+    }
+}
+
+/// A microphone's recording delay setting.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct RecordingDelay {
+    /// The microphone it applies to.
+    pub device: Option<String>,
+    pub offset_ms: f64,
+    /// The device looks like a Bluetooth headset (expect a delay).
+    pub bluetooth: bool,
+}
+
+/// What clapping along measured, and whether it was kept.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct CalibrationResult {
+    #[serde(flatten)]
+    pub measured: crate::calibrate::Calibration,
+    /// The measurement was steady enough and is now the device's offset.
+    pub saved: bool,
+    pub device: Option<String>,
 }
 
 /// A short label for the app's activity list, e.g. "Claude: set tempo" or
@@ -260,6 +299,8 @@ fn handle_inner<H: Host>(host: &H, request: Request) -> Result<Value, String> {
                 Ok(json!({ "musicxml": crate::notation::sheet_music(host, track_ids.as_deref())? }))
             }
         },
+        Request::RecordingDelay { ms } => Ok(json!(host.recording_delay(ms)?)),
+        Request::CalibrateRecording => Ok(json!(host.calibrate_recording()?)),
         Request::StopRecording => {
             let clip_id = host.stop_audio_recording()?;
             if clip_id.is_some() {
@@ -369,7 +410,10 @@ fn newest_clip(project: &Project, track_id: TrackId) -> Result<ClipId, String> {
 /// Where a take goes: `(start_beats, offset_seconds)`. Sound captured
 /// before the song's start is trimmed off rather than shifting the take, so
 /// everything after stays in time. None if almost nothing is left.
-fn place_take(start_beats: f64, seconds: f64, tempo_bpm: f64) -> Option<(f64, f64)> {
+/// `late_ms` is the microphone's known recording delay: the take moves that
+/// much earlier.
+fn place_take(start_beats: f64, seconds: f64, tempo_bpm: f64, late_ms: f64) -> Option<(f64, f64)> {
+    let start_beats = start_beats - late_ms / 1000.0 * tempo_bpm / 60.0;
     let offset_seconds = (-start_beats * 60.0 / tempo_bpm).max(0.0);
     (seconds - offset_seconds >= 0.05).then_some((start_beats.max(0.0), offset_seconds))
 }
@@ -434,9 +478,12 @@ pub fn end_take<H: Host>(
         });
     }
     let take = result.map_err(|e| e.to_string())?;
-    let Some((start_beats, offset_seconds)) =
-        place_take(take.start_beats, take.seconds, session.project().tempo_bpm)
-    else {
+    let Some((start_beats, offset_seconds)) = place_take(
+        take.start_beats,
+        take.seconds,
+        session.project().tempo_bpm,
+        host.recording_offset_ms(),
+    ) else {
         let _ = std::fs::remove_file(&take.path);
         return Ok(None);
     };
@@ -462,7 +509,7 @@ pub fn end_take<H: Host>(
     newest_clip(session.project(), track_id).map(Some)
 }
 
-fn engine<H: Host>(host: &H) -> Result<Arc<Engine>, String> {
+pub(crate) fn engine<H: Host>(host: &H) -> Result<Arc<Engine>, String> {
     host.engine().ok_or_else(|| {
         "audio isn't running in Nunc Pro Tune (check the output device in the status bar)".into()
     })
@@ -475,7 +522,11 @@ pub(crate) fn sync<H: Host>(host: &H, session: &Session) {
 }
 
 /// Replaces the open project and stops playback.
-fn replace<H: Host>(host: &H, project: Project, path: Option<PathBuf>) -> Result<(), String> {
+pub(crate) fn replace<H: Host>(
+    host: &H,
+    project: Project,
+    path: Option<PathBuf>,
+) -> Result<(), String> {
     if let Some(e) = host.engine() {
         // Twice: the second stop rewinds to the start.
         e.stop();
@@ -540,6 +591,7 @@ pub fn save_project<H: Host>(host: &H, path: Option<&Path>) -> Result<SavedProje
             .gather(files.iter().map(String::as_str), &folder)
             .map_err(|e| e.to_string())?
     };
+    keep_backups(&target);
     daw_model::save_project(session.project(), &target).map_err(|e| e.to_string())?;
     session.mark_saved();
     drop(session);
@@ -549,6 +601,31 @@ pub fn save_project<H: Host>(host: &H, path: Option<&Path>) -> Result<SavedProje
         path: target,
         missing_audio,
     })
+}
+
+/// How many earlier saves are kept beside a song (`Song.nptune.bak1` is the
+/// most recent).
+pub const BACKUPS: usize = 3;
+
+/// Before `target` is overwritten, keeps its current contents as
+/// `.bak1`, shifting older backups along. Best effort: a backup that can't be
+/// made never stops the save.
+fn keep_backups(target: &Path) {
+    if !target.is_file() {
+        return;
+    }
+    let bak = |n: usize| {
+        let mut s = target.as_os_str().to_owned();
+        s.push(format!(".bak{n}"));
+        PathBuf::from(s)
+    };
+    for n in (1..BACKUPS).rev() {
+        if bak(n).is_file() {
+            let _ = std::fs::rename(bak(n), bak(n + 1));
+        }
+    }
+    // A copy, so the song file itself is never missing.
+    let _ = std::fs::copy(target, bak(1));
 }
 
 fn with_extension(path: &Path) -> PathBuf {
@@ -696,6 +773,24 @@ pub(crate) mod tests {
 
     fn ok(r: Response) -> Value {
         r.into_result().expect("request succeeded")
+    }
+
+    #[test]
+    fn saving_keeps_the_last_three_versions_as_backups() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let song = dir.path().join("Song.nptune");
+        let host = TestHost::default();
+        let bak = |n: usize| dir.path().join(format!("Song.nptune.bak{n}"));
+        for bpm in [101.0, 102.0, 103.0, 104.0, 105.0] {
+            ok(execute(&host, Command::SetTempo { bpm }));
+            save_project(&host, Some(&song)).expect("save");
+        }
+        let tempo = |p: &Path| daw_model::load_project(p).expect("load").tempo_bpm;
+        assert_eq!(tempo(&song), 105.0);
+        assert_eq!(tempo(&bak(1)), 104.0);
+        assert_eq!(tempo(&bak(2)), 103.0);
+        assert_eq!(tempo(&bak(3)), 102.0);
+        assert!(!bak(4).exists());
     }
 
     #[test]
@@ -981,14 +1076,27 @@ pub(crate) mod tests {
     #[test]
     fn takes_that_start_before_the_song_are_trimmed_not_shifted() {
         // Starts on beat 8: placed as is.
-        assert_eq!(place_take(8.0, 4.0, 120.0), Some((8.0, 0.0)));
+        assert_eq!(place_take(8.0, 4.0, 120.0, 0.0), Some((8.0, 0.0)));
         // Capture began 0.05 beats (25 ms at 120 BPM) before beat 0: the
         // first 25 ms are skipped so beat 1 of the take is beat 1 of the song.
-        let (start, offset) = place_take(-0.05, 4.0, 120.0).expect("kept");
+        let (start, offset) = place_take(-0.05, 4.0, 120.0, 0.0).expect("kept");
         assert_eq!(start, 0.0);
         assert!((offset - 0.025).abs() < 1e-12);
         // Nothing left after trimming.
-        assert_eq!(place_take(-1.0, 0.5, 120.0), None);
-        assert_eq!(place_take(0.0, 0.01, 120.0), None);
+        assert_eq!(place_take(-1.0, 0.5, 120.0, 0.0), None);
+        assert_eq!(place_take(0.0, 0.01, 120.0, 0.0), None);
+    }
+
+    #[test]
+    fn a_known_recording_delay_moves_takes_earlier() {
+        // A Bluetooth headset delivers sound 180 ms late: a take the clock
+        // puts at beat 8.36 (at 120 BPM, 0.36 beats = 180 ms) was played
+        // on beat 8.
+        let (start, offset) = place_take(8.36, 4.0, 120.0, 180.0).expect("kept");
+        assert!((start - 8.0).abs() < 1e-9 && offset == 0.0);
+        // Moved before the song start: trimmed, as usual.
+        let (start, offset) = place_take(0.2, 4.0, 120.0, 180.0).expect("kept");
+        assert_eq!(start, 0.0);
+        assert!((offset - 0.08).abs() < 1e-9);
     }
 }

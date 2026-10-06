@@ -10,8 +10,22 @@
 
 1. **+ Audio track**, and select it.
 2. In the **Audio** tab, choose the **Input** device and check the **Microphone** meter moves when you speak. Aim for the loud parts reaching about three quarters of the meter, never pinned at the top.
-3. Wear headphones, so the mic doesn't record the song. **Bluetooth headsets** delay what you hear and what you record, so takes may land a little late, and Windows switches them to a lower-quality mode while the mic is on. Wired earbuds give the best timing. (A latency calibration button is planned; meanwhile drag a late take slightly left.)
-4. Press **R**. The song plays; perform; press **R** again. The take lines up with the beat you heard.
+3. Wear headphones, so the mic doesn't record the song.
+4. **Bluetooth headset? Calibrate once** (see below), or your takes land late.
+5. Press **R**. The song plays; perform; press **R** again. The take lines up with the beat you heard.
+
+## Calibrate the recording delay (Bluetooth headsets)
+
+Bluetooth delays both what you hear and what the mic records, typically by 100–250 ms. The app can't see that delay, so it measures it:
+
+1. Select an audio track; in the **Audio** tab, check the right **Input** is chosen.
+2. Put the headset on and click **Calibrate…**.
+3. You'll hear clicks. Let **4 clicks** go by, then **clap sharply on each of the next 8**.
+4. The app says what it measured (e.g. *Measured 185 ms from 8 claps*) and uses it for that microphone from now on. If your claps were uneven, it asks you to try again.
+
+The number shows in **Recording delay**; you can also type one. It's remembered per microphone, so a wired mic keeps 0. Recalibrate if you change headsets.
+
+Bluetooth also switches to a lower-quality "hands-free" sound while its mic is on: that's Bluetooth, not the app. Wired earbuds give the best sound and timing.
 
 ## Editing recordings
 

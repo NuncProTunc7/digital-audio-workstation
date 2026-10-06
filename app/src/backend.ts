@@ -7,6 +7,7 @@ import { createPreviewBackend } from "./preview";
 import type {
   AppInfo,
   AudioStatus,
+  CalibrationResult,
   Catalog,
   ClaudeStatus,
   Command,
@@ -15,6 +16,8 @@ import type {
   InputStatus,
   Peaks,
   ProjectView,
+  RecordingDelay,
+  Recoverable,
   SamplePackStatus,
   TransportStatus,
 } from "./types";
@@ -92,6 +95,14 @@ export interface Backend {
   /** Opens (true) or closes (false) the microphone for metering. */
   monitorInput(on: boolean): Promise<InputStatus>;
   setInputDevice(name: string | null): Promise<InputStatus>;
+  /** Sets how late the current microphone's recordings arrive (ms). */
+  setRecordingOffset(ms: number): Promise<RecordingDelay>;
+  /** Plays clicks for the user to clap along with (about 10 s); measures and keeps the delay. */
+  calibrateRecording(): Promise<CalibrationResult>;
+  /** Unsaved work from a run that didn't close properly, if any. */
+  recoveryCheck(): Promise<Recoverable | null>;
+  /** Opens the recovered work (true) or deletes it (false). */
+  recoveryResolve(recover: boolean): Promise<ProjectView>;
   /** Shows an open dialog for anything importable (audio, MIDI, sheet music); empty if cancelled. */
   pickImportFiles(): Promise<string[]>;
   /** Reads a MIDI file into new tracks. */
@@ -210,6 +221,10 @@ export const tauriBackend: Backend = {
   inputStatus: () => invoke("input_status"),
   monitorInput: (on) => invoke("monitor_input", { on }),
   setInputDevice: (name) => invoke("set_input_device", { name }),
+  setRecordingOffset: (ms) => invoke("set_recording_offset", { ms }),
+  calibrateRecording: () => invoke("calibrate_recording"),
+  recoveryCheck: () => invoke("recovery_check"),
+  recoveryResolve: (recover) => invoke("recovery_resolve", { recover }),
   onFileDrop: (callback) =>
     getCurrentWebview().onDragDropEvent((e) => {
       if (e.payload.type !== "drop") return;
