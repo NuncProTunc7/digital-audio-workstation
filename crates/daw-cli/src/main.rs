@@ -6,6 +6,8 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
+
+mod demo;
 use daw_engine::DEFAULT_SAMPLE_RATE_HZ;
 
 #[derive(Parser)]
@@ -32,8 +34,16 @@ enum CliCommand {
         #[arg(long, default_value_t = 0.5)]
         gain: f32,
     },
+    /// Render a short demo (keys, bass, drums) to a WAV file.
+    RenderDemo {
+        /// Output WAV path.
+        #[arg(long)]
+        out: PathBuf,
+    },
     /// Print the JSON Schema of every project Command (what Claude can do).
     Schema,
+    /// Print every instrument's parameters and presets as JSON.
+    Instruments,
 }
 
 fn main() -> ExitCode {
@@ -44,10 +54,14 @@ fn main() -> ExitCode {
             seconds,
             gain,
         } => render_test_tone(&out, freq_hz, seconds, gain),
+        CliCommand::RenderDemo { out } => render_demo(&out),
         CliCommand::Schema => {
             println!("{:#}", daw_model::command_schema());
             Ok(())
         }
+        CliCommand::Instruments => catalog_json()
+            .map(|json| print!("{json}"))
+            .map_err(|e| e.to_string()),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -66,6 +80,19 @@ fn render_test_tone(out: &Path, freq_hz: f64, seconds: f64, gain: f32) -> Result
         daw_engine::offline::render_test_tone(DEFAULT_SAMPLE_RATE_HZ, freq_hz, gain, seconds);
     write_wav(out, &samples, DEFAULT_SAMPLE_RATE_HZ).map_err(|e| e.to_string())?;
     println!("wrote {} ({seconds} s, {freq_hz} Hz)", out.display());
+    Ok(())
+}
+
+/// The instrument catalog as pretty JSON. The UI ships a copy in
+/// `app/src/generated/instruments.json`; a test keeps it current.
+fn catalog_json() -> serde_json::Result<String> {
+    serde_json::to_string_pretty(&daw_instruments::catalog()).map(|s| s + "\n")
+}
+
+fn render_demo(out: &Path) -> Result<(), String> {
+    let samples = demo::render(DEFAULT_SAMPLE_RATE_HZ);
+    write_wav(out, &samples, DEFAULT_SAMPLE_RATE_HZ).map_err(|e| e.to_string())?;
+    println!("wrote {}", out.display());
     Ok(())
 }
 
@@ -104,6 +131,27 @@ mod tests {
         let expected =
             daw_engine::offline::render_test_tone(DEFAULT_SAMPLE_RATE_HZ, 440.0, 0.5, 0.5);
         assert_eq!(read, expected);
+    }
+
+    #[test]
+    fn ui_instrument_catalog_is_up_to_date() {
+        let path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../app/src/generated/instruments.json");
+        let current = catalog_json().expect("json");
+        let shipped = std::fs::read_to_string(&path).unwrap_or_default();
+        assert!(
+            shipped == current,
+            "{} is stale. Regenerate it with:\n  cargo run -p daw-cli -- instruments > app/src/generated/instruments.json",
+            path.display()
+        );
+    }
+
+    #[test]
+    fn demo_renders_cleanly() {
+        let samples = demo::render(DEFAULT_SAMPLE_RATE_HZ);
+        assert!(samples.iter().all(|s| s.is_finite() && s.abs() <= 1.0));
+        let peak = samples.iter().fold(0.0f32, |m, s| m.max(s.abs()));
+        assert!(peak > 0.1, "demo is too quiet: {peak}");
     }
 
     #[test]
