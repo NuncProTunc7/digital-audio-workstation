@@ -12,7 +12,7 @@ use std::cell::Cell;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use daw_engine::{Engine, EngineMessage};
-use daw_model::{Command, Instrument, InstrumentKind, Project, Session};
+use daw_model::{Command, EffectKind, Instrument, InstrumentKind, NoteInput, Project, Session};
 
 struct CountingAllocator;
 
@@ -111,6 +111,102 @@ fn audio_thread_never_allocates() {
         0,
         "params + controls"
     );
+
+    // Arrangement playback: clips, effects on tracks and master, a loop that
+    // wraps several times, live recording, and edits while playing.
+    session
+        .execute(Command::CreateClip {
+            track_id: 3,
+            start_beats: 0.0,
+            length_beats: 2.0,
+            name: None,
+            notes: (0..8)
+                .map(|i| NoteInput {
+                    pitch: 36 + (i % 4) * 2,
+                    start_beats: f64::from(i) * 0.25,
+                    length_beats: 0.2,
+                    velocity: 100,
+                    id: None,
+                })
+                .collect(),
+        })
+        .expect("clip");
+    for (track, kind) in [
+        (Some(1), EffectKind::Reverb),
+        (Some(1), EffectKind::Delay),
+        (Some(3), EffectKind::Compressor),
+        (Some(3), EffectKind::Eq),
+        (Some(2), EffectKind::Chorus),
+        (Some(2), EffectKind::Distortion),
+        (None, EffectKind::Limiter),
+    ] {
+        session
+            .execute(Command::AddEffect {
+                track_id: track,
+                kind,
+                index: None,
+            })
+            .expect("fx");
+    }
+    session
+        .execute(Command::SetLoop {
+            enabled: Some(true),
+            start_beats: Some(0.0),
+            end_beats: Some(2.0),
+        })
+        .expect("loop");
+    engine.sync(session.project());
+    engine.start_recording(1);
+    engine.play();
+    for n in 0..30 {
+        engine.note_on(1, 60 + n, 0.7);
+    }
+    assert_eq!(
+        process_counting(&mut processor, &mut out),
+        0,
+        "arrangement + loop"
+    );
+
+    // Edits while playing: new sequence, new chain, mixer and effect params.
+    session
+        .execute(Command::TransposeNotes {
+            clip_id: session.project().tracks[2].clips[0].id,
+            semitones: 1,
+            note_ids: None,
+        })
+        .expect("transpose");
+    let fx = session.project().tracks[0].mixer.effects[0].id;
+    session
+        .execute(Command::SetEffectParam {
+            track_id: Some(1),
+            effect_id: fx,
+            param: "mix".into(),
+            value: 0.9,
+        })
+        .expect("param");
+    session
+        .execute(Command::SetTrackMixer {
+            track_id: 2,
+            volume_db: Some(-12.0),
+            pan: Some(0.5),
+            mute: None,
+            solo: Some(true),
+        })
+        .expect("mixer");
+    session
+        .execute(Command::AddEffect {
+            track_id: Some(3),
+            kind: EffectKind::Reverb,
+            index: Some(0),
+        })
+        .expect("chain swap");
+    session
+        .execute(Command::SetMasterVolume { volume_db: -3.0 })
+        .expect("master");
+    engine.sync(session.project());
+    engine.locate(1.0);
+    assert_eq!(process_counting(&mut processor, &mut out), 0, "live edits");
+    let _ = engine.stop_recording();
 
     // Swapping the whole track set: the old set must be handed back, not freed.
     session

@@ -65,6 +65,23 @@ pub fn render_project(
     out
 }
 
+/// Renders the whole song from the start (looping off) plus `tail_seconds`
+/// for reverb and delay tails. Returns interleaved stereo.
+pub fn render_song(project: &Project, sample_rate_hz: u32, tail_seconds: f64) -> Vec<f32> {
+    let mut p = project.clone();
+    p.loop_region.enabled = false;
+    let seconds = p.end_beats() * 60.0 / p.tempo_bpm + tail_seconds.max(0.0);
+    render_project(
+        &p,
+        vec![TimedMessage {
+            at_seconds: 0.0,
+            message: EngineMessage::Play,
+        }],
+        seconds,
+        sample_rate_hz,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -127,6 +144,33 @@ mod tests {
         );
         let first_sound = out.chunks(2).position(|f| f[0].abs() > 1e-6);
         assert_eq!(first_sound, Some((at * f64::from(SR)) as usize));
+    }
+
+    #[test]
+    fn song_render_covers_all_clips_plus_tail() {
+        let mut s = daw_model::Session::default();
+        s.execute(daw_model::Command::CreateClip {
+            track_id: 1,
+            start_beats: 2.0,
+            length_beats: 2.0,
+            name: None,
+            notes: vec![daw_model::NoteInput {
+                pitch: 60,
+                start_beats: 0.0,
+                length_beats: 1.0,
+                velocity: 100,
+                id: None,
+            }],
+        })
+        .expect("clip");
+        let out = render_song(s.project(), SR, 1.0);
+        // 4 beats at 120 BPM = 2 s, plus 1 s tail.
+        assert_eq!(out.len(), 3 * SR as usize * 2);
+        let first = out
+            .chunks(2)
+            .position(|f| f[0].abs() > 1e-4)
+            .expect("sound");
+        assert!(first.abs_diff(SR as usize) < 10, "{first}");
     }
 
     #[test]

@@ -1,8 +1,10 @@
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 
+use daw_model::MAX_TRACKS;
+
 /// Live engine readings, written by the audio thread and read by the UI.
 /// All fields are atomics so neither side ever waits on the other.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct EngineStatus {
     playing: AtomicBool,
     position_beats: AtomicU64,
@@ -14,10 +16,27 @@ pub struct EngineStatus {
     sample_rate_hz: AtomicU32,
     // Frames in the most recent sound card callback.
     buffer_frames: AtomicU32,
+    // Post-fader peak per track slot since the UI last read them (f32 bits).
+    track_peaks: [AtomicU32; MAX_TRACKS],
+}
+
+impl Default for EngineStatus {
+    fn default() -> Self {
+        Self {
+            playing: AtomicBool::new(false),
+            position_beats: AtomicU64::new(0),
+            peak_left: AtomicU32::new(0),
+            peak_right: AtomicU32::new(0),
+            cpu_load: AtomicU32::new(0),
+            sample_rate_hz: AtomicU32::new(0),
+            buffer_frames: AtomicU32::new(0),
+            track_peaks: std::array::from_fn(|_| AtomicU32::new(0)),
+        }
+    }
 }
 
 /// A copy of [`EngineStatus`] at one moment.
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct StatusSnapshot {
     pub playing: bool,
     pub position_beats: f64,
@@ -27,6 +46,8 @@ pub struct StatusSnapshot {
     pub sample_rate_hz: u32,
     /// Sound card buffer size; 0 until audio has started.
     pub buffer_frames: u32,
+    /// Peak level per track, in project track order.
+    pub track_peaks: Vec<f32>,
 }
 
 impl EngineStatus {
@@ -48,6 +69,13 @@ impl EngineStatus {
     }
 
     // RT-SAFE
+    // RT-SAFE
+    pub(crate) fn add_track_peak(&self, index: usize, peak: f32) {
+        if let Some(slot) = self.track_peaks.get(index) {
+            slot.fetch_max(peak.abs().to_bits(), Ordering::Relaxed);
+        }
+    }
+
     #[cfg_attr(not(feature = "device"), allow(dead_code))]
     pub(crate) fn set_callback_stats(&self, load: f32, frames: u32) {
         self.cpu_load.store(load.to_bits(), Ordering::Relaxed);
@@ -72,6 +100,11 @@ impl EngineStatus {
             cpu_load: f32::from_bits(self.cpu_load.load(Ordering::Relaxed)),
             sample_rate_hz: self.sample_rate_hz.load(Ordering::Relaxed),
             buffer_frames: self.buffer_frames.load(Ordering::Relaxed),
+            track_peaks: self
+                .track_peaks
+                .iter()
+                .map(|p| f32::from_bits(p.swap(0, Ordering::Relaxed)))
+                .collect(),
         }
     }
 }

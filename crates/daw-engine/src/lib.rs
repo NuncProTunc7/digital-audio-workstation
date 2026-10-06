@@ -19,12 +19,15 @@ mod metronome;
 pub mod midi;
 pub mod offline;
 mod processor;
+pub mod recording;
+mod sequence;
 mod status;
 mod tone;
 
 pub use engine::Engine;
-pub use message::EngineMessage;
+pub use message::{EngineMessage, RecordedEvent};
 pub use processor::{AudioProcessor, MAX_BLOCK_FRAMES};
+pub use sequence::build_sequence;
 pub use status::{EngineStatus, StatusSnapshot};
 pub use tone::ToneGenerator;
 

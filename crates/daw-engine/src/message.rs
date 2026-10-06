@@ -1,10 +1,116 @@
+use daw_effects::EffectProcessor;
 use daw_instruments::InstrumentProcessor;
-use daw_model::TrackId;
+use daw_model::{EffectId, TrackId};
 
-/// One track's instrument, as the audio thread sees it.
+use crate::processor::MAX_BLOCK_FRAMES;
+
+/// A note event in a track's playback sequence, at an absolute beat.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SeqEvent {
+    pub beat: f64,
+    pub note: u8,
+    /// 0.0 means note-off; otherwise velocity 0.0–1.0.
+    pub velocity: f32,
+}
+
+/// All of a track's clips flattened into time-ordered note events.
+#[derive(Debug, Clone, Default)]
+pub struct Sequence {
+    pub events: Vec<SeqEvent>,
+}
+
+/// One effect in a chain, as the audio thread sees it.
+pub struct EffectSlot {
+    pub id: EffectId,
+    pub enabled: bool,
+    pub processor: Box<dyn EffectProcessor>,
+}
+
+/// An ordered effect chain. Boxed so a whole chain can be swapped in one
+/// pointer move on the audio thread.
+#[derive(Default)]
+pub struct EffectChain {
+    pub effects: Vec<EffectSlot>,
+}
+
+/// Fader, pan, mute, and solo, as linear values.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct StripSettings {
+    pub gain: f32,
+    pub pan: f32,
+    pub mute: bool,
+    pub solo: bool,
+}
+
+/// One track, as the audio thread sees it.
 pub struct TrackSlot {
     pub id: TrackId,
     pub instrument: Box<dyn InstrumentProcessor>,
+    pub effects: Box<EffectChain>,
+    pub sequence: Box<Sequence>,
+    pub strip: StripSettings,
+    // Audio-thread state, preallocated off the audio thread.
+    pub(crate) buf_left: Box<[f32]>,
+    pub(crate) buf_right: Box<[f32]>,
+    pub(crate) gain_left: daw_dsp::Smoother,
+    pub(crate) gain_right: daw_dsp::Smoother,
+    pub(crate) cursor: usize,
+    /// Notes started by the sequence and not yet stopped (bit per pitch).
+    pub(crate) sounding: u128,
+}
+
+impl TrackSlot {
+    pub fn new(
+        id: TrackId,
+        instrument: Box<dyn InstrumentProcessor>,
+        effects: Box<EffectChain>,
+        sequence: Box<Sequence>,
+        strip: StripSettings,
+        sample_rate_hz: f32,
+    ) -> Self {
+        let (l, r) = strip.pan_gains();
+        let audible = if strip.mute { 0.0 } else { strip.gain };
+        Self {
+            id,
+            instrument,
+            effects,
+            sequence,
+            strip,
+            buf_left: vec![0.0; MAX_BLOCK_FRAMES].into_boxed_slice(),
+            buf_right: vec![0.0; MAX_BLOCK_FRAMES].into_boxed_slice(),
+            gain_left: daw_dsp::Smoother::new(audible * l, 0.01, sample_rate_hz),
+            gain_right: daw_dsp::Smoother::new(audible * r, 0.01, sample_rate_hz),
+            cursor: 0,
+            sounding: 0,
+        }
+    }
+}
+
+impl StripSettings {
+    /// Equal-power pan, normalized so center is unity on both sides.
+    pub fn pan_gains(&self) -> (f32, f32) {
+        let angle = (self.pan.clamp(-1.0, 1.0) + 1.0) * std::f32::consts::FRAC_PI_4;
+        (
+            angle.cos() * std::f32::consts::SQRT_2,
+            angle.sin() * std::f32::consts::SQRT_2,
+        )
+    }
+}
+
+/// A note played live on the record track, timestamped by the audio thread.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RecordedEvent {
+    pub beat: f64,
+    pub note: u8,
+    /// 0.0 means note-off.
+    pub velocity: f32,
+}
+
+/// Things the audio thread hands back to be freed on another thread.
+pub enum Garbage {
+    Tracks(#[allow(dead_code)] Box<[TrackSlot]>),
+    Effects(#[allow(dead_code)] Box<EffectChain>),
+    Sequence(#[allow(dead_code)] Box<Sequence>),
 }
 
 /// Everything the audio thread can be told. Sent through a lock-free queue.
@@ -35,6 +141,34 @@ pub enum EngineMessage {
         index: usize,
         value: f32,
     },
+    SetStrip {
+        track_id: TrackId,
+        strip: StripSettings,
+    },
+    SetMasterGain(f32),
+    /// `track_id` None targets the master chain.
+    SetEffectParam {
+        track_id: Option<TrackId>,
+        effect_id: EffectId,
+        index: usize,
+        value: f32,
+    },
+    SetEffectEnabled {
+        track_id: Option<TrackId>,
+        effect_id: EffectId,
+        enabled: bool,
+    },
+    ReplaceEffects {
+        track_id: Option<TrackId>,
+        chain: Box<EffectChain>,
+    },
+    ReplaceSequence {
+        track_id: TrackId,
+        sequence: Box<Sequence>,
+    },
+    /// Swaps in a new set of tracks. The old set is sent back to be freed
+    /// off the audio thread.
+    ReplaceTracks(Box<[TrackSlot]>),
     Play,
     Stop,
     /// Moves the playhead, in beats from the start.
@@ -45,7 +179,11 @@ pub enum EngineMessage {
         denominator: u8,
     },
     SetMetronome(bool),
-    /// Swaps in a new set of tracks. The old set is sent back to be freed
-    /// off the audio thread.
-    ReplaceTracks(Box<[TrackSlot]>),
+    SetLoop {
+        enabled: bool,
+        start_beats: f64,
+        end_beats: f64,
+    },
+    /// Capture live notes on this track (None stops capturing).
+    SetRecordTrack(Option<TrackId>),
 }
