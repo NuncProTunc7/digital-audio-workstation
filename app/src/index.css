@@ -1461,3 +1461,24 @@ button.tiny.power.on {
 .menu button:hover {
   background: var(--panel);
 }
+
+.sheet-tab {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.sheet-music {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 16px;
+}
+
+/* Scores are printed black on white, like paper. */
+.sheet-music-page {
+  background: #fdfcf8;
+  border-radius: 6px;
+  min-height: 100%;
+}

@@ -23,11 +23,13 @@ const PROJECT_FILTER = [{ name: "Nunc Pro Tune project", extensions: ["nptune"] 
 export const AUDIO_EXTENSIONS = ["wav", "wave", "mp3", "m4a", "mp4", "aac", "flac", "ogg", "oga"];
 const AUDIO_FILTER = [{ name: "Audio (WAV, MP3, M4A, FLAC, OGG)", extensions: AUDIO_EXTENSIONS }];
 export const MIDI_EXTENSIONS = ["mid", "midi"];
+export const MUSICXML_EXTENSIONS = ["musicxml", "xml", "mxl"];
 /** Things the export menu can write, with their file extension. */
-export type ExportKind = "wav" | "mid";
+export type ExportKind = "wav" | "mid" | "musicxml";
 const EXPORT_FILTERS: Record<ExportKind, { name: string; extensions: string[] }[]> = {
   wav: [{ name: "WAV audio", extensions: ["wav"] }],
   mid: [{ name: "MIDI file", extensions: ["mid"] }],
+  musicxml: [{ name: "Sheet music (MusicXML)", extensions: ["musicxml"] }],
 };
 
 /** Everything the UI can ask of the Rust side. */
@@ -87,7 +89,7 @@ export interface Backend {
   /** Opens (true) or closes (false) the microphone for metering. */
   monitorInput(on: boolean): Promise<InputStatus>;
   setInputDevice(name: string | null): Promise<InputStatus>;
-  /** Shows an open dialog for anything importable (audio, MIDI); empty if cancelled. */
+  /** Shows an open dialog for anything importable (audio, MIDI, sheet music); empty if cancelled. */
   pickImportFiles(): Promise<string[]>;
   /** Reads a MIDI file into new tracks. */
   importMidi(path: string): Promise<ProjectView>;
@@ -95,6 +97,11 @@ export interface Backend {
   pickExportPath(kind: ExportKind, defaultName: string): Promise<string | null>;
   exportWav(path: string): Promise<void>;
   exportMidi(path: string): Promise<void>;
+  /** Reads sheet music (.musicxml, .xml, .mxl) into new tracks. */
+  importMusicXml(path: string): Promise<ProjectView>;
+  exportMusicXml(path: string, trackIds: number[] | null): Promise<void>;
+  /** The song (or some tracks) as MusicXML, for the sheet music view. */
+  sheetMusic(trackIds: number[] | null): Promise<string>;
   /** Files dropped on the window, with the drop point in CSS pixels. */
   onFileDrop(callback: (paths: string[], x: number, y: number) => void): Promise<() => void>;
 
@@ -157,9 +164,13 @@ export const tauriBackend: Backend = {
       multiple: true,
       directory: false,
       filters: [
-        { name: "Audio or MIDI", extensions: [...AUDIO_EXTENSIONS, ...MIDI_EXTENSIONS] },
+        {
+          name: "Audio, MIDI, or sheet music",
+          extensions: [...AUDIO_EXTENSIONS, ...MIDI_EXTENSIONS, ...MUSICXML_EXTENSIONS],
+        },
         ...AUDIO_FILTER,
         { name: "MIDI file", extensions: MIDI_EXTENSIONS },
+        { name: "Sheet music (MusicXML)", extensions: MUSICXML_EXTENSIONS },
       ],
     });
     if (picked === null) return [];
@@ -170,6 +181,9 @@ export const tauriBackend: Backend = {
     (await save({ defaultPath: `${defaultName}.${kind}`, filters: EXPORT_FILTERS[kind] })) ?? null,
   exportWav: (path) => invoke("export_wav", { path }),
   exportMidi: (path) => invoke("export_midi", { path }),
+  importMusicXml: (path) => invoke("import_musicxml", { path }),
+  exportMusicXml: (path, trackIds) => invoke("export_musicxml", { path, trackIds }),
+  sheetMusic: (trackIds) => invoke("sheet_music", { trackIds }),
   inputStatus: () => invoke("input_status"),
   monitorInput: (on) => invoke("monitor_input", { on }),
   setInputDevice: (name) => invoke("set_input_device", { name }),

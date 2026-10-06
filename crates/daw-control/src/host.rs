@@ -234,6 +234,24 @@ fn handle_inner<H: Host>(host: &H, request: Request) -> Result<Value, String> {
             crate::notation::export_midi_file(host, Path::new(&path))?;
             Ok(json!({ "exported_to": path }))
         }
+        Request::ImportMusicXml { path, xml } => {
+            let tracks = match (path, xml) {
+                (Some(p), _) => crate::notation::import_musicxml_file(host, Path::new(&p))?,
+                (None, Some(x)) => crate::notation::import_musicxml_text(host, &x)?,
+                (None, None) => return Err("give either a path or MusicXML text".into()),
+            };
+            host.project_changed("Claude imported sheet music");
+            Ok(json!({ "new_track_ids": tracks, "song": song_summary(host.session()?.project()) }))
+        }
+        Request::ExportMusicXml { path, track_ids } => match path {
+            Some(p) => {
+                crate::notation::export_musicxml_file(host, Path::new(&p), track_ids.as_deref())?;
+                Ok(json!({ "exported_to": p }))
+            }
+            None => {
+                Ok(json!({ "musicxml": crate::notation::sheet_music(host, track_ids.as_deref())? }))
+            }
+        },
         Request::StopRecording => {
             let clip_id = host.stop_audio_recording()?;
             if clip_id.is_some() {

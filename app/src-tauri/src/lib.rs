@@ -577,6 +577,32 @@ fn export_midi(state: State<'_, AppState>, path: String) -> Result<(), String> {
     daw_control::notation::export_midi_file(&*state, Path::new(&path))
 }
 
+/// Reads sheet music (.musicxml, .xml, .mxl) into new tracks.
+// Off the main thread: decoding and rendering can take seconds.
+#[tauri::command(async)]
+fn import_musicxml(state: State<'_, AppState>, path: String) -> Result<ProjectView, String> {
+    daw_control::notation::import_musicxml_file(&*state, Path::new(&path))?;
+    get_project(state)
+}
+
+#[tauri::command(async)]
+fn export_musicxml(
+    state: State<'_, AppState>,
+    path: String,
+    track_ids: Option<Vec<TrackId>>,
+) -> Result<(), String> {
+    daw_control::notation::export_musicxml_file(&*state, Path::new(&path), track_ids.as_deref())
+}
+
+/// The song (or some tracks) as MusicXML, for the sheet music view.
+#[tauri::command]
+fn sheet_music(
+    state: State<'_, AppState>,
+    track_ids: Option<Vec<TrackId>>,
+) -> Result<String, String> {
+    daw_control::notation::sheet_music(&*state, track_ids.as_deref())
+}
+
 /// Renders the song to a WAV file.
 // Off the main thread: decoding and rendering can take seconds.
 #[tauri::command(async)]
@@ -924,7 +950,10 @@ pub fn run() {
             set_input_device,
             import_midi,
             export_midi,
-            export_wav
+            export_wav,
+            import_musicxml,
+            export_musicxml,
+            sheet_music
         ])
         .run(tauri::generate_context!());
     if let Err(e) = result {

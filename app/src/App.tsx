@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { Backend } from "./backend";
-import { AUDIO_EXTENSIONS, MIDI_EXTENSIONS } from "./backend";
+import { AUDIO_EXTENSIONS, MIDI_EXTENSIONS, MUSICXML_EXTENSIONS } from "./backend";
 import type { ExportKind } from "./backend";
 import AudioPanel from "./components/AudioPanel";
 import ClaudePanel from "./components/ClaudePanel";
@@ -9,6 +9,7 @@ import InstrumentPanel from "./components/InstrumentPanel";
 import Mixer from "./components/Mixer";
 import Piano from "./components/Piano";
 import PianoRoll from "./components/PianoRoll";
+import SheetMusic from "./components/SheetMusic";
 import StatusBar from "./components/StatusBar";
 import Timeline from "./components/Timeline";
 import { formatPosition, snapDown } from "./format";
@@ -40,7 +41,8 @@ const STATUS_POLL_MS = 60;
 const CLAUDE_POLL_MS = 2000;
 const INPUT_POLL_MS = 70;
 const TOAST_MS = 4000;
-type Tab = "instrument" | "pianoroll" | "mixer";
+type Tab = "instrument" | "pianoroll" | "sheet" | "mixer";
+const SHEET_REFRESH_MS = 300;
 
 interface AppProps {
   backend: Backend;
@@ -75,6 +77,9 @@ export default function App({ backend }: AppProps) {
   const [peaks, setPeaks] = useState<Record<string, Peaks>>({});
   const peaksRequested = useRef(new Set<string>());
   const [input, setInput] = useState<InputStatus | null>(null);
+  const [sheetAll, setSheetAll] = useState(false);
+  const [sheetXml, setSheetXml] = useState<string | null>(null);
+  const [sheetZoom, setSheetZoom] = useState(0.8);
   // Computer keys currently held, and the note each one started.
   const heldKeys = useRef(new Map<string, number>());
   // Latest view for callbacks that must not re-subscribe on every edit.
@@ -186,6 +191,19 @@ export default function App({ backend }: AppProps) {
   const isDrums = selectedTrack?.instrument.kind === "drums";
   const isAudioTrack = selectedTrack?.instrument.kind === "audio";
   const missingAudio = useMemo(() => new Set(view?.missing_audio ?? []), [view?.missing_audio]);
+
+  // The sheet music view follows the song while it is open.
+  const sheetTrackId = sheetAll ? null : (selectedTrack?.id ?? null);
+  useEffect(() => {
+    if (tab !== "sheet" || !project) return;
+    const timer = window.setTimeout(() => {
+      backend
+        .sheetMusic(sheetTrackId === null ? null : [sheetTrackId])
+        .then(setSheetXml)
+        .catch((e) => setError(String(e)));
+    }, SHEET_REFRESH_MS);
+    return () => window.clearTimeout(timer);
+  }, [backend, tab, project, sheetTrackId]);
   const typingBase = isDrums ? DRUM_BASE_NOTE : baseNote;
   const recording = transport?.recording ?? false;
 
@@ -244,14 +262,20 @@ export default function App({ backend }: AppProps) {
   const importFiles = useCallback(
     async (paths: string[], trackId: number | null, beats: number) => {
       const ext = (p: string) => p.split(".").pop()?.toLowerCase() ?? "";
-      const usable = paths.filter((p) => AUDIO_EXTENSIONS.includes(ext(p)) || MIDI_EXTENSIONS.includes(ext(p)));
+      const usable = paths.filter((p) =>
+        [...AUDIO_EXTENSIONS, ...MIDI_EXTENSIONS, ...MUSICXML_EXTENSIONS].includes(ext(p)),
+      );
       if (usable.length < paths.length) {
-        setError("Only audio files (WAV, MP3, M4A, FLAC, OGG) and MIDI files can be imported");
+        setError("Only audio (WAV, MP3, M4A, FLAC, OGG), MIDI, and sheet music (MusicXML) files can be imported");
       }
       let latest: Project | undefined;
       for (const path of usable) {
         const v = await run(() =>
-          MIDI_EXTENSIONS.includes(ext(path)) ? backend.importMidi(path) : backend.importAudio(path, trackId, beats),
+          MIDI_EXTENSIONS.includes(ext(path))
+            ? backend.importMidi(path)
+            : MUSICXML_EXTENSIONS.includes(ext(path))
+              ? backend.importMusicXml(path)
+              : backend.importAudio(path, trackId, beats),
         );
         if (!v) break;
         latest = applyView(v);
@@ -277,7 +301,13 @@ export default function App({ backend }: AppProps) {
       const path = await run(() => backend.pickExportPath(kind, name));
       if (!path) return;
       setToast(`Exporting ${path.split(/[\\/]/).pop()}…`);
-      const done = await run(() => (kind === "wav" ? backend.exportWav(path) : backend.exportMidi(path)));
+      const done = await run(() =>
+        kind === "wav"
+          ? backend.exportWav(path)
+          : kind === "mid"
+            ? backend.exportMidi(path)
+            : backend.exportMusicXml(path, null),
+      );
       setToast(done === undefined ? null : `Exported ${path.split(/[\\/]/).pop()}`);
       window.setTimeout(() => setToast(null), TOAST_MS);
     },
@@ -641,6 +671,9 @@ export default function App({ backend }: AppProps) {
                 <button role="menuitem" onClick={() => void exportAs("mid")}>
                   MIDI file…
                 </button>
+                <button role="menuitem" onClick={() => void exportAs("musicxml")}>
+                  Sheet music (MusicXML)…
+                </button>
               </div>
             )}
           </div>
@@ -792,6 +825,7 @@ export default function App({ backend }: AppProps) {
             [
               ["instrument", `${isAudioTrack ? "Audio" : "Instrument"} · ${selectedTrack.name}`],
               ["pianoroll", selectedClip && !selectedClip.audio ? `Piano roll · ${selectedClip.name}` : "Piano roll"],
+              ["sheet", "Sheet music"],
               ["mixer", "Mixer"],
             ] as [Tab, string][]
           ).map(([id, label]) => (
@@ -888,6 +922,37 @@ export default function App({ backend }: AppProps) {
                 new clip. You can also press <kbd>R</kbd> to record what you play.
               </p>
             ))}
+
+          {tab === "sheet" && (
+            <div className="sheet-tab">
+              <div className="roll-toolbar">
+                <div className="button-group" role="group" aria-label="Which tracks">
+                  <button className={sheetAll ? "small" : "small toggle on"} onClick={() => setSheetAll(false)}>
+                    {selectedTrack.name}
+                  </button>
+                  <button className={sheetAll ? "small toggle on" : "small"} onClick={() => setSheetAll(true)}>
+                    All tracks
+                  </button>
+                </div>
+                <span className="muted">Notes are shown on a sixteenth-note grid.</span>
+                <span className="spacer" />
+                <button className="small" onClick={() => void exportAs("musicxml")} title="Save for MuseScore and other notation apps">
+                  Export MusicXML…
+                </button>
+                <button className="small" onClick={() => setSheetZoom((z) => Math.max(0.4, z / 1.2))} title="Zoom out">
+                  −
+                </button>
+                <button className="small" onClick={() => setSheetZoom((z) => Math.min(2, z * 1.2))} title="Zoom in">
+                  +
+                </button>
+              </div>
+              {!sheetAll && isAudioTrack ? (
+                <p className="empty-state">Audio tracks have no notes to show. Pick an instrument track or All tracks.</p>
+              ) : (
+                <SheetMusic xml={sheetXml} zoom={sheetZoom} />
+              )}
+            </div>
+          )}
 
           {tab === "mixer" && (
             <Mixer

@@ -97,6 +97,40 @@ pub fn import_midi_file<H: Host>(host: &H, path: &Path) -> Result<Vec<TrackId>, 
     import_song(host, song)
 }
 
+/// Reads a MusicXML score (`.musicxml`, `.xml`, or compressed `.mxl`)
+/// into the song as new tracks.
+pub fn import_musicxml_file<H: Host>(host: &H, path: &Path) -> Result<Vec<TrackId>, String> {
+    let bytes =
+        std::fs::read(path).map_err(|e| format!("could not read {}: {e}", path.display()))?;
+    let song = daw_notation::musicxml::import_musicxml_bytes(&bytes).map_err(|e| e.to_string())?;
+    import_song(host, song)
+}
+
+/// Reads MusicXML text (for example written by Claude from a photo of
+/// sheet music) into the song as new tracks.
+pub fn import_musicxml_text<H: Host>(host: &H, xml: &str) -> Result<Vec<TrackId>, String> {
+    let song = daw_notation::musicxml::import_musicxml(xml).map_err(|e| e.to_string())?;
+    import_song(host, song)
+}
+
+/// The song (or some tracks) as MusicXML text.
+pub fn sheet_music<H: Host>(host: &H, track_ids: Option<&[TrackId]>) -> Result<String, String> {
+    Ok(daw_notation::musicxml::export_musicxml(
+        host.session()?.project(),
+        track_ids,
+    ))
+}
+
+/// Writes the song (or some tracks) as a MusicXML file.
+pub fn export_musicxml_file<H: Host>(
+    host: &H,
+    path: &Path,
+    track_ids: Option<&[TrackId]>,
+) -> Result<(), String> {
+    let xml = sheet_music(host, track_ids)?;
+    std::fs::write(path, xml).map_err(|e| format!("could not write {}: {e}", path.display()))
+}
+
 /// Writes the song's instrument tracks as a `.mid` file.
 pub fn export_midi_file<H: Host>(host: &H, path: &Path) -> Result<(), String> {
     let bytes = daw_notation::midi::export_midi(host.session()?.project());

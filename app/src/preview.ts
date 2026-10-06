@@ -534,6 +534,20 @@ export function createPreviewBackend(): PreviewBackend {
     pickExportPath: async () => null,
     exportWav: noop,
     exportMidi: noop,
+    importMusicXml: async (path) => {
+      throw new Error(`Opening sheet music needs the desktop app (${path})`);
+    },
+    exportMusicXml: noop,
+    // A one-bar score per track, so the view has something to draw.
+    sheetMusic: async (trackIds) => {
+      const tracks = project.tracks.filter((t) => t.instrument.kind !== "audio" && (!trackIds || trackIds.includes(t.id)));
+      const parts = tracks.map((t, i) => `<score-part id="P${i + 1}"><part-name>${t.name}</part-name></score-part>`);
+      const bodies = tracks.map(
+        (_, i) =>
+          `<part id="P${i + 1}"><measure number="1"><attributes><divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes><note><rest measure="yes"/><duration>16</duration></note></measure></part>`,
+      );
+      return `<?xml version="1.0"?><score-partwise version="4.0"><part-list>${parts.join("")}</part-list>${bodies.join("")}</score-partwise>`;
+    },
     audioPeaks: async (): Promise<Peaks> => {
       const perSecond = 200;
       const minMax: number[] = [];

@@ -284,7 +284,7 @@ describe("Audio", () => {
 
   it("refuses files that aren't audio", async () => {
     await dropRecording(createPreviewBackend(), "C:\\Docs\\notes.txt");
-    expect((await screen.findByRole("alert")).textContent).toContain("Only audio files");
+    expect((await screen.findByRole("alert")).textContent).toContain("can be imported");
     expect(document.querySelector(".clip.audio")).toBeNull();
   });
 
@@ -347,6 +347,28 @@ describe("Import and export", () => {
     expect(backend.pickExportPath).toHaveBeenCalledWith("mid", "Untitled");
     expect(backend.exportMidi).toHaveBeenCalledWith("C:\\Music\\song.mid");
     expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("shows sheet music for the selected track or all tracks", async () => {
+    const backend = createPreviewBackend();
+    vi.spyOn(backend, "sheetMusic");
+    await renderApp(backend);
+    fireEvent.click(screen.getByRole("tab", { name: "Sheet music" }));
+    await waitFor(() => expect(backend.sheetMusic).toHaveBeenCalledWith([1]));
+    fireEvent.click(screen.getByRole("button", { name: "All tracks" }));
+    await waitFor(() => expect(backend.sheetMusic).toHaveBeenCalledWith(null));
+    expect(screen.getByLabelText("Sheet music")).toBeTruthy();
+  });
+
+  it("routes dropped sheet music to the MusicXML importer", async () => {
+    const backend = createPreviewBackend();
+    vi.spyOn(backend, "importMusicXml").mockImplementation(() => backend.getProject());
+    await renderApp(backend);
+    await act(async () => {
+      backend.simulateFileDrop(["C:\\Scores\\menu theme.mxl"], 10, 10);
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(backend.importMusicXml).toHaveBeenCalledWith("C:\\Scores\\menu theme.mxl");
   });
 
   it("routes dropped MIDI files to the MIDI importer", async () => {

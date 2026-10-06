@@ -302,6 +302,30 @@ fn extra_tools() -> Vec<ToolDef> {
             false,
         ),
         tool(
+            "import_musicxml",
+            "Turn sheet music into tracks. Give either the path of a MusicXML file (.musicxml, .xml, or compressed .mxl, as saved by MuseScore and most notation apps) or MusicXML text in `xml`. To import a photo or PDF of printed music: read the notes from the image yourself, write them as a partwise MusicXML score (one <part> per instrument; include divisions, time signature, and <sound tempo>), and pass it as `xml`; check the result with get_clip. Each part becomes a new track; an empty song also takes the tempo and meter. One undo step.",
+            object_schema(
+                json!({
+                    "path": { "type": "string", "description": "Absolute path of a .musicxml, .xml, or .mxl file." },
+                    "xml": { "type": "string", "description": "A complete MusicXML partwise score, as text." }
+                }),
+                &[],
+            ),
+            false,
+        ),
+        tool(
+            "export_musicxml",
+            "Write the song as sheet music (MusicXML 4.0) for MuseScore or other notation apps. Notes are snapped to sixteenths. With `path`, writes a file; without, returns the MusicXML text.",
+            object_schema(
+                json!({
+                    "path": { "type": "string", "description": "Absolute path ending in .musicxml (optional)." },
+                    "track_ids": { "type": "array", "items": { "type": "integer" }, "description": "Only these tracks (default: every instrument track)." }
+                }),
+                &[],
+            ),
+            false,
+        ),
+        tool(
             "stop_recording",
             "Stop recording audio. The take becomes a clip on the track, lined up with the beat the user heard while playing.",
             object_schema(json!({}), &[]),
@@ -383,6 +407,20 @@ pub fn to_request(name: &str, args: Map<String, Value>) -> Result<Request, Strin
         "stop_recording" => Request::StopRecording,
         "import_midi" => Request::ImportMidi {
             path: get_str("path").ok_or("path is required")?,
+        },
+        "import_musicxml" => Request::ImportMusicXml {
+            path: get_str("path"),
+            xml: get_str("xml"),
+        },
+        "export_musicxml" => Request::ExportMusicXml {
+            path: get_str("path"),
+            track_ids: args
+                .get("track_ids")
+                .map(|v| {
+                    serde_json::from_value::<Vec<u32>>(v.clone())
+                        .map_err(|_| "track_ids must be a list of track ids".to_owned())
+                })
+                .transpose()?,
         },
         "export_midi" => Request::ExportMidi {
             path: get_str("path").ok_or("path is required")?,

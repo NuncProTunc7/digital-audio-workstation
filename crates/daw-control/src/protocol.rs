@@ -79,6 +79,16 @@ pub enum Request {
     ExportMidi {
         path: String,
     },
+    /// Read sheet music into new tracks, from a file or from MusicXML text.
+    ImportMusicXml {
+        path: Option<String>,
+        xml: Option<String>,
+    },
+    /// The song (or some tracks) as MusicXML; written to `path` if given.
+    ExportMusicXml {
+        path: Option<String>,
+        track_ids: Option<Vec<TrackId>>,
+    },
 }
 
 /// Reply to a [`Request`].

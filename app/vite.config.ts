@@ -13,6 +13,9 @@ export default defineConfig({
   },
   build: {
     target: "es2022",
+    // The sheet music renderer (~1.4 MB) is its own chunk, loaded only when
+    // the Sheet music tab opens; a desktop app reads it from disk.
+    chunkSizeWarningLimit: 2000,
   },
   test: {
     environment: "jsdom",

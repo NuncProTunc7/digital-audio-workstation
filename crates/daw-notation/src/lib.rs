@@ -9,8 +9,9 @@
 //! quarter notes, so conversions go through [`quarters_per_beat`].
 
 pub mod midi;
+pub mod musicxml;
 
-use daw_model::{NoteInput, TimeSignature};
+use daw_model::{NoteInput, TimeSignature, Track};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -57,4 +58,26 @@ pub fn quarters_per_beat(ts: TimeSignature) -> f64 {
 /// Rounds a length up to whole bars (at least one).
 pub(crate) fn whole_bars(beats: f64, beats_per_bar: f64) -> f64 {
     ((beats / beats_per_bar - 1e-9).ceil()).max(1.0) * beats_per_bar
+}
+
+/// Every note a track plays, cut at clip ends (as the engine plays them):
+/// `(start_beats, end_beats, pitch, velocity)` from the song start.
+pub(crate) fn played_notes(track: &Track) -> Vec<(f64, f64, u8, u8)> {
+    let mut out = Vec::new();
+    for clip in &track.clips {
+        let end = clip.start_beats + clip.length_beats;
+        for n in &clip.notes {
+            if n.start_beats >= clip.length_beats {
+                continue;
+            }
+            let start = clip.start_beats + n.start_beats;
+            out.push((
+                start,
+                (start + n.length_beats).min(end),
+                n.pitch,
+                n.velocity,
+            ));
+        }
+    }
+    out
 }

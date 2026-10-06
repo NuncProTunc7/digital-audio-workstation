@@ -2,11 +2,13 @@
 
 use std::collections::BTreeMap;
 
-use daw_model::{InstrumentKind, MIN_LENGTH_BEATS, NoteInput, Project, TimeSignature, Track};
+use daw_model::{InstrumentKind, MIN_LENGTH_BEATS, NoteInput, Project, TimeSignature};
 use midly::num::{u4, u7, u15, u24, u28};
 use midly::{Format, Header, MetaMessage, MidiMessage, Smf, Timing, TrackEvent, TrackEventKind};
 
-use crate::{ImportedPart, ImportedSong, NotationError, quarters_per_beat, whole_bars};
+use crate::{
+    ImportedPart, ImportedSong, NotationError, played_notes, quarters_per_beat, whole_bars,
+};
 
 /// Ticks per quarter note in exported files.
 const PPQ: u16 = 480;
@@ -35,7 +37,7 @@ fn gm_program(preset: &str) -> u8 {
 }
 
 /// Our synth preset closest to a General MIDI program.
-fn preset_for_program(program: u8) -> &'static str {
+pub(crate) fn preset_for_program(program: u8) -> &'static str {
     match program {
         32..=39 => "Fat Bass",
         80 => "Chip Square",
@@ -54,28 +56,6 @@ struct Timed {
     on: bool,
     key: u8,
     velocity: u8,
-}
-
-/// Every note a track plays, cut at clip ends (as the engine plays them),
-/// in beats from the song start.
-fn played_notes(track: &Track) -> Vec<(f64, f64, u8, u8)> {
-    let mut out = Vec::new();
-    for clip in &track.clips {
-        let end = clip.start_beats + clip.length_beats;
-        for n in &clip.notes {
-            if n.start_beats >= clip.length_beats {
-                continue;
-            }
-            let start = clip.start_beats + n.start_beats;
-            out.push((
-                start,
-                (start + n.length_beats).min(end),
-                n.pitch,
-                n.velocity,
-            ));
-        }
-    }
-    out
 }
 
 /// The song as a type-1 MIDI file: a tempo track, then one track per
