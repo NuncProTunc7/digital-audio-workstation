@@ -39,7 +39,7 @@
 | Plugins (later) | **CLAP first, then VST3** | Both are open (CLAP: MIT; VST3: MIT since SDK 3.8, Oct 2025). |
 | Internal audio format | 32-bit float, 48 kHz default, stereo buses | Industry norm; matches Godot's mixer. |
 | Tempo convention | BPM counts the time signature's beat (quarter notes in 4/4, eighth notes in 6/8); the metronome clicks every beat | Simple and predictable; revisit if compound-meter users want dotted-quarter clicks. |
-| Project file | One JSON file, `MySong.nptune` (versioned, validated on load). Recorded audio (Phase 4) goes in a `MySong Audio/` folder beside it | Human-readable, diff-able, easy for Claude to inspect; a single file is simpler to open, save, and email than a folder. *Changed in Phase 2 from a `.daw` folder — owner to confirm.* |
+| Project file | One JSON file, `MySong.nptune` (versioned, validated on load). Recorded audio (Phase 4) goes in a `MySong Audio/` folder beside it | Human-readable, diff-able, easy for Claude to inspect; a single file is simpler to open, save, and email than a folder. Changed in Phase 2 from a `.daw` folder; owner approved. |
 
 ## 3. Architecture
 
@@ -143,22 +143,31 @@ The exact Godot `.import` and `.tres` formats must be verified against the Godot
 
 ## 7. Claude control (MCP)
 
-**Setup:** the installer includes `daw-mcp.exe`. One line in Claude Desktop's config or `claude mcp add daw <path>` in Claude Code. The DAW must be running; the bridge connects to it automatically.
+**Built (Phase 3).** How it fits together:
+
+- The app runs a **control server** (`daw-control`) on `127.0.0.1` at a random port. It writes the port and a random 64-character token to `control.json` in the app data folder (`%APPDATA%\io.github.nuncprotunc7.nuncprotune\` on Windows), and deletes it on exit.
+- The installer ships **`npt-mcp.exe`** (`daw-mcp`), a stdio MCP server. Claude Desktop or Claude Code starts it; on every tool call it reads `control.json` and forwards the request. If the app isn't open, the tool says so in plain words.
+- **Setup:** the app's **Claude** button (status bar) adds the bridge to Claude Desktop's config in one click (backing up the old file), and shows the `claude mcp add --scope user nunc-pro-tune -- "<path>"` line for Claude Code.
+- **Tools are generated from the Command schema**, so every project edit the UI can make, Claude can make, with the same validation and undo. `batch` applies many Commands as one all-or-nothing undo step. Extra tools: `get_song`, `get_track`, `get_clip`, `describe_instruments`, `undo`, `redo`, `play`, `stop`, `locate`, `set_metronome`, `transport_status`, `analyze_mix`, `export_wav`, `save_project`, `open_project`, `new_project`.
+- **Claude's ears** (`daw-analysis`): `analyze_mix` renders offline and reports integrated/short-term LUFS (EBU R128), true peak, RMS, crest, stereo correlation, six frequency-band shares, per-track levels and plain-language hints, plus an optional spectrogram image.
+- The app refreshes when Claude changes something, shows a toast, and lists recent Claude actions in the Claude panel.
+
+Planned tool groups (✅ = built; the rest arrive with their phase):
 
 **Tool groups (generated from Commands):**
 
 | Group | Example tools |
 |---|---|
-| Session | `get_project_state`, `new_project`, `open_project`, `save_project`, `set_tempo`, `set_time_signature`, `set_key` |
-| Tracks | `add_track`, `remove_track`, `rename_track`, `set_instrument`, `load_preset` |
-| Notes | `create_clip`, `add_notes`, `edit_notes`, `quantize`, `transpose`, `humanize` |
+| Session | ✅ `get_song`, `new_project`, `open_project`, `save_project`, `set_tempo`, `set_time_signature`, `batch`, `undo`, `redo`; later `set_key` |
+| Tracks | ✅ `get_track`, `add_track`, `remove_track`, `rename_track`, `move_track`, `set_instrument`, `load_preset`, `set_instrument_param` |
+| Notes | ✅ `get_clip`, `create_clip`, `add_notes`, `edit_notes`, `remove_notes`, `quantize_notes`, `transpose_notes`, clip move/resize/duplicate; later `humanize` |
 | Audio | `import_audio`, `arm_track`, `record`, `trim`, `split`, `fade`, `time_stretch` (later) |
-| Mixer | `set_volume`, `set_pan`, `add_effect`, `set_effect_param`, `add_send`, `automate` |
-| Transport | `play`, `stop`, `set_loop_region`, `set_playhead` |
+| Mixer | ✅ `set_track_mixer`, `set_master_volume`, `add_effect`, `set_effect_param`, `set_effect_enabled`; later `add_send`, `automate` |
+| Transport | ✅ `play`, `stop`, `locate`, `set_loop`, `set_metronome`, `transport_status` |
 | Notation | `import_musicxml`, `export_musicxml`, `import_midi`, `export_midi` |
-| Analysis ("Claude's ears") | `render_and_analyze` → LUFS, peak, clipping, spectrum balance, per-track levels |
-| Export | `export_mix`, `export_stems`, `export_godot` |
-| Sound design | `list_presets`, `describe_instrument_params`, `save_preset` |
+| Analysis ("Claude's ears") | ✅ `analyze_mix` → LUFS, true peak, spectrum balance, stereo, per-track levels, hints, spectrogram |
+| Export | ✅ `export_wav`; later `export_stems`, `export_godot` |
+| Sound design | ✅ `describe_instruments` (params, presets, drum pads, effects); later `save_preset` |
 
 **Safety:** the control server listens on localhost only, needs a token stored in the user's app data folder, and every AI edit is undoable.
 
@@ -171,8 +180,8 @@ Each phase ends with a Windows installer you can download from GitHub Actions an
 | **0. Skeleton** ✅ | Rust workspace, Tauri app opens, CI builds a Windows installer, headless render test | Install and open an empty app |
 | **1. Make sound** ✅ | Audio device selection (WASAPI), play/stop transport, metronome, Synth (keys, pads, leads, basses) and Drum machine instruments with presets, **on-screen piano + computer-keyboard playing + clickable drum pads**, MIDI keyboard input | Play the Keys, Bass, and Drums tracks with your mouse, computer keyboard, or a MIDI keyboard; shape sounds with presets and sliders |
 | **2. Arrange** ✅ | Timeline with clips (create, move between tracks, resize, duplicate, delete), loop region, **recording what you play into clips**, piano roll (add/move/resize notes, quantize, transpose, velocity), add/rename/delete tracks, mixer (volume, pan, mute, solo, 7 effects per track and on the master), save/open/new project files, `npt render` to WAV | Record and write a full instrumental track |
-| **3. Claude** | Control server, MCP bridge, full tool list, analysis tools | Ask Claude to build or remix a track |
-| **4. Record** | Audio input recording, latency compensation, audio clip editing, import audio files | Record guitar/vocals and mix them in |
+| **3. Claude** ✅ | Control server, MCP bridge, full tool list, analysis tools | Ask Claude to build or remix a track |
+| **4. Record** | Audio input recording, latency compensation, audio clip editing, import audio files (including phone recordings: m4a/AAC, mp3, wav) | Record guitar/vocals and mix them in |
 | **5. Godot + notation** | Loop/stem/adaptive export, MusicXML/MIDI import-export, notation view | Drop music straight into your game; turn sheet music into tracks |
 | **6. Expand** | ASIO for audio interfaces, CLAP then VST3 hosting, multi-input recording, sampled piano/bass packs, automation lanes, time-stretch | Use outside plugins, record a band |
 

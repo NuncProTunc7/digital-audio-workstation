@@ -2,7 +2,7 @@
 
 A free, open-source DAW for making game music — record real instruments, compose with built-in synths, drums, bass, and keys, read and write sheet music, and export straight into Godot. Claude Desktop and Claude Code can control every part of it through MCP.
 
-**Status:** Phase 2 (arrange). Write songs on a timeline with clips, record what you play, edit notes in a piano roll, mix with volume, pan, mute/solo and seven effects, loop a region, and save/open `.nptune` project files. Built-in Keys, Bass, and Drums play from the on-screen piano, your computer keyboard, drum pads, or a MIDI keyboard. See [`docs/PLAN.md`](docs/PLAN.md) for the roadmap.
+**Status:** Phase 3 (Claude). Claude can now build, edit, play, listen to, and export your songs through MCP. Before that: write songs on a timeline with clips, record what you play, edit notes in a piano roll, mix with volume, pan, mute/solo and seven effects, loop a region, and save/open `.nptune` project files. Built-in Keys, Bass, and Drums play from the on-screen piano, your computer keyboard, drum pads, or a MIDI keyboard. See [`docs/PLAN.md`](docs/PLAN.md) for the roadmap.
 
 ## Try it on Windows
 
@@ -13,6 +13,25 @@ A free, open-source DAW for making game music — record real instruments, compo
 ## Try the demo song
 
 In the app, click **Open** and choose `examples/Demo Groove.nptune` from this repository (download it from GitHub first). It has chords, a bass line, and a beat on a 4-bar loop.
+
+## Connect Claude
+
+Keep Nunc Pro Tune open while Claude works: Claude talks to the running app, and you see every change as it happens. Everything Claude does can be undone with **Ctrl+Z**.
+
+**Claude Desktop:** click **Claude** in the app's bottom-right corner, then **Set up Claude Desktop**. Quit Claude Desktop completely (right-click its tray icon → Quit) and reopen it. `nunc-pro-tune` appears in its tools menu.
+
+**Claude Code:** click **Claude** in the app, copy the command shown under *Claude Code*, and run it once in a terminal. It looks like:
+
+```
+claude mcp add --scope user nunc-pro-tune -- "C:\Users\you\AppData\Local\Nunc Pro Tune\npt-mcp.exe"
+```
+
+Things to ask:
+
+- "Make a 16-bar chiptune battle loop at 150 BPM with lead, bass and drums."
+- "Listen to my mix and tell me what to fix."
+- "Make the bass punchier and add some reverb to the keys."
+- "Export the song as a WAV to my Godot project's music folder."
 
 ## Build from source
 

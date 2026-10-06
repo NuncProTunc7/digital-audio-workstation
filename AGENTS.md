@@ -16,7 +16,7 @@ Instructions for AI coding agents (Claude Code and others) working in this repos
 
 ## Stack
 
-- Rust workspace in `crates/`: `daw-model` (project, tracks/clips/notes, mixer, Commands, instrument and effect catalogs, `.nptune` file format), `daw-dsp` (oscillators, filters, biquads, envelopes), `daw-instruments` (Synth, DrumMachine), `daw-effects` (EQ, compressor, reverb, delay, chorus, distortion, limiter), `daw-engine` (real-time processor with clip sequencer, mixer, loop, recording capture; Engine handle; sound card; MIDI input; offline render), `daw-cli` (`npt` headless tool).
+- Rust workspace in `crates/`: `daw-model` (project, tracks/clips/notes, mixer, Commands, instrument and effect catalogs, `.nptune` file format), `daw-dsp` (oscillators, filters, biquads, envelopes), `daw-instruments` (Synth, DrumMachine), `daw-effects` (EQ, compressor, reverb, delay, chorus, distortion, limiter), `daw-engine` (real-time processor with clip sequencer, mixer, loop, recording capture; Engine handle; sound card; MIDI input; offline render), `daw-analysis` (loudness, true peak, spectrum, hints, spectrogram for Claude's ears), `daw-control` (localhost control server the app runs, its client, the request protocol, Claude Desktop/Code setup), `daw-mcp` (`npt-mcp` stdio MCP bridge; tools are generated from the Command schema), `daw-cli` (`npt` headless tool).
 - Tauri 2 app in `app/`: `app/src/` is the React + TypeScript + Vite UI, `app/src-tauri/` is the Rust shell.
 - In a plain browser (`npm --prefix app run dev`), the UI uses an in-memory preview backend (`app/src/backend.ts`) so it can be developed without the engine.
 - Audio I/O: cpal (WASAPI; ASIO in Phase 6). MIDI: midir. MCP: rmcp.
@@ -41,13 +41,17 @@ cargo run -p daw-cli -- instruments          # instrument parameters, presets, d
 cargo run -p daw-cli -- render-demo --out demo.wav   # demo song rendered to WAV
 cargo run -p daw-cli -- demo-project --out demo.nptune   # demo song as a project file
 cargo run -p daw-cli -- render --project song.nptune --out song.wav   # any project to WAV
+cargo run -p daw-analysis --example analyze_file -- song.nptune   # loudness/spectrum report
+cargo build --release -p daw-mcp && npm --prefix app run tauri build -- --config src-tauri/tauri.installer.conf.json   # installer with the Claude bridge
 ```
+
+Claude connects through `npt-mcp`: run the app, then point Claude at the bridge (`claude mcp add --scope user nunc-pro-tune -- "<path to npt-mcp>"`, or the app's **Claude** button for Claude Desktop). `NPT_CONTROL_FILE` overrides where the app writes, and the bridge reads, the control discovery file.
 
 Dev builds optimize the audio crates (see `[profile.dev.package.*]` in `Cargo.toml`); unoptimized DSP cannot keep up in real time.
 
 Linux builds need: `libwebkit2gtk-4.1-dev libasound2-dev libgtk-3-dev librsvg2-dev libayatana-appindicator3-dev libxdo-dev`.
 
-CI (`.github/workflows/ci.yml`) runs all checks on Linux and builds the Windows installer, uploaded as the `nunc-pro-tune-windows-installer` artifact.
+CI (`.github/workflows/ci.yml`) runs all checks on Linux and builds the Windows installer (with `npt-mcp.exe` bundled), uploaded as the `nunc-pro-tune-windows-installer` artifact.
 
 ## Rules
 
@@ -68,7 +72,8 @@ Use lock-free queues (`rtrb`) to talk to the audio thread. Pre-allocate buffers.
 - Instrument parameters and presets are data in `daw-model/src/instrument.rs` (append-only order: the index is the engine's parameter id). The DSP in `daw-instruments` matches on parameter ids. Effect parameters likewise live in `daw-model/src/effect.rs`, with DSP in `daw-effects`. After changing any of these, regenerate the UI copy: `cargo run -p daw-cli -- instruments > app/src/generated/instruments.json` (a test fails if you forget).
 - The browser preview backend (`app/src/preview.ts`) mirrors Commands loosely so UI tests can run without Rust. When adding a Command, add a case there too.
 - Each Command: `serde` + `schemars` derive, a doc comment (it becomes the MCP tool description Claude reads), `apply`, and `undo`.
-- Adding a UI feature without a Command is a bug. The MCP tool list is generated from Commands; do not hand-write MCP tools that bypass them.
+- Adding a UI feature without a Command is a bug. The MCP tool list is generated from Commands; do not hand-write MCP tools that bypass them. Read-only and live-action tools (summaries, transport, analysis, files) live in `daw-control`'s `Request` and `daw-mcp/src/tools.rs`.
+- A Command's doc comment is what Claude reads to decide how to use it: say what it does, units, ranges, and what happens on errors.
 
 ### 3. Tests
 - New DSP or instrument code: add a headless render test (no NaN/inf, no clipping beyond expectations, deterministic output).
