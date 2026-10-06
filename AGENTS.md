@@ -16,7 +16,7 @@ Instructions for AI coding agents (Claude Code and others) working in this repos
 
 ## Stack
 
-- Rust workspace in `crates/`: `daw-model` (project, tracks/clips/notes, mixer, Commands, instrument and effect catalogs, `.nptune` file format), `daw-dsp` (oscillators, filters, biquads, envelopes), `daw-instruments` (Synth, DrumMachine), `daw-effects` (EQ, compressor, reverb, delay, chorus, distortion, limiter), `daw-engine` (real-time processor with clip sequencer, mixer, loop, recording capture; Engine handle; sound card; MIDI input; offline render), `daw-analysis` (loudness, true peak, spectrum, hints, spectrogram for Claude's ears), `daw-control` (localhost control server the app runs, its client, the request protocol, Claude Desktop/Code setup), `daw-mcp` (`npt-mcp` stdio MCP bridge; tools are generated from the Command schema), `daw-cli` (`npt` headless tool).
+- Rust workspace in `crates/`: `daw-model` (project, tracks/clips/notes, mixer, Commands, instrument and effect catalogs, `.nptune` file format), `daw-dsp` (oscillators, filters, biquads, envelopes), `daw-instruments` (Synth, DrumMachine), `daw-effects` (EQ, compressor, reverb, delay, chorus, distortion, limiter), `daw-audio` (decode wav/mp3/m4a/flac/ogg with symphonia, resample with rubato, float WAV files, waveform peaks, `AudioPool` = the project's audio folder), `daw-engine` (real-time processor with clip sequencer, audio clip playback, mixer, loop, note and microphone capture; Engine handle; sound card in and out; MIDI input; offline render), `daw-analysis` (loudness, true peak, spectrum, hints, spectrogram for Claude's ears), `daw-control` (localhost control server the app runs, its client, the request protocol, Claude Desktop/Code setup), `daw-mcp` (`npt-mcp` stdio MCP bridge; tools are generated from the Command schema), `daw-cli` (`npt` headless tool).
 - Tauri 2 app in `app/`: `app/src/` is the React + TypeScript + Vite UI, `app/src-tauri/` is the Rust shell.
 - In a plain browser (`npm --prefix app run dev`), the UI uses an in-memory preview backend (`app/src/backend.ts`) so it can be developed without the engine.
 - Audio I/O: cpal (WASAPI; ASIO in Phase 6). MIDI: midir. MCP: rmcp.
@@ -42,6 +42,7 @@ cargo run -p daw-cli -- render-demo --out demo.wav   # demo song rendered to WAV
 cargo run -p daw-cli -- demo-project --out demo.nptune   # demo song as a project file
 cargo run -p daw-cli -- render --project song.nptune --out song.wav   # any project to WAV
 cargo run -p daw-analysis --example analyze_file -- song.nptune   # loudness/spectrum report
+cargo test -p daw-audio                      # decoder tests against tests/fixtures (phone formats)
 cargo build --release -p daw-mcp && npm --prefix app run tauri build -- --config src-tauri/tauri.installer.conf.json   # installer with the Claude bridge
 ```
 
@@ -64,11 +65,15 @@ Code reachable from the audio callback must **never**:
 
 Use lock-free queues (`rtrb`) to talk to the audio thread. Pre-allocate buffers. Free old graphs off-thread. Mark real-time functions with a `// RT-SAFE` comment.
 
+The microphone callback follows the same rules: it only converts, meters, and pushes into a ring; files are written by the recorder's thread. Audio buffers reach the audio thread inside `Arc`s held by sequences, so they are freed when the old sequence comes back as garbage.
+
 ### 2. Commands are the only way to change a project
 - All edits — from UI, shortcuts, or MCP — go through a `Command` in `daw-model`.
 - Live actions (notes, play/stop, metronome, device choice) are not project edits: they go straight to the `Engine` and are not undoable. Don't use them to change saved state.
 - Every Command's `apply` returns its exact inverse. Removals return a `Restore*` Command carrying the full object (with ids), so undo/redo keeps ids stable. Commands that a drag repeats (sliders, clip moves, note edits) must be listed in `Command::coalesces_with` so a drag is one undo step; the UI calls `end_gesture` when the drag ends.
 - Ids (`Id`) are allocated from `Project::next_id` and never reused within a project.
+- Commands stay pure: no file or device access. Work with side effects (decoding an imported file, recording) happens in `daw-control` (`import_audio`, `begin_take`/`end_take`), which then applies an ordinary Command such as `AddAudioClip`, so undo and Claude see one path.
+- Audio file names in a project are plain names inside its `<Song> Audio` folder, never paths (`check_file_name`).
 - Instrument parameters and presets are data in `daw-model/src/instrument.rs` (append-only order: the index is the engine's parameter id). The DSP in `daw-instruments` matches on parameter ids. Effect parameters likewise live in `daw-model/src/effect.rs`, with DSP in `daw-effects`. After changing any of these, regenerate the UI copy: `cargo run -p daw-cli -- instruments > app/src/generated/instruments.json` (a test fails if you forget).
 - The browser preview backend (`app/src/preview.ts`) mirrors Commands loosely so UI tests can run without Rust. When adding a Command, add a case there too.
 - Each Command: `serde` + `schemars` derive, a doc comment (it becomes the MCP tool description Claude reads), `apply`, and `undo`.

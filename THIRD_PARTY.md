@@ -20,4 +20,8 @@ These public designs were implemented from scratch; listed for credit.
 | PolyBLEP anti-aliasing | Published DSP literature | Equations only | `crates/daw-dsp/src/oscillator.rs` |
 
 Rust and npm dependencies are listed in `Cargo.lock` and `app/package-lock.json`
-and keep their own licenses.
+and keep their own licenses. Notable: symphonia (MPL-2.0, GPL-compatible) for
+decoding audio files, rubato (MIT/Apache-2.0) for resampling.
+
+Test audio in `crates/daw-audio/tests/fixtures/` was generated for this project
+(CC0).

@@ -2,7 +2,7 @@
 
 A free, open-source DAW for making game music — record real instruments, compose with built-in synths, drums, bass, and keys, read and write sheet music, and export straight into Godot. Claude Desktop and Claude Code can control every part of it through MCP.
 
-**Status:** Phase 3 (Claude). Claude can now build, edit, play, listen to, and export your songs through MCP. Before that: write songs on a timeline with clips, record what you play, edit notes in a piano roll, mix with volume, pan, mute/solo and seven effects, loop a region, and save/open `.nptune` project files. Built-in Keys, Bass, and Drums play from the on-screen piano, your computer keyboard, drum pads, or a MIDI keyboard. See [`docs/PLAN.md`](docs/PLAN.md) for the roadmap.
+**Status:** Phase 4 (record). Record your voice or an instrument, or bring in recordings from your phone, and mix them with the built-in instruments. Claude can build, edit, play, listen to, and export your songs through MCP. Before that: write songs on a timeline with clips, record what you play, edit notes in a piano roll, mix with volume, pan, mute/solo and seven effects, loop a region, and save/open `.nptune` project files. Built-in Keys, Bass, and Drums play from the on-screen piano, your computer keyboard, drum pads, or a MIDI keyboard. See [`docs/PLAN.md`](docs/PLAN.md) for the roadmap.
 
 ## Try it on Windows
 
@@ -13,6 +13,13 @@ A free, open-source DAW for making game music — record real instruments, compo
 ## Try the demo song
 
 In the app, click **Open** and choose `examples/Demo Groove.nptune` from this repository (download it from GitHub first). It has chords, a bass line, and a beat on a 4-bar loop.
+
+## Record and import audio
+
+- **From your phone:** send the recording to your PC (email, OneDrive, USB...), then drag the file onto the timeline, or click **Import audio…**. Voice memos (m4a), mp3, wav, flac and ogg all work.
+- **With your mic:** click **+ Audio track**, select it, check the **Microphone** meter moves when you speak, then press **R** (or ● Record). The song plays and you record along; press **R** again to stop. Wear headphones so the mic doesn't hear the song.
+- **Editing:** drag a clip's left or right edge to trim it, **Ctrl+E** splits the selected clip at the playhead, and the Audio panel has gain, fade in/out and **Normalize**.
+- Audio is saved in a `<Song name> Audio` folder next to your `.nptune` file. Keep them together when you move or back up a song.
 
 ## Connect Claude
 

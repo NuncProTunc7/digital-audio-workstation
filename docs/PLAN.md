@@ -1,6 +1,6 @@
 # Nunc Pro Tune — Project Plan
 
-**Status:** Draft v0.1 for owner review. Nothing here is built yet.
+**Status:** Phases 0–4 built (see §8). Decisions below are agreed with the owner.
 **License:** GPL-3.0-or-later.
 
 ## 1. What we are building
@@ -161,7 +161,7 @@ Planned tool groups (✅ = built; the rest arrive with their phase):
 | Session | ✅ `get_song`, `new_project`, `open_project`, `save_project`, `set_tempo`, `set_time_signature`, `batch`, `undo`, `redo`; later `set_key` |
 | Tracks | ✅ `get_track`, `add_track`, `remove_track`, `rename_track`, `move_track`, `set_instrument`, `load_preset`, `set_instrument_param` |
 | Notes | ✅ `get_clip`, `create_clip`, `add_notes`, `edit_notes`, `remove_notes`, `quantize_notes`, `transpose_notes`, clip move/resize/duplicate; later `humanize` |
-| Audio | `import_audio`, `arm_track`, `record`, `trim`, `split`, `fade`, `time_stretch` (later) |
+| Audio | ✅ `import_audio`, `add_audio_clip`, `set_audio_clip` (gain, fades), `split_clip`, `trim_clip_start`, `record_audio`, `stop_recording`; later `time_stretch` |
 | Mixer | ✅ `set_track_mixer`, `set_master_volume`, `add_effect`, `set_effect_param`, `set_effect_enabled`; later `add_send`, `automate` |
 | Transport | ✅ `play`, `stop`, `locate`, `set_loop`, `set_metronome`, `transport_status` |
 | Notation | `import_musicxml`, `export_musicxml`, `import_midi`, `export_midi` |
@@ -181,11 +181,19 @@ Each phase ends with a Windows installer you can download from GitHub Actions an
 | **1. Make sound** ✅ | Audio device selection (WASAPI), play/stop transport, metronome, Synth (keys, pads, leads, basses) and Drum machine instruments with presets, **on-screen piano + computer-keyboard playing + clickable drum pads**, MIDI keyboard input | Play the Keys, Bass, and Drums tracks with your mouse, computer keyboard, or a MIDI keyboard; shape sounds with presets and sliders |
 | **2. Arrange** ✅ | Timeline with clips (create, move between tracks, resize, duplicate, delete), loop region, **recording what you play into clips**, piano roll (add/move/resize notes, quantize, transpose, velocity), add/rename/delete tracks, mixer (volume, pan, mute, solo, 7 effects per track and on the master), save/open/new project files, `npt render` to WAV | Record and write a full instrumental track |
 | **3. Claude** ✅ | Control server, MCP bridge, full tool list, analysis tools | Ask Claude to build or remix a track |
-| **4. Record** | Audio input recording, latency compensation, audio clip editing, import audio files (including phone recordings: m4a/AAC, mp3, wav) | Record guitar/vocals and mix them in |
+| **4. Record** ✅ | Audio tracks; import audio (phone m4a/AAC and ALAC, mp3, wav, flac, ogg) by button or drag-and-drop; microphone recording lined up with the beat; waveforms; trim, split, clip gain, fades, normalize; audio kept in a `Song Audio` folder beside the project; Claude can import, edit, record, and analyze audio | Record guitar/vocals (or bring them over from your phone) and mix them in |
 | **5. Godot + notation** | Loop/stem/adaptive export, MusicXML/MIDI import-export, notation view | Drop music straight into your game; turn sheet music into tracks |
 | **6. Expand** | ASIO for audio interfaces, CLAP then VST3 hosting, multi-input recording, sampled piano/bass packs, automation lanes, time-stretch | Use outside plugins, record a band |
 
 Phase 3 (Claude) comes before recording on purpose: once Claude can drive the app, it can help test everything that follows.
+
+### How audio works (Phase 4)
+
+- **Audio tracks** are tracks whose instrument kind is `audio`; their clips carry an `AudioRegion` (file name, file length, offset into the file, gain, fades) instead of notes. Commands keep the two kinds apart (an audio clip can't move onto a synth track).
+- **Files:** imports are decoded with symphonia and stored as 32-bit float WAV named `<original name>-<content hash>.wav` (importing the same file twice reuses it). A saved `Song.nptune` keeps its audio in `Song Audio/` next to it; before the first save, audio waits in the app-data folder (`unsaved-audio/`, cleaned after two weeks) and is copied over on save. Clips whose file is missing play silence and are marked in the UI.
+- **Playback:** `daw-audio`'s `AudioPool` loads and resamples (rubato) each file once to the sound card's rate; the engine mixes audio regions sample-accurately with gain, fades, and a 1.5 ms declick at clip edges.
+- **Recording:** the microphone stream (cpal input) mixes to mono, meters, and pushes into a lock-free ring; a writer thread streams it to WAV. Alignment uses timestamps: the output callback publishes which beat the speakers play at which instant, the input callback stamps when the first sample was captured, both on one app-wide clock. The take starts at the beat the performer heard; sound captured before beat 0 is trimmed. Looping pauses during audio takes. Measured in a loopback test: within 2 ms.
+- **Tempo:** audio keeps its own speed. Changing tempo keeps clips on their start beat but doesn't stretch them (time-stretch is Phase 6).
 
 ## 9. Testing and quality
 
@@ -215,7 +223,7 @@ Check each source file's own header before porting; projects sometimes mix licen
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| **Recording latency on Windows** (top risk) | Recording feels out of time | Measured round-trip latency compensation (built-in loopback test), headphone-monitoring guidance, ASIO in Phase 6 |
+| **Recording latency on Windows** (top risk) | Recording feels out of time | Built: timestamp-based alignment on one shared clock (loopback-tested to ~2 ms). If a particular device reports bad timestamps: a manual offset setting, then ASIO in Phase 6 |
 | Scope creep | Never ships | Phase gates; each phase must produce something usable |
 | Audio glitches (dropouts, clicks) | Unusable for recording | Real-time rules in §3, CPU meter, buffer-size setting, stress tests |
 | Owner can't debug code | Bugs linger | Strong tests + CI, clear error messages, in-app diagnostic report |
