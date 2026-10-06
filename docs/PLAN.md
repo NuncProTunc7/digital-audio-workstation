@@ -105,6 +105,12 @@ All share one voice engine (polyphony, voice stealing, MIDI CC, pitch bend, sust
 | **Bass** | Mono synth tuned for bass: glide, sub-osc, drive, filter env presets (sub, pluck, reese, acid). Later: sampled electric bass via Sampler. | Synth engine above with bass-focused presets |
 | **Sampler** | SFZ-format player (velocity layers, round robins, loop points) | sfizz (BSD-2) as reference |
 
+### Playing without a MIDI keyboard
+- **On-screen piano:** click or drag to play; shows held notes; octave and velocity controls.
+- **Musical typing:** the computer keyboard plays notes (`A S D F…` = white keys, `W E T Y U…` = black keys, `Z`/`X` = octave down/up, `C`/`V` = velocity down/up), like GarageBand and Ableton.
+- **Drum pads:** a clickable 4×4 pad grid, also mapped to keys.
+- All three feed the same input path as a hardware MIDI keyboard, so they can be recorded to a track, quantized, and edited in the piano roll. A USB MIDI keyboard plugs into the same path later with no extra work.
+
 Effects v1: EQ (parametric), compressor, reverb, delay, chorus, distortion, limiter. Every channel has gain, pan, mute, solo, and sends.
 
 Only use sample content that is CC0, CC-BY, or similar, and record its license in `assets/LICENSES.md`.
@@ -160,7 +166,7 @@ Each phase ends with a Windows installer you can download from GitHub Actions an
 | Phase | Deliverable | You can… |
 |---|---|---|
 | **0. Skeleton** | Rust workspace, Tauri app opens, CI builds a Windows installer, headless render test | Install and open an empty app |
-| **1. Make sound** | Audio device selection (WASAPI/ASIO), transport, metronome, Synth instrument, MIDI keyboard input | Play the synth from a MIDI keyboard |
+| **1. Make sound** | Audio device selection (WASAPI/ASIO), transport, metronome, Synth instrument, **on-screen piano + computer-keyboard playing + clickable drum pads**, MIDI keyboard input | Play and record the synth with your mouse or computer keyboard (no MIDI hardware needed) |
 | **2. Arrange** | Timeline, MIDI clips, piano roll, Drums + Bass + Keys, mixer with basic effects, save/load, undo/redo | Write a full instrumental track |
 | **3. Claude** | Control server, MCP bridge, full tool list, analysis tools | Ask Claude to build or remix a track |
 | **4. Record** | Audio input recording, latency compensation, audio clip editing, import audio files | Record guitar/vocals and mix them in |
@@ -206,5 +212,8 @@ Check each source file's own header before porting; projects sometimes mix licen
 ## 12. Open items for the owner
 
 1. **Product name** (needed before Phase 0 for the installer and app title).
-2. Do you have a **MIDI keyboard** and an **audio interface** (brand/model)? This decides how early ASIO matters.
-3. Which **Godot 4.x version** are you on?
+2. What do you record real instruments with (audio interface, USB mic, built-in mic)? This decides how early ASIO matters.
+
+Answered:
+- MIDI keyboard: none for now → on-screen piano and musical typing are Phase 1 requirements.
+- Godot version: **4.6**. Godot export targets 4.6; verify `.import`/`.tres` formats against it.
