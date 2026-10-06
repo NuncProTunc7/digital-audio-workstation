@@ -18,7 +18,7 @@ Instructions for AI coding agents (Claude Code and others) working in this repos
 
 - Rust workspace in `crates/` (engine, DSP, instruments, model, MCP).
 - Tauri 2 app in `app/` (`src-tauri/` Rust shell, `ui/` React + TypeScript + Vite).
-- Audio I/O: cpal (WASAPI, optional ASIO). MIDI: midir. MCP: rmcp.
+- Audio I/O: cpal (WASAPI; ASIO in Phase 6). MIDI: midir. MCP: rmcp.
 
 ## Commands
 
