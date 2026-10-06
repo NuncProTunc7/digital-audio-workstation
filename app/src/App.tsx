@@ -740,7 +740,7 @@ export default function App({ backend }: AppProps) {
           {(
             [
               ["instrument", `${isAudioTrack ? "Audio" : "Instrument"} · ${selectedTrack.name}`],
-              ["pianoroll", selectedClip ? `Piano roll · ${selectedClip.name}` : "Piano roll"],
+              ["pianoroll", selectedClip && !selectedClip.audio ? `Piano roll · ${selectedClip.name}` : "Piano roll"],
               ["mixer", "Mixer"],
             ] as [Tab, string][]
           ).map(([id, label]) => (

@@ -661,9 +661,14 @@ button.tiny.delete {
 }
 
 .add-track {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 6px;
   padding: 8px;
+}
+
+.add-track button {
+  white-space: nowrap;
 }
 
 .ruler {

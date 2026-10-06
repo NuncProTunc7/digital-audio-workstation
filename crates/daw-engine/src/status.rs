@@ -26,7 +26,7 @@ pub struct EngineStatus {
     clock_playing: AtomicBool,
 }
 
-/// What the listener hears when: at `playback_ns` on the sound card's clock,
+/// What the listener hears when: at `playback_ns` on the app's shared clock,
 /// the speakers play beat `position_beats`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ClockAnchor {

@@ -306,6 +306,14 @@ fn newest_clip(project: &Project, track_id: TrackId) -> Result<ClipId, String> {
         .ok_or_else(|| format!("there is no clip on track {track_id}"))
 }
 
+/// Where a take goes: `(start_beats, offset_seconds)`. Sound captured
+/// before the song's start is trimmed off rather than shifting the take, so
+/// everything after stays in time. None if almost nothing is left.
+fn place_take(start_beats: f64, seconds: f64, tempo_bpm: f64) -> Option<(f64, f64)> {
+    let offset_seconds = (-start_beats * 60.0 / tempo_bpm).max(0.0);
+    (seconds - offset_seconds >= 0.05).then_some((start_beats.max(0.0), offset_seconds))
+}
+
 /// Starts a take on `track_id`: checks it is an audio track, starts the
 /// transport (with looping paused, so the take runs straight through), and
 /// starts writing the microphone to a new file.
@@ -366,18 +374,20 @@ pub fn end_take<H: Host>(
         });
     }
     let take = result.map_err(|e| e.to_string())?;
-    if take.seconds < 0.05 {
+    let Some((start_beats, offset_seconds)) =
+        place_take(take.start_beats, take.seconds, session.project().tempo_bpm)
+    else {
         let _ = std::fs::remove_file(&take.path);
         return Ok(None);
-    }
+    };
     session
         .execute(Command::AddAudioClip {
             track_id,
-            start_beats: take.start_beats,
+            start_beats,
             audio: AudioRegion {
                 file: take.file,
                 file_seconds: take.seconds,
-                offset_seconds: 0.0,
+                offset_seconds,
                 gain_db: 0.0,
                 fade_in_seconds: 0.0,
                 fade_out_seconds: 0.0,
@@ -868,5 +878,19 @@ pub(crate) mod tests {
             .into_result()
             .expect_err("no mic");
         assert!(err.contains("can't record"), "{err}");
+    }
+
+    #[test]
+    fn takes_that_start_before_the_song_are_trimmed_not_shifted() {
+        // Starts on beat 8: placed as is.
+        assert_eq!(place_take(8.0, 4.0, 120.0), Some((8.0, 0.0)));
+        // Capture began 0.05 beats (25 ms at 120 BPM) before beat 0: the
+        // first 25 ms are skipped so beat 1 of the take is beat 1 of the song.
+        let (start, offset) = place_take(-0.05, 4.0, 120.0).expect("kept");
+        assert_eq!(start, 0.0);
+        assert!((offset - 0.025).abs() < 1e-12);
+        // Nothing left after trimming.
+        assert_eq!(place_take(-1.0, 0.5, 120.0), None);
+        assert_eq!(place_take(0.0, 0.01, 120.0), None);
     }
 }

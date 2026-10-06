@@ -100,7 +100,7 @@ impl AudioProcessor {
     }
 
     /// Tells the processor when the buffer it is about to render will be
-    /// heard, in the sound card clock's nanoseconds. Recording uses this to
+    /// heard, in nanoseconds on the app's shared clock (`device::clock_ns`). Recording uses this to
     /// line takes up with what the performer heard.
     // RT-SAFE
     pub fn set_output_time(&mut self, playback_ns: u64) {

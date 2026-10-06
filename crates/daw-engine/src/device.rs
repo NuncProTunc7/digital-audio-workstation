@@ -5,7 +5,7 @@
 //! owns the [`AudioProcessor`]; the rest of the app talks to it through the
 //! [`Engine`] handle.
 
-use std::sync::mpsc;
+use std::sync::{OnceLock, mpsc};
 use std::thread::JoinHandle;
 use std::time::Instant;
 
@@ -32,6 +32,18 @@ pub enum DeviceError {
     Backend(String),
     #[error("audio thread stopped unexpectedly")]
     ThreadDied,
+}
+
+/// Nanoseconds on one clock shared by every stream in the app.
+///
+/// Sound cards timestamp their buffers, but some systems count from each
+/// stream's own start, so an input and an output timestamp can't be compared
+/// directly. Each callback instead measures how far its buffer is from "now"
+/// on its own stream's clock and applies that to this shared clock.
+// RT-SAFE: reads the monotonic clock; the epoch is set before streams open.
+pub fn clock_ns() -> u64 {
+    static EPOCH: OnceLock<Instant> = OnceLock::new();
+    EPOCH.get_or_init(Instant::now).elapsed().as_nanos() as u64
 }
 
 /// Names of the available output devices on the default host (WASAPI on Windows).
@@ -71,6 +83,8 @@ impl AudioOutput {
         project: &Project,
         audio: Arc<AudioPool>,
     ) -> Result<(Engine, AudioOutput), DeviceError> {
+        // Fix the shared clock's epoch here, not in a callback.
+        clock_ns();
         let (ready_tx, ready_rx) = mpsc::channel::<Result<Opened, DeviceError>>();
         let (shutdown_tx, shutdown_rx) = mpsc::channel::<()>();
         let device_name = device_name.map(str::to_owned);
@@ -192,7 +206,9 @@ where
             // RT-SAFE: renders into preallocated scratch and converts.
             move |data: &mut [T], info: &cpal::OutputCallbackInfo| {
                 let started = Instant::now();
-                processor.set_output_time(info.timestamp().playback.as_nanos() as u64);
+                let t = info.timestamp();
+                let ahead = t.playback.saturating_duration_since(t.callback).as_nanos() as u64;
+                processor.set_output_time(clock_ns() + ahead);
                 for chunk in data.chunks_mut(scratch.len()) {
                     let buf = &mut scratch[..chunk.len()];
                     processor.process_interleaved(buf, channels);
@@ -241,6 +257,7 @@ impl AudioInput {
     /// Opens `device_name` (or the default input). Returns the stream and
     /// the recorder that turns its sound into takes.
     pub fn start(device_name: Option<&str>) -> Result<(AudioInput, AudioRecorder), DeviceError> {
+        clock_ns();
         type Ready = Result<(AudioRecorder, String, u32), DeviceError>;
         let (ready_tx, ready_rx) = mpsc::channel::<Ready>();
         let (shutdown_tx, shutdown_rx) = mpsc::channel::<()>();
@@ -346,7 +363,9 @@ where
             *config,
             // RT-SAFE: converts into preallocated scratch and pushes to a ring.
             move |data: &[T], info: &cpal::InputCallbackInfo| {
-                let base_ns = info.timestamp().capture.as_nanos() as u64;
+                let t = info.timestamp();
+                let behind = t.callback.saturating_duration_since(t.capture).as_nanos() as u64;
+                let base_ns = clock_ns().saturating_sub(behind);
                 let mut frames_done = 0usize;
                 for chunk in data.chunks(scratch.len()) {
                     let buf = &mut scratch[..chunk.len()];

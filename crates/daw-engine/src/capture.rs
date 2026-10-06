@@ -8,8 +8,9 @@
 //! Lining a take up with the song: the output callback publishes a
 //! [`ClockAnchor`] (which beat the speakers play at which instant) and the
 //! input callback stamps the instant its first recorded sample was captured.
-//! Both instants come from the sound card clock, so the take starts at the
-//! beat the performer was hearing, whatever the buffer sizes.
+//! Both instants are on one app-wide clock (see `device::clock_ns`), so the
+//! take starts at the beat the performer was hearing, whatever the buffer
+//! sizes.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -74,7 +75,7 @@ pub fn input_pair(sample_rate_hz: u32) -> (InputCapture, AudioRecorder) {
 
 impl InputCapture {
     /// Handles one buffer of interleaved input whose first frame was
-    /// captured at `capture_ns` on the sound card clock.
+    /// captured at `capture_ns` on the shared clock (`device::clock_ns`).
     // RT-SAFE
     pub fn process(&mut self, interleaved: &[f32], channels: usize, capture_ns: u64) {
         let channels = channels.max(1);
@@ -109,7 +110,9 @@ pub struct FinishedTake {
     pub file: String,
     pub path: PathBuf,
     pub seconds: f64,
-    /// Where the take starts on the timeline.
+    /// Where the take's first sample belongs on the timeline. Can be
+    /// negative when capture began just before the song's start; the part
+    /// before beat 0 should then be trimmed, not the take moved.
     pub start_beats: f64,
     /// Samples lost to an overloaded disk (should be 0).
     pub dropped_samples: u64,
@@ -250,9 +253,11 @@ fn write_loop(
     let mut error = None;
     loop {
         let stopping = stop.load(Ordering::Acquire);
-        // Read the clock right after the take starts: the mapping from
-        // device time to beats is exact while playback runs steadily.
-        if anchor.is_none() && shared.started.load(Ordering::Acquire) {
+        // Read the clock once the take and playback have both started: the
+        // mapping from device time to beats is exact while playback runs
+        // steadily. (Recording often starts a moment before the transport.)
+        if !anchor.is_some_and(|a: ClockAnchor| a.playing) && shared.started.load(Ordering::Acquire)
+        {
             anchor = status.clock();
         }
         chunk.clear();
@@ -280,7 +285,8 @@ fn write_loop(
 }
 
 /// Where a take belongs on the timeline: the beat that was playing when its
-/// first sample was captured. Falls back when the clocks are unusable.
+/// first sample was captured (negative if that was before the song start).
+/// Falls back when the clocks are unusable.
 pub fn take_start_beats(
     anchor: Option<ClockAnchor>,
     first_capture_ns: Option<u64>,
@@ -292,7 +298,7 @@ pub fn take_start_beats(
                 && a.tempo_bpm > 0.0
                 && (ns as f64 - a.playback_ns as f64).abs() < MAX_CLOCK_GAP_NS =>
         {
-            a.beats_at(ns).max(0.0)
+            a.beats_at(ns)
         }
         _ => fallback_beats.max(0.0),
     }
@@ -321,6 +327,11 @@ mod tests {
         // Captured before the anchor's buffer was heard: earlier beat.
         let beats = take_start_beats(Some(a), Some(9_900_000_000), 0.0);
         assert!((beats - 7.8).abs() < 1e-9);
+        // Capture began 20 ms before the song started at beat 0: the take
+        // starts before 0 (the caller trims that part, keeping alignment).
+        let a = anchor(10_000_000_000, 0.0);
+        let beats = take_start_beats(Some(a), Some(9_980_000_000), 0.0);
+        assert!((beats + 0.04).abs() < 1e-9);
     }
 
     #[test]
