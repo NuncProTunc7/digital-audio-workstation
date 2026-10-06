@@ -15,12 +15,13 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, RwLock};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-use daw_control::ControlServer;
 use daw_control::claude_setup;
-use daw_engine::Engine;
-use daw_engine::device::{self, AudioOutput};
+use daw_control::{ControlServer, Host};
+use daw_engine::capture::AudioRecorder;
+use daw_engine::device::{self, AudioInput, AudioOutput};
 use daw_engine::midi::{MidiEvent, MidiInputs};
-use daw_model::{Command, InstrumentKind, Project, Session, TrackId};
+use daw_engine::{AudioPool, Engine};
+use daw_model::{ClipId, Command, InstrumentKind, Project, Session, TrackId};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -38,8 +39,18 @@ struct AppState {
     metronome_on: AtomicBool,
     /// Where the open project was last saved or opened from.
     project_path: Mutex<Option<PathBuf>>,
-    /// Track being recorded onto, while recording.
+    /// Track being recorded onto, while recording notes.
     recording_track: Mutex<Option<TrackId>>,
+    /// The project's audio files.
+    audio: Arc<AudioPool>,
+    /// Microphone, open while an audio track is selected or recording.
+    input: Mutex<Option<AudioInput>>,
+    recorder: Mutex<Option<AudioRecorder>>,
+    /// Chosen input (None = system default).
+    input_device: Mutex<Option<String>>,
+    input_error: Mutex<Option<String>>,
+    /// Audio track being recorded onto, while recording audio.
+    audio_take: Mutex<Option<TrackId>>,
     /// For telling the UI about changes made by Claude.
     app: OnceLock<AppHandle>,
     /// Keeps the control server (Claude's way in) alive.
@@ -72,6 +83,12 @@ impl Default for AppState {
             metronome_on: AtomicBool::new(true),
             project_path: Mutex::new(None),
             recording_track: Mutex::new(None),
+            audio: Arc::new(AudioPool::new(daw_control::unsaved_audio_dir())),
+            input: Mutex::new(None),
+            recorder: Mutex::new(None),
+            input_device: Mutex::new(None),
+            input_error: Mutex::new(None),
+            audio_take: Mutex::new(None),
             app: OnceLock::new(),
             control: Mutex::new(None),
             control_error: Mutex::new(None),
@@ -117,6 +134,49 @@ impl daw_control::Host for AppState {
             *p = path;
         }
     }
+
+    fn audio(&self) -> Arc<AudioPool> {
+        Arc::clone(&self.audio)
+    }
+
+    fn start_audio_recording(&self, track_id: TrackId) -> Result<(), String> {
+        self.ensure_input()?;
+        let mut recorder = self
+            .recorder
+            .lock()
+            .map_err(|_| "recording state is unavailable")?;
+        let recorder = recorder
+            .as_mut()
+            .ok_or("no microphone is open; check the input in the status bar")?;
+        daw_control::begin_take(self, recorder, track_id)?;
+        if let Ok(mut t) = self.audio_take.lock() {
+            *t = Some(track_id);
+        }
+        Ok(())
+    }
+
+    fn stop_audio_recording(&self) -> Result<Option<ClipId>, String> {
+        let track = self
+            .audio_take
+            .lock()
+            .ok()
+            .and_then(|mut t| t.take())
+            .ok_or("nothing is recording")?;
+        let clip = {
+            let mut recorder = self
+                .recorder
+                .lock()
+                .map_err(|_| "recording state is unavailable")?;
+            match recorder.as_mut() {
+                Some(r) => daw_control::end_take(self, r, track)?,
+                None => None,
+            }
+        };
+        if let Some(e) = self.engine() {
+            e.stop();
+        }
+        Ok(clip)
+    }
 }
 
 impl AppState {
@@ -142,7 +202,7 @@ impl AppState {
         if let Ok(mut slot) = self.engine.write() {
             *slot = None;
         }
-        let result = AudioOutput::start(device_name, &project);
+        let result = AudioOutput::start(device_name, &project, Arc::clone(&self.audio));
         let mut error = self
             .audio_error
             .lock()
@@ -164,6 +224,51 @@ impl AppState {
             }
         }
     }
+
+    /// Opens the chosen microphone if it isn't open yet.
+    fn ensure_input(&self) -> Result<(), String> {
+        let mut input = self
+            .input
+            .lock()
+            .map_err(|_| "input state is unavailable")?;
+        if input.is_some() {
+            return Ok(());
+        }
+        let name = self.input_device.lock().ok().and_then(|n| n.clone());
+        let result = AudioInput::start(name.as_deref());
+        let mut error = self
+            .input_error
+            .lock()
+            .map_err(|_| "input state is unavailable")?;
+        match result {
+            Ok((stream, recorder)) => {
+                *input = Some(stream);
+                if let Ok(mut r) = self.recorder.lock() {
+                    *r = Some(recorder);
+                }
+                *error = None;
+                Ok(())
+            }
+            Err(e) => {
+                let message = e.to_string();
+                *error = Some(message.clone());
+                Err(message)
+            }
+        }
+    }
+
+    /// Closes the microphone (unless a take is being recorded).
+    fn close_input(&self) {
+        if self.audio_take.lock().is_ok_and(|t| t.is_some()) {
+            return;
+        }
+        if let Ok(mut r) = self.recorder.lock() {
+            *r = None;
+        }
+        if let Ok(mut i) = self.input.lock() {
+            *i = None;
+        }
+    }
 }
 
 /// What the UI needs to draw the project, undo/redo, and the title bar.
@@ -175,10 +280,23 @@ struct ProjectView {
     /// Unsaved changes since the last save or open.
     dirty: bool,
     file_path: Option<String>,
+    /// Audio files clips refer to that can't be found (those clips are silent).
+    missing_audio: Vec<String>,
 }
 
 fn view(state: &AppState, session: &Session) -> ProjectView {
+    let mut missing_audio: Vec<String> = session
+        .project()
+        .tracks
+        .iter()
+        .flat_map(|t| &t.clips)
+        .filter_map(|c| c.audio.as_ref())
+        .filter(|a| !state.audio.has(&a.file))
+        .map(|a| a.file.clone())
+        .collect();
+    missing_audio.dedup();
     ProjectView {
+        missing_audio,
         project: session.project().clone(),
         can_undo: session.can_undo(),
         can_redo: session.can_redo(),
@@ -335,8 +453,16 @@ fn locate(state: State<'_, AppState>, beats: f64) {
 #[tauri::command]
 fn record_start(state: State<'_, AppState>, track_id: TrackId) -> Result<(), String> {
     let engine = state.engine().ok_or("no audio output; check the device")?;
-    if state.session()?.project().track(track_id).is_none() {
-        return Err(format!("there is no track with id {track_id}"));
+    let is_audio = state
+        .session()?
+        .project()
+        .track(track_id)
+        .ok_or_else(|| format!("there is no track with id {track_id}"))?
+        .instrument
+        .kind
+        .is_audio();
+    if is_audio {
+        return state.start_audio_recording(track_id);
     }
     if let Ok(mut r) = state.recording_track.lock() {
         *r = Some(track_id);
@@ -349,6 +475,10 @@ fn record_start(state: State<'_, AppState>, track_id: TrackId) -> Result<(), Str
 /// Stops recording and playback, and turns what was played into a clip.
 #[tauri::command]
 fn record_stop(state: State<'_, AppState>) -> Result<ProjectView, String> {
+    if state.audio_take.lock().is_ok_and(|t| t.is_some()) {
+        state.stop_audio_recording()?;
+        return get_project(state);
+    }
     let track = state.recording_track.lock().ok().and_then(|mut r| r.take());
     let mut session = state.session()?;
     let Some(engine) = state.engine() else {
@@ -412,12 +542,91 @@ fn transport_status(state: State<'_, AppState>) -> TransportStatus {
         cpu_load: snap.cpu_load,
         buffer_frames: snap.buffer_frames,
         track_peaks: snap.track_peaks,
-        recording: state
-            .recording_track
-            .lock()
-            .map(|r| r.is_some())
-            .unwrap_or(false),
+        recording: state.recording_track.lock().is_ok_and(|r| r.is_some())
+            || state.audio_take.lock().is_ok_and(|t| t.is_some()),
     }
+}
+
+// ---- Audio files and the microphone ----
+
+/// Brings an audio file into the project (on `track_id`, or a new audio
+/// track) at `start_beats`.
+#[tauri::command]
+fn import_audio(
+    state: State<'_, AppState>,
+    path: String,
+    track_id: Option<TrackId>,
+    start_beats: Option<f64>,
+) -> Result<ProjectView, String> {
+    daw_control::import_audio(&*state, Path::new(&path), track_id, start_beats)?;
+    get_project(state)
+}
+
+/// Waveform overview of an audio file in the project.
+#[tauri::command]
+fn audio_peaks(state: State<'_, AppState>, file: String) -> Result<daw_audio::Peaks, String> {
+    state
+        .audio
+        .peaks(&file)
+        .map(|p| (*p).clone())
+        .map_err(|e| e.to_string())
+}
+
+#[derive(Serialize)]
+struct InputStatus {
+    devices: Vec<String>,
+    default_device: Option<String>,
+    /// Open input, if any.
+    active: Option<String>,
+    sample_rate_hz: Option<u32>,
+    /// Peak level since the last call, 0.0–1.0.
+    level: f32,
+    error: Option<String>,
+}
+
+#[tauri::command]
+fn input_status(state: State<'_, AppState>) -> InputStatus {
+    let input = state.input.lock().ok();
+    let input = input.as_ref().and_then(|i| i.as_ref());
+    InputStatus {
+        devices: device::input_device_names(),
+        default_device: device::default_input_device_name(),
+        active: input.map(|i| i.device_name().to_owned()),
+        sample_rate_hz: input.map(AudioInput::sample_rate_hz),
+        level: state
+            .recorder
+            .lock()
+            .ok()
+            .and_then(|r| r.as_ref().map(AudioRecorder::take_level))
+            .unwrap_or(0.0),
+        error: state.input_error.lock().ok().and_then(|e| e.clone()),
+    }
+}
+
+/// Opens (true) or closes (false) the microphone, for the input meter.
+#[tauri::command]
+fn monitor_input(state: State<'_, AppState>, on: bool) -> InputStatus {
+    if on {
+        // Errors show up in the returned status.
+        let _ = state.ensure_input();
+    } else {
+        state.close_input();
+    }
+    input_status(state)
+}
+
+/// Switches microphone (`None` = system default).
+#[tauri::command]
+fn set_input_device(state: State<'_, AppState>, name: Option<String>) -> InputStatus {
+    if let Ok(mut n) = state.input_device.lock() {
+        *n = name;
+    }
+    let was_open = state.input.lock().is_ok_and(|i| i.is_some());
+    state.close_input();
+    if was_open {
+        let _ = state.ensure_input();
+    }
+    input_status(state)
 }
 
 #[derive(Serialize)]
@@ -684,7 +893,12 @@ pub fn run() {
             set_output_device,
             refresh_midi,
             claude_status,
-            claude_install_desktop
+            claude_install_desktop,
+            import_audio,
+            audio_peaks,
+            input_status,
+            monitor_input,
+            set_input_device
         ])
         .run(tauri::generate_context!());
     if let Err(e) = result {

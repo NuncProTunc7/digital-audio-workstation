@@ -28,6 +28,36 @@ pub fn control_file_path() -> PathBuf {
         .join("control.json")
 }
 
+/// Unsaved audio older than this is from a session long gone.
+const STALE_SCRATCH: std::time::Duration = std::time::Duration::from_secs(14 * 24 * 3600);
+
+/// A fresh folder for this run's recordings and imports until the project
+/// is saved (`%APPDATA%\io.github.nuncprotunc7.nuncprotune\unsaved-audio\<run>`).
+/// Folders left by runs more than two weeks old are removed.
+pub fn unsaved_audio_dir() -> PathBuf {
+    let root = dirs::data_dir()
+        .unwrap_or_else(std::env::temp_dir)
+        .join(APP_ID)
+        .join("unsaved-audio");
+    if let Ok(entries) = std::fs::read_dir(&root) {
+        for e in entries.flatten() {
+            let old = e
+                .metadata()
+                .and_then(|m| m.modified())
+                .ok()
+                .and_then(|t| t.elapsed().ok())
+                .is_some_and(|age| age > STALE_SCRATCH);
+            if old {
+                let _ = std::fs::remove_dir_all(e.path());
+            }
+        }
+    }
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    root.join(format!("{stamp}-{}", std::process::id()))
+}
+
 impl ControlFile {
     pub fn read(path: &Path) -> std::io::Result<Self> {
         let text = std::fs::read_to_string(path)?;

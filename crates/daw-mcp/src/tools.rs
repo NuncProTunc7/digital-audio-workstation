@@ -261,6 +261,34 @@ fn extra_tools() -> Vec<ToolDef> {
             object_schema(json!({}), &[]),
             false,
         ),
+        tool(
+            "import_audio",
+            "Bring an audio file (wav, mp3, m4a/AAC from a phone, flac, ogg) into the song as an audio clip. The file is copied into the project's audio folder. Without track_id, a new audio track named after the file is added. One undo step.",
+            object_schema(
+                json!({
+                    "path": { "type": "string", "description": "Absolute path of the audio file." },
+                    "track_id": { "type": "integer", "description": "An existing audio track (instrument \"audio\"); omit to add a new track." },
+                    "start_beats": num("Where the clip starts (default 0, the song start).")
+                }),
+                &["path"],
+            ),
+            false,
+        ),
+        tool(
+            "record_audio",
+            "Start recording the user's microphone onto an audio track. The song plays from the current position so they can play along; looping pauses while recording. Only do this when the user asks to record, then call stop_recording when they say they're done.",
+            object_schema(
+                json!({ "track_id": { "type": "integer", "description": "An audio track (instrument \"audio\")." } }),
+                &["track_id"],
+            ),
+            false,
+        ),
+        tool(
+            "stop_recording",
+            "Stop recording audio. The take becomes a clip on the track, lined up with the beat the user heard while playing.",
+            object_schema(json!({}), &[]),
+            false,
+        ),
     ]
 }
 
@@ -323,6 +351,18 @@ pub fn to_request(name: &str, args: Map<String, Value>) -> Result<Request, Strin
             path: get_str("path").ok_or("path is required")?,
         },
         "new_project" => Request::New,
+        "import_audio" => Request::ImportAudio {
+            path: get_str("path").ok_or("path is required")?,
+            track_id: args
+                .get("track_id")
+                .map(|_| get_id("track_id"))
+                .transpose()?,
+            start_beats: get_f64("start_beats"),
+        },
+        "record_audio" => Request::RecordAudio {
+            track_id: get_id("track_id")?,
+        },
+        "stop_recording" => Request::StopRecording,
         command => {
             if HIDDEN_COMMANDS.contains(&command) {
                 return Err(format!("unknown tool {command}"));

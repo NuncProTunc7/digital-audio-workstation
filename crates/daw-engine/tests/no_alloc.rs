@@ -11,8 +11,10 @@ use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use daw_engine::{Engine, EngineMessage};
-use daw_model::{Command, EffectKind, Instrument, InstrumentKind, NoteInput, Project, Session};
+use daw_engine::{AudioPool, Engine, EngineMessage};
+use daw_model::{
+    AudioRegion, Command, EffectKind, Instrument, InstrumentKind, NoteInput, Project, Session,
+};
 
 struct CountingAllocator;
 
@@ -68,7 +70,43 @@ fn process_counting(processor: &mut daw_engine::AudioProcessor, out: &mut [f32])
 #[test]
 fn audio_thread_never_allocates() {
     let mut session = Session::new(Project::default());
-    let (engine, mut processor) = Engine::new(session.project(), 48_000);
+    // An audio track with a recording on it, playing alongside everything.
+    let pool = AudioPool::in_temp_dir();
+    pool.insert(
+        "take.wav",
+        daw_audio::AudioData {
+            sample_rate_hz: 44_100,
+            channels: vec![vec![0.25; 44_100], vec![-0.25; 44_100]],
+        },
+    );
+    session
+        .execute(Command::AddTrack {
+            name: "Vox".into(),
+            instrument: InstrumentKind::Audio,
+            preset: None,
+            index: None,
+        })
+        .expect("audio track");
+    let audio_track = session.project().tracks[3].id;
+    session
+        .execute(Command::AddAudioClip {
+            track_id: audio_track,
+            start_beats: 0.0,
+            audio: AudioRegion {
+                file: "take.wav".into(),
+                file_seconds: 1.0,
+                offset_seconds: 0.1,
+                gain_db: -3.0,
+                fade_in_seconds: 0.05,
+                fade_out_seconds: 0.2,
+            },
+            length_beats: Some(1.5),
+            name: None,
+        })
+        .expect("audio clip");
+    let (engine, mut processor) = Engine::with_audio(session.project(), 48_000, pool);
+    // The sound card reports when each buffer will be heard.
+    processor.set_output_time(1_000_000_000);
     // Buffer sized larger than MAX_BLOCK_FRAMES to exercise chunking.
     let mut out = vec![0.0f32; 48_000 * 2];
 
@@ -207,6 +245,28 @@ fn audio_thread_never_allocates() {
     engine.locate(1.0);
     assert_eq!(process_counting(&mut processor, &mut out), 0, "live edits");
     let _ = engine.stop_recording();
+
+    // Audio clip edits while playing swap in a new sequence (with its
+    // shared buffer); the old one must go back, not be freed here.
+    let audio_clip = session.project().tracks[3].clips[0].id;
+    session
+        .execute(Command::SetAudioClip {
+            clip_id: audio_clip,
+            gain_db: Some(-9.0),
+            fade_in_seconds: None,
+            fade_out_seconds: Some(0.0),
+        })
+        .expect("audio gain");
+    session
+        .execute(Command::SplitClip {
+            clip_id: audio_clip,
+            at_beats: 0.75,
+        })
+        .expect("split");
+    engine.sync(session.project());
+    engine.play();
+    processor.set_output_time(2_000_000_000);
+    assert_eq!(process_counting(&mut processor, &mut out), 0, "audio edits");
 
     // Swapping the whole track set: the old set must be handed back, not freed.
     session

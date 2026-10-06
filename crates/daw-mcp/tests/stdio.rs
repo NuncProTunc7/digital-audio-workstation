@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
 use daw_control::{ControlServer, Host};
-use daw_engine::Engine;
+use daw_engine::{AudioPool, Engine};
 use daw_model::Session;
 use serde_json::{Value, json};
 
@@ -34,6 +34,9 @@ impl Host for MemoryHost {
         if let Ok(mut p) = self.path.lock() {
             *p = path;
         }
+    }
+    fn audio(&self) -> Arc<AudioPool> {
+        AudioPool::in_temp_dir()
     }
 }
 

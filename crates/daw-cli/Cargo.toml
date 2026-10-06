@@ -12,6 +12,7 @@ name = "npt"
 path = "src/main.rs"
 
 [dependencies]
+daw-audio.workspace = true
 clap.workspace = true
 daw-engine.workspace = true
 daw-instruments = { path = "../daw-instruments" }

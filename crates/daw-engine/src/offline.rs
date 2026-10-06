@@ -1,5 +1,8 @@
 //! Rendering without a sound card, for tests, CI, and file export.
 
+use std::sync::Arc;
+
+use daw_audio::AudioPool;
 use daw_model::Project;
 
 use crate::{Engine, EngineMessage, ToneGenerator};
@@ -33,14 +36,15 @@ pub struct TimedMessage {
 
 /// Renders `project` for `seconds`, delivering each message at its time
 /// (sample-accurate). Returns interleaved stereo. The metronome is off unless
-/// a message turns it on.
+/// a message turns it on. Audio clips load from `audio`.
 pub fn render_project(
     project: &Project,
+    audio: &Arc<AudioPool>,
     mut messages: Vec<TimedMessage>,
     seconds: f64,
     sample_rate_hz: u32,
 ) -> Vec<f32> {
-    let (engine, mut processor) = Engine::new(project, sample_rate_hz);
+    let (engine, mut processor) = Engine::with_audio(project, sample_rate_hz, Arc::clone(audio));
     engine.set_metronome(false);
     messages.sort_by(|a, b| a.at_seconds.total_cmp(&b.at_seconds));
 
@@ -69,6 +73,7 @@ pub fn render_project(
 /// of ring-out. Returns interleaved stereo.
 pub fn render_region(
     project: &Project,
+    audio: &Arc<AudioPool>,
     start_beats: f64,
     end_beats: f64,
     tail_seconds: f64,
@@ -80,6 +85,7 @@ pub fn render_region(
     let seconds = beats * 60.0 / p.tempo_bpm + tail_seconds.max(0.0);
     render_project(
         &p,
+        audio,
         vec![
             TimedMessage {
                 at_seconds: 0.0,
@@ -97,12 +103,18 @@ pub fn render_region(
 
 /// Renders the whole song from the start (looping off) plus `tail_seconds`
 /// for reverb and delay tails. Returns interleaved stereo.
-pub fn render_song(project: &Project, sample_rate_hz: u32, tail_seconds: f64) -> Vec<f32> {
+pub fn render_song(
+    project: &Project,
+    audio: &Arc<AudioPool>,
+    sample_rate_hz: u32,
+    tail_seconds: f64,
+) -> Vec<f32> {
     let mut p = project.clone();
     p.loop_region.enabled = false;
     let seconds = p.end_beats() * 60.0 / p.tempo_bpm + tail_seconds.max(0.0);
     render_project(
         &p,
+        audio,
         vec![TimedMessage {
             at_seconds: 0.0,
             message: EngineMessage::Play,
@@ -161,6 +173,7 @@ mod tests {
         let at = 0.25;
         let out = render_project(
             &Project::default(),
+            &AudioPool::in_temp_dir(),
             vec![TimedMessage {
                 at_seconds: at,
                 message: EngineMessage::NoteOn {
@@ -193,7 +206,7 @@ mod tests {
             }],
         })
         .expect("clip");
-        let out = render_song(s.project(), SR, 1.0);
+        let out = render_song(s.project(), &AudioPool::in_temp_dir(), SR, 1.0);
         // 4 beats at 120 BPM = 2 s, plus 1 s tail.
         assert_eq!(out.len(), 3 * SR as usize * 2);
         let first = out
@@ -216,7 +229,13 @@ mod tests {
                     },
                 })
                 .collect();
-            render_project(&Project::default(), msgs, 1.0, SR)
+            render_project(
+                &Project::default(),
+                &AudioPool::in_temp_dir(),
+                msgs,
+                1.0,
+                SR,
+            )
         };
         assert_eq!(run(), run());
     }

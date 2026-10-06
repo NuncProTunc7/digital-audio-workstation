@@ -8,6 +8,9 @@
 mod measure;
 mod spectrogram;
 
+use std::sync::Arc;
+
+use daw_engine::AudioPool;
 use daw_engine::offline::render_region;
 use daw_model::Project;
 use serde::Serialize;
@@ -68,8 +71,8 @@ pub struct Analysis {
     pub spectrogram_png: Option<Vec<u8>>,
 }
 
-/// Renders and measures `project`.
-pub fn analyze(project: &Project, options: &AnalyzeOptions) -> Analysis {
+/// Renders and measures `project`, loading audio clips from `audio`.
+pub fn analyze(project: &Project, audio: &Arc<AudioPool>, options: &AnalyzeOptions) -> Analysis {
     let start = options.start_beats.unwrap_or(0.0).max(0.0);
     let end = options
         .end_beats
@@ -80,8 +83,8 @@ pub fn analyze(project: &Project, options: &AnalyzeOptions) -> Analysis {
     } else {
         TAIL_SECONDS
     };
-    let audio = render_region(project, start, end, tail, SAMPLE_RATE_HZ);
-    let mix = measure(&audio, SAMPLE_RATE_HZ);
+    let rendered = render_region(project, audio, start, end, tail, SAMPLE_RATE_HZ);
+    let mix = measure(&rendered, SAMPLE_RATE_HZ);
 
     let mut tracks = Vec::new();
     if options.per_track && project.tracks.len() > 1 {
@@ -92,7 +95,7 @@ pub fn analyze(project: &Project, options: &AnalyzeOptions) -> Analysis {
                 other.mixer.solo = false;
                 other.mixer.mute = other.id != t.id;
             }
-            let rendered = render_region(&solo, start, end, tail, SAMPLE_RATE_HZ);
+            let rendered = render_region(&solo, audio, start, end, tail, SAMPLE_RATE_HZ);
             let m = measure(&rendered, SAMPLE_RATE_HZ);
             energies.push(m.energy);
             tracks.push(TrackLevel {
@@ -112,7 +115,7 @@ pub fn analyze(project: &Project, options: &AnalyzeOptions) -> Analysis {
     let hints = hints(project, &mix, &tracks);
     let spectrogram_png = options
         .spectrogram
-        .then(|| spectrogram_png(&audio, SAMPLE_RATE_HZ, 900, 320));
+        .then(|| spectrogram_png(&rendered, SAMPLE_RATE_HZ, 900, 320));
     Analysis {
         start_beats: start,
         end_beats: end,
@@ -224,7 +227,11 @@ mod tests {
 
     #[test]
     fn analyzes_a_song_with_per_track_levels() {
-        let a = analyze(&song(), &AnalyzeOptions::default());
+        let a = analyze(
+            &song(),
+            &AudioPool::in_temp_dir(),
+            &AnalyzeOptions::default(),
+        );
         let lufs = a.mix.integrated_lufs.expect("not silent");
         assert!((-40.0..0.0).contains(&lufs), "{lufs}");
         assert_eq!(a.tracks.len(), 3);
@@ -236,7 +243,11 @@ mod tests {
 
     #[test]
     fn empty_song_is_reported_silent() {
-        let a = analyze(&Project::default(), &AnalyzeOptions::default());
+        let a = analyze(
+            &Project::default(),
+            &AudioPool::in_temp_dir(),
+            &AnalyzeOptions::default(),
+        );
         assert!(a.mix.integrated_lufs.is_none());
         assert!(a.hints[0].contains("silent"));
     }
@@ -245,7 +256,7 @@ mod tests {
     fn muting_a_track_shows_in_the_hints() {
         let mut p = song();
         p.tracks[0].clips.clear();
-        let a = analyze(&p, &AnalyzeOptions::default());
+        let a = analyze(&p, &AudioPool::in_temp_dir(), &AnalyzeOptions::default());
         assert!(
             a.hints.iter().any(|h| h.contains("\"Keys\" is silent")),
             "{:?}",
@@ -257,6 +268,7 @@ mod tests {
     fn spectrogram_is_a_png() {
         let a = analyze(
             &song(),
+            &AudioPool::in_temp_dir(),
             &AnalyzeOptions {
                 per_track: false,
                 spectrogram: true,

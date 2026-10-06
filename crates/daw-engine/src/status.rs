@@ -18,6 +18,30 @@ pub struct EngineStatus {
     buffer_frames: AtomicU32,
     // Post-fader peak per track slot since the UI last read them (f32 bits).
     track_peaks: [AtomicU32; MAX_TRACKS],
+    // Clock anchor, as a seqlock: odd `clock_seq` means a write is underway.
+    clock_seq: AtomicU64,
+    clock_ns: AtomicU64,
+    clock_beats: AtomicU64,
+    clock_tempo: AtomicU64,
+    clock_playing: AtomicBool,
+}
+
+/// What the listener hears when: at `playback_ns` on the sound card's clock,
+/// the speakers play beat `position_beats`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ClockAnchor {
+    pub playback_ns: u64,
+    pub position_beats: f64,
+    pub tempo_bpm: f64,
+    pub playing: bool,
+}
+
+impl ClockAnchor {
+    /// The beat being heard at `ns` (same clock), assuming steady playback.
+    pub fn beats_at(&self, ns: u64) -> f64 {
+        let dt_s = (ns as f64 - self.playback_ns as f64) / 1e9;
+        self.position_beats + dt_s * self.tempo_bpm / 60.0
+    }
 }
 
 impl Default for EngineStatus {
@@ -31,6 +55,11 @@ impl Default for EngineStatus {
             sample_rate_hz: AtomicU32::new(0),
             buffer_frames: AtomicU32::new(0),
             track_peaks: std::array::from_fn(|_| AtomicU32::new(0)),
+            clock_seq: AtomicU64::new(0),
+            clock_ns: AtomicU64::new(0),
+            clock_beats: AtomicU64::new(0),
+            clock_tempo: AtomicU64::new(0),
+            clock_playing: AtomicBool::new(false),
         }
     }
 }
@@ -69,6 +98,44 @@ impl EngineStatus {
     }
 
     // RT-SAFE
+    pub(crate) fn publish_clock(
+        &self,
+        ns: u64,
+        position_beats: f64,
+        tempo_bpm: f64,
+        playing: bool,
+    ) {
+        self.clock_seq.fetch_add(1, Ordering::SeqCst);
+        self.clock_ns.store(ns, Ordering::SeqCst);
+        self.clock_beats
+            .store(position_beats.to_bits(), Ordering::SeqCst);
+        self.clock_tempo
+            .store(tempo_bpm.to_bits(), Ordering::SeqCst);
+        self.clock_playing.store(playing, Ordering::SeqCst);
+        self.clock_seq.fetch_add(1, Ordering::SeqCst);
+    }
+
+    /// The latest clock anchor, or None before the sound card reported one.
+    pub fn clock(&self) -> Option<ClockAnchor> {
+        for _ in 0..1000 {
+            let before = self.clock_seq.load(Ordering::SeqCst);
+            if before % 2 == 1 {
+                std::hint::spin_loop();
+                continue;
+            }
+            let anchor = ClockAnchor {
+                playback_ns: self.clock_ns.load(Ordering::SeqCst),
+                position_beats: f64::from_bits(self.clock_beats.load(Ordering::SeqCst)),
+                tempo_bpm: f64::from_bits(self.clock_tempo.load(Ordering::SeqCst)),
+                playing: self.clock_playing.load(Ordering::SeqCst),
+            };
+            if self.clock_seq.load(Ordering::SeqCst) == before {
+                return (before > 0).then_some(anchor);
+            }
+        }
+        None
+    }
+
     // RT-SAFE
     pub(crate) fn add_track_peak(&self, index: usize, peak: f32) {
         if let Some(slot) = self.track_peaks.get(index) {

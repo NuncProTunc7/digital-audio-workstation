@@ -15,6 +15,7 @@ device = ["dep:cpal", "dep:midir"]
 
 [dependencies]
 cpal = { workspace = true, optional = true }
+daw-audio.workspace = true
 daw-dsp = { path = "../daw-dsp" }
 daw-effects = { path = "../daw-effects" }
 daw-instruments = { path = "../daw-instruments" }
@@ -22,6 +23,10 @@ daw-model.workspace = true
 midir = { version = "0.11", optional = true }
 rtrb = "0.4"
 thiserror.workspace = true
+
+[dev-dependencies]
+daw-audio.workspace = true
+tempfile = "3.27.0"
 
 [lints]
 workspace = true

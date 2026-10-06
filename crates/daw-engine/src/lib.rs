@@ -10,6 +10,7 @@
 //! The same processor drives the sound card (`device`) and offline rendering
 //! (`offline`), so tests hear exactly what the user hears.
 
+pub mod capture;
 #[cfg(feature = "device")]
 pub mod device;
 mod engine;
@@ -24,11 +25,12 @@ mod sequence;
 mod status;
 mod tone;
 
+pub use daw_audio::{AudioBuffer, AudioPool};
 pub use engine::Engine;
 pub use message::{EngineMessage, RecordedEvent};
 pub use processor::{AudioProcessor, MAX_BLOCK_FRAMES};
 pub use sequence::build_sequence;
-pub use status::{EngineStatus, StatusSnapshot};
+pub use status::{ClockAnchor, EngineStatus, StatusSnapshot};
 pub use tone::ToneGenerator;
 
 /// Sample rate used when no sound card dictates one.

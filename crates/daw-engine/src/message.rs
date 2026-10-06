@@ -1,3 +1,6 @@
+use std::sync::Arc;
+
+use daw_audio::AudioBuffer;
 use daw_effects::EffectProcessor;
 use daw_instruments::InstrumentProcessor;
 use daw_model::{EffectId, TrackId};
@@ -13,10 +16,27 @@ pub struct SeqEvent {
     pub velocity: f32,
 }
 
-/// All of a track's clips flattened into time-ordered note events.
+/// One audio clip, as the audio thread plays it.
+#[derive(Debug, Clone)]
+pub struct AudioRegionPlay {
+    pub start_beats: f64,
+    pub end_beats: f64,
+    /// Audio at the engine's sample rate.
+    pub buffer: Arc<AudioBuffer>,
+    /// Frame of `buffer` heard at `start_beats`.
+    pub offset_frames: f64,
+    /// Linear clip gain.
+    pub gain: f32,
+    pub fade_in_frames: f64,
+    pub fade_out_frames: f64,
+}
+
+/// All of a track's clips: notes flattened into time-ordered events, and
+/// audio clips in timeline order.
 #[derive(Debug, Clone, Default)]
 pub struct Sequence {
     pub events: Vec<SeqEvent>,
+    pub audio: Vec<AudioRegionPlay>,
 }
 
 /// One effect in a chain, as the audio thread sees it.

@@ -20,6 +20,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 daw-engine = { workspace = true, features = ["device"] }
+daw-audio.workspace = true
 daw-control = { path = "../../crates/daw-control" }
 daw-instruments = { path = "../../crates/daw-instruments" }
 daw-model.workspace = true

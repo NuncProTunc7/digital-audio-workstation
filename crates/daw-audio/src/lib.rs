@@ -25,7 +25,7 @@ pub use wav::{WavWriter, read_wav, write_wav};
 
 /// File extensions [`decode_file`] understands, lower case.
 pub const SUPPORTED_EXTENSIONS: &[&str] = &[
-    "wav", "wave", "mp3", "m4a", "mp4", "aac", "alac", "caf", "flac", "ogg", "oga",
+    "wav", "wave", "mp3", "m4a", "mp4", "aac", "flac", "ogg", "oga",
 ];
 
 #[derive(Debug, Error)]

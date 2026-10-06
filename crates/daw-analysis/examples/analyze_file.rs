@@ -12,8 +12,13 @@ fn main() {
             std::process::exit(1);
         }
     };
+    let audio = daw_engine::AudioPool::in_temp_dir();
+    audio.set_project_folder(Some(daw_audio::audio_folder_for(std::path::Path::new(
+        path,
+    ))));
     let a = daw_analysis::analyze(
         &project,
+        &audio,
         &daw_analysis::AnalyzeOptions {
             spectrogram: args.get(2).is_some(),
             ..Default::default()

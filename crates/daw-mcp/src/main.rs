@@ -32,6 +32,10 @@ length_beats, velocity 1-127.
 44 pedal hat, 46 open hat, 41/43/45/47/48/50 toms (low to high), 49 crash, 51 ride.
 - Ids: tracks, clips, notes, and effects have numeric ids; read them with get_song, \
 get_track, and get_clip.
+- Audio tracks (instrument \"audio\") hold recorded or imported audio clips instead of \
+notes. Bring in files with import_audio; shape clips with set_audio_clip (gain, fades), \
+split_clip, trim_clip_start, move_clip, and resize_clip. Audio keeps its own speed when \
+the tempo changes.
 
 Working well:
 - Start with get_song. Use describe_instruments before changing sounds (parameter ids, \

@@ -1,5 +1,6 @@
 use std::sync::{Arc, Mutex};
 
+use daw_audio::AudioPool;
 use daw_model::effect::effect_params;
 use daw_model::instrument::param_specs;
 use daw_model::{Effect, Project, Track, TrackId};
@@ -25,14 +26,27 @@ pub struct Engine {
     recorded: Mutex<rtrb::Consumer<RecordedEvent>>,
     status: Arc<EngineStatus>,
     sample_rate_hz: f32,
+    // Where audio clips' files come from.
+    audio: Arc<AudioPool>,
     // The project as last sent to the processor, for diffing.
     synced: Mutex<Project>,
 }
 
 impl Engine {
     /// Creates an engine for `project` and the processor it controls. Move
-    /// the processor to the audio thread (or drive it offline).
+    /// the processor to the audio thread (or drive it offline). Audio clips
+    /// are silent unless their files are in a scratch folder; use
+    /// [`with_audio`](Self::with_audio) to play a project's audio.
     pub fn new(project: &Project, sample_rate_hz: u32) -> (Engine, AudioProcessor) {
+        Self::with_audio(project, sample_rate_hz, AudioPool::in_temp_dir())
+    }
+
+    /// Like [`new`](Self::new), loading audio clips from `audio`.
+    pub fn with_audio(
+        project: &Project,
+        sample_rate_hz: u32,
+        audio: Arc<AudioPool>,
+    ) -> (Engine, AudioProcessor) {
         let sample_rate = sample_rate_hz.max(1) as f32;
         let (producer, consumer) = rtrb::RingBuffer::new(MESSAGE_CAPACITY);
         let (garbage_tx, garbage_rx) = rtrb::RingBuffer::new(GARBAGE_CAPACITY);
@@ -48,7 +62,7 @@ impl Engine {
             },
             Arc::clone(&status),
             ProcessorInit {
-                tracks: build_tracks(project, sample_rate),
+                tracks: build_tracks(project, sample_rate, &audio),
                 master_effects: build_chain(
                     &project.master.effects,
                     project.tempo_bpm,
@@ -68,6 +82,7 @@ impl Engine {
             recorded: Mutex::new(record_rx),
             status,
             sample_rate_hz: sample_rate,
+            audio,
             synced: Mutex::new(project.clone()),
         };
         (engine, processor)
@@ -75,6 +90,26 @@ impl Engine {
 
     pub fn sample_rate_hz(&self) -> f32 {
         self.sample_rate_hz
+    }
+
+    /// The pool audio clips are loaded from.
+    pub fn audio(&self) -> &Arc<AudioPool> {
+        &self.audio
+    }
+
+    /// Reloads every audio track's clips, for when files appear or change
+    /// on disk without the project changing (a project was saved elsewhere).
+    pub fn reload_audio(&self, project: &Project) {
+        for t in project
+            .tracks
+            .iter()
+            .filter(|t| t.instrument.kind.is_audio())
+        {
+            self.send(EngineMessage::ReplaceSequence {
+                track_id: t.id,
+                sequence: Box::new(build_sequence(t, &self.audio, self.sample_rate_hz as u32)),
+            });
+        }
     }
 
     /// Queues a message for the audio thread. Returns `false` if the queue
@@ -151,6 +186,16 @@ impl Engine {
         out
     }
 
+    /// Shared live status (meters, transport, playback clock).
+    pub fn status_handle(&self) -> Arc<EngineStatus> {
+        Arc::clone(&self.status)
+    }
+
+    /// Which beat the speakers play when, if the sound card has said.
+    pub fn clock(&self) -> Option<crate::ClockAnchor> {
+        self.status.clock()
+    }
+
     pub fn status(&self) -> StatusSnapshot {
         self.status.take_snapshot()
     }
@@ -201,7 +246,11 @@ impl Engine {
                 self.sync_track(old, new, project.tempo_bpm);
             }
         } else {
-            self.send(EngineMessage::ReplaceTracks(build_tracks(project, sr)));
+            self.send(EngineMessage::ReplaceTracks(build_tracks(
+                project,
+                sr,
+                &self.audio,
+            )));
         }
         *synced = project.clone();
     }
@@ -228,7 +277,7 @@ impl Engine {
         if old.clips != new.clips {
             self.send(EngineMessage::ReplaceSequence {
                 track_id: new.id,
-                sequence: Box::new(build_sequence(new)),
+                sequence: Box::new(build_sequence(new, &self.audio, self.sample_rate_hz as u32)),
             });
         }
     }
@@ -293,7 +342,7 @@ fn build_chain(effects: &[Effect], tempo_bpm: f64, sample_rate_hz: f32) -> Box<E
     })
 }
 
-fn build_tracks(project: &Project, sample_rate_hz: f32) -> Box<[TrackSlot]> {
+fn build_tracks(project: &Project, sample_rate_hz: f32, audio: &AudioPool) -> Box<[TrackSlot]> {
     project
         .tracks
         .iter()
@@ -302,7 +351,7 @@ fn build_tracks(project: &Project, sample_rate_hz: f32) -> Box<[TrackSlot]> {
                 t.id,
                 daw_instruments::create(&t.instrument, sample_rate_hz),
                 build_chain(&t.mixer.effects, project.tempo_bpm, sample_rate_hz),
-                Box::new(build_sequence(t)),
+                Box::new(build_sequence(t, audio, sample_rate_hz as u32)),
                 strip_settings(&t.mixer),
                 sample_rate_hz,
             )

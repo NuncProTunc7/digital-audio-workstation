@@ -58,6 +58,19 @@ pub enum Request {
         end_beats: Option<f64>,
         tail_seconds: Option<f64>,
     },
+    /// Bring an audio file (wav, mp3, m4a...) into the project as a clip.
+    ImportAudio {
+        path: String,
+        /// Audio track to put it on; None makes a new track.
+        track_id: Option<TrackId>,
+        start_beats: Option<f64>,
+    },
+    /// Start recording the microphone onto an audio track (plays the song).
+    RecordAudio {
+        track_id: TrackId,
+    },
+    /// Stop recording; the take becomes a clip.
+    StopRecording,
 }
 
 /// Reply to a [`Request`].

@@ -750,6 +750,7 @@ checksum = "0c87e182de0887fd5361989c677c4e8f5000cd9491d6d563161a8f3a5519fc7f"
 name = "daw-analysis"
 version = "0.1.0"
 dependencies = [
+ "daw-audio",
  "daw-engine",
  "daw-model",
  "ebur128",
@@ -776,6 +777,7 @@ name = "daw-cli"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "daw-audio",
  "daw-engine",
  "daw-instruments",
  "daw-model",
@@ -790,6 +792,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "daw-analysis",
+ "daw-audio",
  "daw-engine",
  "daw-instruments",
  "daw-model",
@@ -798,6 +801,7 @@ dependencies = [
  "hound",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.21",
  "tiny_http",
 ]
@@ -819,12 +823,14 @@ name = "daw-engine"
 version = "0.1.0"
 dependencies = [
  "cpal",
+ "daw-audio",
  "daw-dsp",
  "daw-effects",
  "daw-instruments",
  "daw-model",
  "midir",
  "rtrb",
+ "tempfile",
  "thiserror 2.0.21",
 ]
 
@@ -2458,6 +2464,7 @@ dependencies = [
 name = "nunc-pro-tune"
 version = "0.1.0"
 dependencies = [
+ "daw-audio",
  "daw-control",
  "daw-engine",
  "daw-instruments",

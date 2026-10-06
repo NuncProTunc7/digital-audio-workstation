@@ -3,7 +3,7 @@ use std::sync::Arc;
 use daw_model::TrackId;
 
 use crate::message::{
-    EffectChain, EngineMessage, Garbage, RecordedEvent, StripSettings, TrackSlot,
+    AudioRegionPlay, EffectChain, EngineMessage, Garbage, RecordedEvent, StripSettings, TrackSlot,
 };
 use crate::metronome::Metronome;
 use crate::status::EngineStatus;
@@ -11,6 +11,10 @@ use crate::status::EngineStatus;
 /// Largest chunk the processor renders at once. Sound card buffers bigger
 /// than this are rendered in several chunks, so scratch buffers never grow.
 pub const MAX_BLOCK_FRAMES: usize = 512;
+
+/// Audio clips fade over at least this long at their edges, so a cut in the
+/// middle of a waveform doesn't click.
+const DECLICK_SECONDS: f64 = 0.0015;
 
 /// Output stays perfectly linear below this level (about -2 dBFS).
 const SOFT_CLIP_KNEE: f32 = 0.8;
@@ -46,6 +50,8 @@ pub struct AudioProcessor {
     loop_start: f64,
     loop_end: f64,
     record_track: Option<TrackId>,
+    /// When the next output buffer reaches the speakers (device clock, ns).
+    output_time_ns: Option<u64>,
 }
 
 /// Initial transport and mix state for a new processor.
@@ -89,7 +95,16 @@ impl AudioProcessor {
             loop_start: init.loop_start,
             loop_end: init.loop_end,
             record_track: None,
+            output_time_ns: None,
         }
+    }
+
+    /// Tells the processor when the buffer it is about to render will be
+    /// heard, in the sound card clock's nanoseconds. Recording uses this to
+    /// line takes up with what the performer heard.
+    // RT-SAFE
+    pub fn set_output_time(&mut self, playback_ns: u64) {
+        self.output_time_ns = Some(playback_ns);
     }
 
     pub fn sample_rate_hz(&self) -> f32 {
@@ -107,6 +122,10 @@ impl AudioProcessor {
     pub fn process_interleaved(&mut self, out: &mut [f32], channels: usize) {
         let channels = channels.max(1);
         self.handle_messages();
+        if let Some(ns) = self.output_time_ns.take() {
+            self.status
+                .publish_clock(ns, self.position_beats, self.tempo_bpm, self.playing);
+        }
         for chunk in out.chunks_mut(MAX_BLOCK_FRAMES * channels) {
             let frames = chunk.len() / channels;
             self.render_block(frames);
@@ -411,6 +430,17 @@ impl AudioProcessor {
                 }
             }
             t.instrument.process(&mut bl[done..], &mut br[done..]);
+            if playing {
+                let declick = DECLICK_SECONDS * f64::from(self.sample_rate_hz);
+                mix_audio(
+                    &t.sequence.audio,
+                    bl,
+                    br,
+                    window_start,
+                    beats_per_sample,
+                    declick,
+                );
+            }
 
             for e in t.effects.effects.iter_mut().filter(|e| e.enabled) {
                 e.processor.process(bl, br);
@@ -453,6 +483,64 @@ impl AudioProcessor {
             let click = self.metronome.next();
             *l += click;
             *r += click;
+        }
+    }
+}
+
+/// Adds the audio clips that overlap this window, sample-accurately, with
+/// clip gain and fades.
+// RT-SAFE
+fn mix_audio(
+    regions: &[AudioRegionPlay],
+    left: &mut [f32],
+    right: &mut [f32],
+    window_start: f64,
+    beats_per_sample: f64,
+    declick_frames: f64,
+) {
+    let n = left.len().min(right.len());
+    let window_end = window_start + n as f64 * beats_per_sample;
+    for r in regions {
+        if r.end_beats <= window_start || r.start_beats >= window_end {
+            continue;
+        }
+        let first = (((r.start_beats - window_start) / beats_per_sample).ceil()).max(0.0) as usize;
+        let last = (((r.end_beats - window_start) / beats_per_sample).ceil()).max(0.0) as usize;
+        let (first, last) = (first.min(n), last.min(n));
+        // Frames since the clip started, at sample `first`.
+        let elapsed_first = (window_start - r.start_beats) / beats_per_sample + first as f64;
+        let length = (r.end_beats - r.start_beats) / beats_per_sample;
+        let fade_in = r.fade_in_frames.max(declick_frames);
+        let fade_out = r.fade_out_frames.max(declick_frames);
+        let buf = &*r.buffer;
+        for i in first..last {
+            let elapsed = elapsed_first + (i - first) as f64;
+            let pos = r.offset_frames + elapsed;
+            if pos < 0.0 {
+                continue;
+            }
+            let idx = pos as usize;
+            let Some(&l) = buf.left.get(idx) else {
+                break;
+            };
+            let rs = buf
+                .right
+                .as_deref()
+                .and_then(|right| right.get(idx).copied())
+                .unwrap_or(l);
+            let remaining = length - elapsed;
+            let mut g = f64::from(r.gain);
+            if elapsed < fade_in {
+                g *= (elapsed / fade_in).max(0.0);
+            }
+            if remaining < fade_out {
+                g *= (remaining / fade_out).max(0.0);
+            }
+            let g = g as f32;
+            if let (Some(lo), Some(ro)) = (left.get_mut(i), right.get_mut(i)) {
+                *lo += l * g;
+                *ro += rs * g;
+            }
         }
     }
 }

@@ -116,7 +116,10 @@ fn render_file(project: &Path, out: &Path, tail: f64) -> Result<(), String> {
     if !(0.0..=60.0).contains(&tail) {
         return Err(format!("tail must be between 0 and 60 seconds, got {tail}"));
     }
-    let samples = daw_engine::offline::render_song(&p, DEFAULT_SAMPLE_RATE_HZ, tail);
+    // Audio clips come from the project's "<Song> Audio" folder.
+    let audio = daw_engine::AudioPool::in_temp_dir();
+    audio.set_project_folder(Some(daw_audio::audio_folder_for(project)));
+    let samples = daw_engine::offline::render_song(&p, &audio, DEFAULT_SAMPLE_RATE_HZ, tail);
     write_wav(out, &samples, DEFAULT_SAMPLE_RATE_HZ).map_err(|e| e.to_string())?;
     println!(
         "wrote {} ({:.1} s)",
@@ -127,7 +130,12 @@ fn render_file(project: &Path, out: &Path, tail: f64) -> Result<(), String> {
 }
 
 fn render_demo(out: &Path) -> Result<(), String> {
-    let samples = daw_engine::offline::render_song(&demo::project(), DEFAULT_SAMPLE_RATE_HZ, 2.0);
+    let samples = daw_engine::offline::render_song(
+        &demo::project(),
+        &daw_engine::AudioPool::in_temp_dir(),
+        DEFAULT_SAMPLE_RATE_HZ,
+        2.0,
+    );
     write_wav(out, &samples, DEFAULT_SAMPLE_RATE_HZ).map_err(|e| e.to_string())?;
     println!("wrote {}", out.display());
     Ok(())
@@ -195,8 +203,12 @@ mod tests {
 
     #[test]
     fn demo_renders_cleanly() {
-        let samples =
-            daw_engine::offline::render_song(&demo::project(), DEFAULT_SAMPLE_RATE_HZ, 1.0);
+        let samples = daw_engine::offline::render_song(
+            &demo::project(),
+            &daw_engine::AudioPool::in_temp_dir(),
+            DEFAULT_SAMPLE_RATE_HZ,
+            1.0,
+        );
         assert!(samples.iter().all(|s| s.is_finite() && s.abs() <= 1.0));
         let peak = samples.iter().fold(0.0f32, |m, s| m.max(s.abs()));
         assert!(peak > 0.1, "demo is too quiet: {peak}");
