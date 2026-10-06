@@ -1,4 +1,4 @@
-import type { AppInfo, AudioStatus, TransportStatus } from "../types";
+import type { AppInfo, AudioStatus, ClaudeStatus, TransportStatus } from "../types";
 
 interface StatusBarProps {
   audio: AudioStatus | null;
@@ -9,7 +9,12 @@ interface StatusBarProps {
   filePath: string | null;
   onDevice: (name: string | null) => void;
   onRefreshMidi: () => void;
+  claude: ClaudeStatus | null;
+  onToggleClaude: () => void;
 }
+
+/** Claude counts as "working" for this long after its last request. */
+const CLAUDE_ACTIVE_SECS = 10;
 
 const DEFAULT_DEVICE = "__default__";
 
@@ -34,7 +39,11 @@ export default function StatusBar({
   filePath,
   onDevice,
   onRefreshMidi,
+  claude,
+  onToggleClaude,
 }: StatusBarProps) {
+  const claudeActive = claude?.last_activity_secs != null && claude.last_activity_secs < CLAUDE_ACTIVE_SECS;
+  const claudeDot = !claude?.listening ? "off" : claudeActive ? "active" : "ok";
   const latencyMs =
     transport?.buffer_frames && audio?.sample_rate_hz
       ? (transport.buffer_frames / audio.sample_rate_hz) * 1000
@@ -87,6 +96,14 @@ export default function StatusBar({
         </span>
       )}
       <span className="spacer" />
+      <button
+        className="small claude-button"
+        onClick={onToggleClaude}
+        title={claude?.listening ? "Claude can connect. Click for setup and activity." : (claude?.error ?? "Claude")}
+      >
+        <span className={`claude-dot ${claudeDot}`} aria-hidden />
+        Claude
+      </button>
       <span className="status-item muted" title={filePath ?? "Not saved yet"}>
         {filePath ? filePath.split(/[\\/]/).pop() : "Not saved"}
       </span>

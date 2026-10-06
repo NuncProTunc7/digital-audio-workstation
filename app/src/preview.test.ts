@@ -2,6 +2,29 @@ import { describe, expect, it } from "vitest";
 import { applyCommand, defaultProject } from "./preview";
 
 describe("preview reducer", () => {
+  it("applies a batch all-or-nothing", () => {
+    const p = defaultProject();
+    const ok = applyCommand(p, {
+      command: "batch",
+      commands: [
+        { command: "set_tempo", bpm: 90 },
+        { command: "rename_track", track_id: 1, name: "Lead" },
+      ],
+    });
+    expect(ok.tempo_bpm).toBe(90);
+    expect(ok.tracks[0].name).toBe("Lead");
+    expect(() =>
+      applyCommand(p, {
+        command: "batch",
+        commands: [
+          { command: "set_tempo", bpm: 90 },
+          { command: "rename_track", track_id: 999, name: "x" },
+        ],
+      }),
+    ).toThrow();
+    expect(p.tempo_bpm).toBe(120);
+  });
+
   it("creates, edits, and deletes clips and notes", () => {
     let p = defaultProject();
     p = applyCommand(p, {

@@ -7,6 +7,7 @@ import type { Backend } from "./backend";
 import type {
   AudioStatus,
   Catalog,
+  ClaudeStatus,
   Clip,
   Command,
   Effect,
@@ -264,11 +265,23 @@ export function applyCommand(project: Project, command: Command): Project {
       }
       break;
     }
+    case "batch": {
+      // All-or-nothing: a throw leaves the original project untouched.
+      let next = p;
+      for (const c of command.commands) next = applyCommand(next, c);
+      return next;
+    }
   }
   return p;
 }
 
-export function createPreviewBackend(): Backend {
+/** The preview backend, plus a hook for tests to act like Claude. */
+export interface PreviewBackend extends Backend {
+  /** Applies a Command as if Claude sent it, and fires the change event. */
+  simulateRemoteChange(command: Command, description: string): void;
+}
+
+export function createPreviewBackend(): PreviewBackend {
   let project = defaultProject();
   let saved = project;
   let filePath: string | null = null;
@@ -297,6 +310,18 @@ export function createPreviewBackend(): Backend {
   });
   const position = () => (playing ? startBeats + ((performance.now() - startedAt) / 60000) * project.tempo_bpm : startBeats);
   const noop = async () => {};
+  const changeListeners = new Set<(description: string) => void>();
+  const claude = (): ClaudeStatus => ({
+    listening: false,
+    error: "Claude needs the desktop app",
+    last_activity_secs: null,
+    activity: [],
+    bridge_path: "npt-mcp",
+    bridge_found: false,
+    desktop_config_path: "",
+    desktop_configured: false,
+    claude_code_command: 'claude mcp add --scope user nunc-pro-tune -- "npt-mcp"',
+  });
 
   return {
     preview: true,
@@ -395,5 +420,20 @@ export function createPreviewBackend(): Backend {
     setOutputDevice: async () => audio(),
     refreshMidi: async () => audio(),
     onMidiNote: async () => () => {},
+    claudeStatus: async () => claude(),
+    claudeInstallDesktop: async () => {
+      throw new Error("Connecting Claude needs the desktop app");
+    },
+    onProjectChanged: async (callback) => {
+      changeListeners.add(callback);
+      return () => changeListeners.delete(callback);
+    },
+    simulateRemoteChange: (command: Command, description: string) => {
+      const next = applyCommand(project, command);
+      undoStack.push(project);
+      redoStack.length = 0;
+      project = next;
+      for (const l of changeListeners) l(description);
+    },
   };
 }

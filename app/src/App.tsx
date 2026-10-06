@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { Backend } from "./backend";
+import ClaudePanel from "./components/ClaudePanel";
 import InstrumentPanel from "./components/InstrumentPanel";
 import Mixer from "./components/Mixer";
 import Piano from "./components/Piano";
@@ -21,6 +22,7 @@ import type {
   AppInfo,
   AudioStatus,
   Catalog,
+  ClaudeStatus,
   Command,
   Project,
   ProjectView,
@@ -30,6 +32,8 @@ import type {
 
 const TIME_SIGNATURES = ["2/4", "3/4", "4/4", "5/4", "6/8", "7/8", "9/8", "12/8"];
 const STATUS_POLL_MS = 60;
+const CLAUDE_POLL_MS = 2000;
+const TOAST_MS = 4000;
 type Tab = "instrument" | "pianoroll" | "mixer";
 
 interface AppProps {
@@ -59,6 +63,9 @@ export default function App({ backend }: AppProps) {
   const [baseNote, setBaseNote] = useState(DEFAULT_BASE_NOTE);
   const [velocity, setVelocity] = useState(DEFAULT_VELOCITY);
   const [activeNotes, setActiveNotes] = useState<ReadonlySet<number>>(new Set());
+  const [claude, setClaude] = useState<ClaudeStatus | null>(null);
+  const [claudeOpen, setClaudeOpen] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
   // Computer keys currently held, and the note each one started.
   const heldKeys = useRef(new Map<string, number>());
   // Latest view for callbacks that must not re-subscribe on every edit.
@@ -122,6 +129,45 @@ export default function App({ backend }: AppProps) {
     });
     return () => unlisten?.();
   }, [backend, markNote]);
+
+  const refreshClaude = useCallback(() => {
+    backend
+      .claudeStatus()
+      .then(setClaude)
+      .catch(() => {});
+  }, [backend]);
+
+  // Poll only while the panel is open; changes also trigger a refresh below.
+  useEffect(() => {
+    refreshClaude();
+    if (!claudeOpen) return;
+    const timer = window.setInterval(refreshClaude, CLAUDE_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [claudeOpen, refreshClaude]);
+
+  // Claude edits the project from outside the UI: re-fetch and say what changed.
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let toastTimer: number | undefined;
+    void backend
+      .onProjectChanged((description) => {
+        backend
+          .getProject()
+          .then(setView)
+          .catch(() => {});
+        refreshClaude();
+        setToast(description);
+        window.clearTimeout(toastTimer);
+        toastTimer = window.setTimeout(() => setToast(null), TOAST_MS);
+      })
+      .then((u) => {
+        unlisten = u;
+      });
+    return () => {
+      unlisten?.();
+      window.clearTimeout(toastTimer);
+    };
+  }, [backend, refreshClaude]);
 
   const project = view?.project;
   const selectedTrack: Track | undefined =
@@ -671,7 +717,21 @@ export default function App({ backend }: AppProps) {
         filePath={view.file_path}
         onDevice={(name) => void run(() => backend.setOutputDevice(name)).then((a) => a && setAudio(a))}
         onRefreshMidi={() => void run(() => backend.refreshMidi()).then((a) => a && setAudio(a))}
+        claude={claude}
+        onToggleClaude={() => setClaudeOpen((o) => !o)}
       />
+      {claudeOpen && (
+        <ClaudePanel
+          status={claude}
+          onInstallDesktop={() => void run(() => backend.claudeInstallDesktop()).then((s) => s && setClaude(s))}
+          onClose={() => setClaudeOpen(false)}
+        />
+      )}
+      {toast && (
+        <div className="toast" role="status">
+          {toast}
+        </div>
+      )}
     </div>
   );
 }

@@ -208,6 +208,42 @@ describe("Arranging", () => {
     });
     expect(document.querySelectorAll(".lane").length).toBe(4);
   });
+
+  it("shows Claude's edits as they happen", async () => {
+    const backend = createPreviewBackend();
+    await renderApp(backend);
+    await act(async () => {
+      backend.simulateRemoteChange(
+        {
+          command: "batch",
+          commands: [
+            { command: "set_tempo", bpm: 150 },
+            { command: "add_track", name: "Lead", instrument: "synth", preset: null, index: null },
+          ],
+        },
+        "Claude: batch",
+      );
+    });
+    expect(await screen.findByDisplayValue("150")).toBeTruthy();
+    expect(document.querySelectorAll(".lane").length).toBe(4);
+    expect(screen.getByRole("status").textContent).toBe("Claude: batch");
+    // Claude's change is one undo step.
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(await screen.findByDisplayValue("120")).toBeTruthy();
+    expect(document.querySelectorAll(".lane").length).toBe(3);
+  });
+
+  it("opens the Claude panel with setup instructions", async () => {
+    await renderApp();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Claude" }));
+    });
+    const panel = await screen.findByRole("dialog", { name: "Claude" });
+    expect(panel.textContent).toContain("claude mcp add");
+    expect(panel.textContent).toContain("Nothing yet this session.");
+    fireEvent.click(screen.getByRole("button", { name: "Close Claude panel" }));
+    expect(screen.queryByRole("dialog", { name: "Claude" })).toBeNull();
+  });
 });
 
 async function waitForElement(selector: string): Promise<Element> {

@@ -1193,3 +1193,115 @@ button.tiny.power.on {
   font-variant-numeric: tabular-nums;
   color: var(--muted);
 }
+
+/* ---- Phase 3: Claude ---- */
+
+.claude-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.claude-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.claude-dot.ok {
+  background: var(--accent-2);
+}
+
+.claude-dot.active {
+  background: var(--accent);
+  animation: pulse 1s infinite;
+}
+
+.claude-panel {
+  position: fixed;
+  right: 12px;
+  bottom: 40px;
+  width: min(440px, calc(100vw - 24px));
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
+  padding: 12px 14px;
+  background: var(--panel-raised);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgb(0 0 0 / 50%);
+  z-index: 20;
+  font-size: 13px;
+}
+
+.claude-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.claude-panel h3 {
+  margin: 14px 0 4px;
+  font-size: 13px;
+  color: var(--accent);
+}
+
+.claude-panel p {
+  margin: 4px 0;
+}
+
+.claude-state.ok {
+  color: var(--accent-2);
+}
+
+.claude-state.off {
+  color: var(--danger);
+}
+
+.claude-command {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.claude-command code {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  white-space: nowrap;
+  padding: 4px 6px;
+  background: var(--bg);
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.claude-examples,
+.claude-activity {
+  margin: 4px 0;
+  padding-left: 18px;
+}
+
+.claude-activity {
+  list-style: none;
+  padding-left: 0;
+}
+
+.claude-activity li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  top: 60px;
+  transform: translateX(-50%);
+  padding: 6px 14px;
+  background: var(--accent);
+  color: var(--bg);
+  border-radius: 6px;
+  font-weight: 600;
+  z-index: 30;
+  pointer-events: none;
+}

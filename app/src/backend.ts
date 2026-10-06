@@ -3,7 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ask, open, save } from "@tauri-apps/plugin-dialog";
 import { createPreviewBackend } from "./preview";
-import type { AppInfo, AudioStatus, Catalog, Command, ProjectView, TransportStatus } from "./types";
+import type { AppInfo, AudioStatus, Catalog, ClaudeStatus, Command, ProjectView, TransportStatus } from "./types";
 
 export { createPreviewBackend };
 
@@ -55,6 +55,13 @@ export interface Backend {
   refreshMidi(): Promise<AudioStatus>;
   /** Calls back for each MIDI keyboard note. Returns an unsubscribe function. */
   onMidiNote(callback: (note: number, on: boolean) => void): Promise<() => void>;
+
+  // Claude.
+  claudeStatus(): Promise<ClaudeStatus>;
+  /** Adds Nunc Pro Tune to Claude Desktop's settings. */
+  claudeInstallDesktop(): Promise<ClaudeStatus>;
+  /** Calls back when Claude changes the project, with a short description. */
+  onProjectChanged(callback: (description: string) => void): Promise<() => void>;
 }
 
 export const tauriBackend: Backend = {
@@ -96,6 +103,9 @@ export const tauriBackend: Backend = {
   refreshMidi: () => invoke("refresh_midi"),
   onMidiNote: async (callback) =>
     listen<{ note: number; on: boolean }>("midi-note", (e) => callback(e.payload.note, e.payload.on)),
+  claudeStatus: () => invoke("claude_status"),
+  claudeInstallDesktop: () => invoke("claude_install_desktop"),
+  onProjectChanged: async (callback) => listen<string>("project-changed", (e) => callback(e.payload)),
 };
 
 export function defaultBackend(): Backend {

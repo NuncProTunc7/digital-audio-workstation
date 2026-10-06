@@ -64,8 +64,10 @@ jobs:
       - run: npm run build
         working-directory: app
       - run: cargo test --workspace
+      # The installer ships the Claude bridge (npt-mcp.exe) next to the app.
+      - run: cargo build --release -p daw-mcp
       - name: Build installer
-        run: npm run tauri build
+        run: npm run tauri build -- --config src-tauri/tauri.installer.conf.json
         working-directory: app
       - uses: actions/upload-artifact@v4
         with:

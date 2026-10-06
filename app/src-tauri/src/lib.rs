@@ -2,14 +2,21 @@
 //!
 //! Two kinds of calls arrive from the UI:
 //! - **Project edits** arrive as `daw_model::Command`s (the same type Claude
-//!   will send over MCP in Phase 3). They are undoable and saved.
+//!   sends over MCP). They are undoable and saved.
 //! - **Live actions** (playing notes, play/stop, metronome, device choice)
 //!   change what you hear right now but not the song itself.
+//!
+//! Claude reaches the same state through the local control server
+//! (`daw_control`), started at launch; see [`AppState`]'s `Host` impl.
 
-use std::path::PathBuf;
+use std::collections::VecDeque;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, RwLock};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock, RwLock};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
+use daw_control::ControlServer;
+use daw_control::claude_setup;
 use daw_engine::Engine;
 use daw_engine::device::{self, AudioOutput};
 use daw_engine::midi::{MidiEvent, MidiInputs};
@@ -33,7 +40,25 @@ struct AppState {
     project_path: Mutex<Option<PathBuf>>,
     /// Track being recorded onto, while recording.
     recording_track: Mutex<Option<TrackId>>,
+    /// For telling the UI about changes made by Claude.
+    app: OnceLock<AppHandle>,
+    /// Keeps the control server (Claude's way in) alive.
+    control: Mutex<Option<ControlServer>>,
+    control_error: Mutex<Option<String>>,
+    /// When Claude last talked to the app, and what it did recently.
+    last_remote: Mutex<Option<Instant>>,
+    remote_log: Mutex<VecDeque<RemoteActivity>>,
 }
+
+/// One thing Claude did, for the activity list.
+#[derive(Clone, Serialize)]
+struct RemoteActivity {
+    description: String,
+    /// Milliseconds since the Unix epoch.
+    at_ms: u64,
+}
+
+const REMOTE_LOG_LEN: usize = 30;
 
 impl Default for AppState {
     fn default() -> Self {
@@ -47,6 +72,49 @@ impl Default for AppState {
             metronome_on: AtomicBool::new(true),
             project_path: Mutex::new(None),
             recording_track: Mutex::new(None),
+            app: OnceLock::new(),
+            control: Mutex::new(None),
+            control_error: Mutex::new(None),
+            last_remote: Mutex::new(None),
+            remote_log: Mutex::new(VecDeque::new()),
+        }
+    }
+}
+
+impl daw_control::Host for AppState {
+    fn session(&self) -> Result<MutexGuard<'_, Session>, String> {
+        AppState::session(self)
+    }
+
+    fn engine(&self) -> Option<Arc<Engine>> {
+        AppState::engine(self)
+    }
+
+    fn project_changed(&self, description: &str) {
+        if let Ok(mut log) = self.remote_log.lock() {
+            if log.len() == REMOTE_LOG_LEN {
+                log.pop_front();
+            }
+            let at_ms = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_or(0, |d| d.as_millis() as u64);
+            log.push_back(RemoteActivity {
+                description: description.to_owned(),
+                at_ms,
+            });
+        }
+        if let Some(app) = self.app.get() {
+            let _ = app.emit("project-changed", description.to_owned());
+        }
+    }
+
+    fn project_path(&self) -> Option<PathBuf> {
+        self.project_path.lock().ok().and_then(|p| p.clone())
+    }
+
+    fn set_project_path(&self, path: Option<PathBuf>) {
+        if let Ok(mut p) = self.project_path.lock() {
+            *p = path;
         }
     }
 }
@@ -157,67 +225,26 @@ fn get_project(state: State<'_, AppState>) -> Result<ProjectView, String> {
 
 // ---- Files ----
 
+// The same functions serve the UI and Claude, so both behave identically.
+
 /// Starts a fresh project with the default Keys, Bass, and Drums tracks.
 #[tauri::command]
 fn new_project(state: State<'_, AppState>) -> Result<ProjectView, String> {
-    replace_project(&state, Project::default(), None)
+    daw_control::new_project(&*state)?;
+    get_project(state)
 }
 
 #[tauri::command]
 fn open_project(state: State<'_, AppState>, path: String) -> Result<ProjectView, String> {
-    let path = PathBuf::from(path);
-    let project = daw_model::load_project(&path).map_err(|e| e.to_string())?;
-    replace_project(&state, project, Some(path))
+    daw_control::open_project(&*state, Path::new(&path))?;
+    get_project(state)
 }
 
 /// Saves to `path`, or to the current file when `path` is omitted.
 #[tauri::command]
 fn save_project(state: State<'_, AppState>, path: Option<String>) -> Result<ProjectView, String> {
-    // Lock order everywhere: session first, then project_path.
-    let mut session = state.session()?;
-    let current = state.project_path.lock().ok().and_then(|p| p.clone());
-    let target = match path {
-        Some(p) => with_extension(PathBuf::from(p)),
-        None => current.ok_or_else(|| "choose where to save first".to_owned())?,
-    };
-    daw_model::save_project(session.project(), &target).map_err(|e| e.to_string())?;
-    session.mark_saved();
-    if let Ok(mut p) = state.project_path.lock() {
-        *p = Some(target);
-    }
-    Ok(view(&state, &session))
-}
-
-fn with_extension(path: PathBuf) -> PathBuf {
-    if path
-        .extension()
-        .is_some_and(|e| e == daw_model::PROJECT_EXTENSION)
-    {
-        path
-    } else {
-        let mut s = path.into_os_string();
-        s.push(".");
-        s.push(daw_model::PROJECT_EXTENSION);
-        PathBuf::from(s)
-    }
-}
-
-fn replace_project(
-    state: &AppState,
-    project: Project,
-    path: Option<PathBuf>,
-) -> Result<ProjectView, String> {
-    if let Some(engine) = state.engine() {
-        engine.stop();
-        engine.stop();
-        engine.all_notes_off();
-    }
-    let mut session = state.session()?;
-    session.replace_project(project);
-    if let Ok(mut p) = state.project_path.lock() {
-        *p = path;
-    }
-    Ok(after_edit(state, &session))
+    daw_control::save_project(&*state, path.as_deref().map(Path::new))?;
+    get_project(state)
 }
 
 #[tauri::command]
@@ -491,6 +518,113 @@ fn connect_midi(app: &AppHandle, state: &AppState) {
     *midi = Some(MidiInputs::connect_all(on_event));
 }
 
+// ---- Claude ----
+
+/// Where the bridge program Claude launches lives: next to the app when
+/// installed, or in the build folder during development.
+fn bridge_path(app: &AppHandle) -> PathBuf {
+    let name = if cfg!(windows) {
+        "npt-mcp.exe"
+    } else {
+        "npt-mcp"
+    };
+    let candidates = [
+        app.path().resource_dir().ok().map(|d| d.join(name)),
+        std::env::current_exe()
+            .ok()
+            .and_then(|e| e.parent().map(|d| d.join(name))),
+    ];
+    candidates
+        .iter()
+        .flatten()
+        .find(|p| p.exists())
+        .cloned()
+        .or_else(|| candidates.into_iter().flatten().next())
+        .unwrap_or_else(|| PathBuf::from(name))
+}
+
+#[derive(Serialize)]
+struct ClaudeStatus {
+    /// The control server is running, so Claude can connect.
+    listening: bool,
+    error: Option<String>,
+    /// Seconds since Claude last did something (None = not this session).
+    last_activity_secs: Option<u64>,
+    activity: Vec<RemoteActivity>,
+    bridge_path: String,
+    bridge_found: bool,
+    desktop_config_path: String,
+    desktop_configured: bool,
+    claude_code_command: String,
+}
+
+#[tauri::command]
+fn claude_status(app: AppHandle, state: State<'_, AppState>) -> ClaudeStatus {
+    let bridge = bridge_path(&app);
+    let config = claude_setup::desktop_config_path();
+    ClaudeStatus {
+        listening: state.control.lock().is_ok_and(|c| c.is_some()),
+        error: state.control_error.lock().ok().and_then(|e| e.clone()),
+        last_activity_secs: state
+            .last_remote
+            .lock()
+            .ok()
+            .and_then(|t| t.map(|t| t.elapsed().as_secs())),
+        activity: state
+            .remote_log
+            .lock()
+            .map(|l| l.iter().rev().cloned().collect())
+            .unwrap_or_default(),
+        bridge_found: bridge.exists(),
+        desktop_configured: claude_setup::desktop_configured(&config, &bridge),
+        claude_code_command: claude_setup::claude_code_command(&bridge),
+        bridge_path: bridge.display().to_string(),
+        desktop_config_path: config.display().to_string(),
+    }
+}
+
+/// Adds Nunc Pro Tune to Claude Desktop's settings (backing them up first).
+#[tauri::command]
+fn claude_install_desktop(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<ClaudeStatus, String> {
+    let bridge = bridge_path(&app);
+    if !bridge.exists() {
+        return Err(format!(
+            "the Claude bridge program is missing ({})",
+            bridge.display()
+        ));
+    }
+    claude_setup::install_desktop(&claude_setup::desktop_config_path(), &bridge)?;
+    Ok(claude_status(app, state))
+}
+
+/// Starts the control server Claude's bridge connects to.
+fn start_control(app: &AppHandle) {
+    let handle = app.clone();
+    let result = ControlServer::start(&daw_control::control_file_path(), move |request| {
+        let state = handle.state::<AppState>();
+        if let Ok(mut t) = state.last_remote.lock() {
+            *t = Some(Instant::now());
+        }
+        daw_control::handle(&*state, request)
+    });
+    let state = app.state::<AppState>();
+    match result {
+        Ok(server) => {
+            if let Ok(mut c) = state.control.lock() {
+                *c = Some(server);
+            }
+        }
+        Err(e) => {
+            if let Ok(mut err) = state.control_error.lock() {
+                *err = Some(format!("Claude can't connect: {e}"));
+            }
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let result = tauri::Builder::default()
@@ -498,23 +632,21 @@ pub fn run() {
         .manage(AppState::default())
         .setup(|app| {
             let state = app.state::<AppState>();
+            let _ = state.app.set(app.handle().clone());
+            start_control(app.handle());
             // Sound problems are shown in the status bar, not fatal.
             let _ = state.start_audio(None);
             connect_midi(app.handle(), &state);
-            // Keep the first track's kind sensible for MIDI routing.
             // A project file passed on the command line (or by double-clicking
             // it, once file associations exist) opens at startup.
             if let Some(path) = std::env::args_os().nth(1).map(PathBuf::from).filter(|p| {
                 p.extension()
                     .is_some_and(|e| e == daw_model::PROJECT_EXTENSION)
-            }) {
-                match daw_model::load_project(&path) {
-                    Ok(project) => {
-                        let _ = replace_project(&state, project, Some(path));
-                    }
-                    Err(e) => eprintln!("could not open {}: {e}", path.display()),
-                }
+            }) && let Err(e) = daw_control::open_project(&*state, &path)
+            {
+                eprintln!("could not open {}: {e}", path.display());
             }
+            // Keep the first track's kind sensible for MIDI routing.
             if let Ok(session) = state.session()
                 && let Some(first) = session
                     .project()
@@ -550,7 +682,9 @@ pub fn run() {
             transport_status,
             audio_status,
             set_output_device,
-            refresh_midi
+            refresh_midi,
+            claude_status,
+            claude_install_desktop
         ])
         .run(tauri::generate_context!());
     if let Err(e) = result {

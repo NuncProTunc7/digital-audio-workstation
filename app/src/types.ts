@@ -138,7 +138,8 @@ export type Command =
       lengths: boolean;
       note_ids: Opt<number[]>;
     }
-  | { command: "transpose_notes"; clip_id: number; semitones: number; note_ids: Opt<number[]> };
+  | { command: "transpose_notes"; clip_id: number; semitones: number; note_ids: Opt<number[]> }
+  | { command: "batch"; commands: Command[] };
 
 export interface ProjectView {
   project: Project;
@@ -219,4 +220,27 @@ export interface AppInfo {
   name: string;
   version: string;
   license: string;
+}
+
+/** One project change Claude made through the MCP bridge. */
+export interface RemoteActivity {
+  description: string;
+  /** Milliseconds since the Unix epoch. */
+  at_ms: number;
+}
+
+/** Whether Claude can connect, and how to set it up. */
+export interface ClaudeStatus {
+  /** The control server is running, so Claude can connect. */
+  listening: boolean;
+  error: string | null;
+  /** Seconds since Claude last did something (null = not this session). */
+  last_activity_secs: number | null;
+  /** Newest first. */
+  activity: RemoteActivity[];
+  bridge_path: string;
+  bridge_found: boolean;
+  desktop_config_path: string;
+  desktop_configured: boolean;
+  claude_code_command: string;
 }
