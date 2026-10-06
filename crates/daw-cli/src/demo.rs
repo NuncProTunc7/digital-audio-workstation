@@ -1,78 +1,87 @@
-//! A four-bar demo groove using the default project's Keys, Bass, and Drums
-//! tracks. Used to check the instruments by ear and in tests.
+//! A four-bar demo song on the default project's Keys, Bass, and Drums
+//! tracks, built with the same Commands the UI and Claude use.
 
-use daw_engine::EngineMessage;
-use daw_engine::offline::{TimedMessage, render_project};
-use daw_model::Project;
+use daw_model::{Command, EffectKind, NoteInput, Project, Session};
 
 const KEYS: u32 = 1;
 const BASS: u32 = 2;
 const DRUMS: u32 = 3;
-const BEAT_S: f64 = 0.5; // 120 BPM
 
-fn note(
-    track_id: u32,
-    note: u8,
-    velocity: f32,
-    start_beats: f64,
-    len_beats: f64,
-) -> [TimedMessage; 2] {
-    [
-        TimedMessage {
-            at_seconds: start_beats * BEAT_S,
-            message: EngineMessage::NoteOn {
-                track_id,
-                note,
-                velocity,
-            },
-        },
-        TimedMessage {
-            at_seconds: (start_beats + len_beats) * BEAT_S,
-            message: EngineMessage::NoteOff { track_id, note },
-        },
-    ]
+fn n(pitch: u8, start: f64, len: f64, velocity: u8) -> NoteInput {
+    NoteInput {
+        pitch,
+        start_beats: start,
+        length_beats: len,
+        velocity,
+        id: None,
+    }
 }
 
-/// Renders the demo as interleaved stereo.
-pub fn render(sample_rate_hz: u32) -> Vec<f32> {
-    // Am – F – C – G, one chord per bar.
+/// The demo project: Am–F–C–G with a bass line, a beat, and some effects.
+pub fn project() -> Project {
+    let mut s = Session::default();
+    let mut run = |c: Command| {
+        if let Err(e) = s.execute(c) {
+            unreachable!("demo command failed: {e}");
+        }
+    };
+    run(Command::RenameProject {
+        name: "Demo Groove".into(),
+    });
+
     let chords: [[u8; 3]; 4] = [[57, 60, 64], [57, 60, 65], [55, 60, 64], [55, 59, 62]];
     let roots: [u8; 4] = [45, 41, 48, 43];
-    let mut events = Vec::new();
+    let mut keys = Vec::new();
+    let mut bass = Vec::new();
+    let mut drums = Vec::new();
     for (bar, (chord, root)) in chords.iter().zip(roots).enumerate() {
         let start = bar as f64 * 4.0;
-        for &n in chord {
-            events.extend(note(KEYS, n, 0.7, start, 3.75));
+        for &p in chord {
+            keys.push(n(p, start, 3.75, 90));
         }
         for (i, offset) in [0.0, 1.5, 2.0, 3.0, 3.5].iter().enumerate() {
             let octave = if i == 3 { 12 } else { 0 };
-            events.extend(note(BASS, root - 12 + octave, 0.9, start + offset, 0.4));
+            bass.push(n(root - 12 + octave, start + offset, 0.4, 115));
         }
         for eighth in 0..8 {
             let t = start + f64::from(eighth) * 0.5;
-            events.extend(note(
-                DRUMS,
-                42,
-                if eighth % 2 == 0 { 0.8 } else { 0.5 },
-                t,
-                0.1,
-            ));
+            drums.push(n(42, t, 0.1, if eighth % 2 == 0 { 100 } else { 64 }));
         }
         for kick in [0.0, 1.5, 2.0] {
-            events.extend(note(DRUMS, 36, 1.0, start + kick, 0.1));
+            drums.push(n(36, start + kick, 0.1, 127));
         }
         for snare in [1.0, 3.0] {
-            events.extend(note(DRUMS, 38, 0.9, start + snare, 0.1));
+            drums.push(n(38, start + snare, 0.1, 115));
         }
     }
-    events.extend(note(DRUMS, 49, 0.9, 16.0, 0.1));
-    events.extend(note(DRUMS, 36, 1.0, 16.0, 0.1));
-    events.extend(note(KEYS, 57, 0.7, 16.0, 2.0));
-    events.extend(note(BASS, 33, 0.9, 16.0, 2.0));
-    render_project(
-        &Project::default(),
-        events.into_iter().collect(),
-        20.0 * BEAT_S,
-        sample_rate_hz,
-    )
+    drums.push(n(49, 0.0, 0.1, 110));
+    for (track_id, name, notes) in [
+        (KEYS, "Chords", keys),
+        (BASS, "Bass line", bass),
+        (DRUMS, "Beat", drums),
+    ] {
+        run(Command::CreateClip {
+            track_id,
+            start_beats: 0.0,
+            length_beats: 16.0,
+            name: Some(name.into()),
+            notes,
+        });
+    }
+    run(Command::AddEffect {
+        track_id: Some(KEYS),
+        kind: EffectKind::Reverb,
+        index: None,
+    });
+    run(Command::AddEffect {
+        track_id: None,
+        kind: EffectKind::Limiter,
+        index: None,
+    });
+    run(Command::SetLoop {
+        enabled: Some(true),
+        start_beats: Some(0.0),
+        end_beats: Some(16.0),
+    });
+    s.project().clone()
 }

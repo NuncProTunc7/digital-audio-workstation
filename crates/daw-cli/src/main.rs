@@ -40,9 +40,27 @@ enum CliCommand {
         #[arg(long)]
         out: PathBuf,
     },
+    /// Write the demo song as a project file you can open in the app.
+    DemoProject {
+        /// Output project path (.nptune).
+        #[arg(long)]
+        out: PathBuf,
+    },
+    /// Render a project file to a WAV file (whole song plus a tail).
+    Render {
+        /// Project file (.nptune).
+        #[arg(long)]
+        project: PathBuf,
+        /// Output WAV path.
+        #[arg(long)]
+        out: PathBuf,
+        /// Extra seconds after the last clip, for reverb and echo tails.
+        #[arg(long, default_value_t = 2.0)]
+        tail: f64,
+    },
     /// Print the JSON Schema of every project Command (what Claude can do).
     Schema,
-    /// Print every instrument's parameters and presets as JSON.
+    /// Print every instrument and effect, with parameters and presets, as JSON.
     Instruments,
 }
 
@@ -55,6 +73,10 @@ fn main() -> ExitCode {
             gain,
         } => render_test_tone(&out, freq_hz, seconds, gain),
         CliCommand::RenderDemo { out } => render_demo(&out),
+        CliCommand::DemoProject { out } => {
+            daw_model::save_project(&demo::project(), &out).map_err(|e| e.to_string())
+        }
+        CliCommand::Render { project, out, tail } => render_file(&project, &out, tail),
         CliCommand::Schema => {
             println!("{:#}", daw_model::command_schema());
             Ok(())
@@ -83,14 +105,29 @@ fn render_test_tone(out: &Path, freq_hz: f64, seconds: f64, gain: f32) -> Result
     Ok(())
 }
 
-/// The instrument catalog as pretty JSON. The UI ships a copy in
+/// Instruments, effects, and drum pads as pretty JSON. The UI ships a copy in
 /// `app/src/generated/instruments.json`; a test keeps it current.
 fn catalog_json() -> serde_json::Result<String> {
     serde_json::to_string_pretty(&daw_instruments::catalog()).map(|s| s + "\n")
 }
 
+fn render_file(project: &Path, out: &Path, tail: f64) -> Result<(), String> {
+    let p = daw_model::load_project(project).map_err(|e| e.to_string())?;
+    if !(0.0..=60.0).contains(&tail) {
+        return Err(format!("tail must be between 0 and 60 seconds, got {tail}"));
+    }
+    let samples = daw_engine::offline::render_song(&p, DEFAULT_SAMPLE_RATE_HZ, tail);
+    write_wav(out, &samples, DEFAULT_SAMPLE_RATE_HZ).map_err(|e| e.to_string())?;
+    println!(
+        "wrote {} ({:.1} s)",
+        out.display(),
+        samples.len() as f64 / 2.0 / f64::from(DEFAULT_SAMPLE_RATE_HZ)
+    );
+    Ok(())
+}
+
 fn render_demo(out: &Path) -> Result<(), String> {
-    let samples = demo::render(DEFAULT_SAMPLE_RATE_HZ);
+    let samples = daw_engine::offline::render_song(&demo::project(), DEFAULT_SAMPLE_RATE_HZ, 2.0);
     write_wav(out, &samples, DEFAULT_SAMPLE_RATE_HZ).map_err(|e| e.to_string())?;
     println!("wrote {}", out.display());
     Ok(())
@@ -148,7 +185,8 @@ mod tests {
 
     #[test]
     fn demo_renders_cleanly() {
-        let samples = demo::render(DEFAULT_SAMPLE_RATE_HZ);
+        let samples =
+            daw_engine::offline::render_song(&demo::project(), DEFAULT_SAMPLE_RATE_HZ, 1.0);
         assert!(samples.iter().all(|s| s.is_finite() && s.abs() <= 1.0));
         let peak = samples.iter().fold(0.0f32, |m, s| m.max(s.abs()));
         assert!(peak > 0.1, "demo is too quiet: {peak}");
