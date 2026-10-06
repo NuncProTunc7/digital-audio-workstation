@@ -22,3 +22,13 @@ __pycache__/
 
 # Logs
 *.log
+
+# Rust
+target/
+
+# Rendered audio and installers
+*.wav
+*.ogg
+*.flac
+*.msi
+*.exe
