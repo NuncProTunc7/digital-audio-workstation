@@ -1,6 +1,6 @@
 # Nunc Pro Tune — Project Plan
 
-**Status:** Phases 0–5 built (see §8). Decisions below are agreed with the owner.
+**Status:** Phases 0–5 built, Phase 6 in progress (see §8). Decisions below are agreed with the owner.
 **License:** GPL-3.0-or-later.
 
 ## 1. What we are building
@@ -103,10 +103,10 @@ All share one voice engine (polyphony, voice stealing, MIDI CC, pitch bend, sust
 | Instrument | v1 design | Ideas to borrow from |
 |---|---|---|
 | **Synth** | **Built (Phase 1):** 2 band-limited oscillators (sine/saw/square/triangle) + sub + noise, state-variable filter (LP/BP/HP) with envelope, key tracking and LFO, amp + filter ADSR, vibrato, poly (16 voices) or mono with legato glide, sustain pedal, pitch bend, 10 presets. **Later:** third oscillator, ladder filter, second LFO, mod matrix, unison | LMMS TripleOscillator, Surge XT (GPL-3) filters/oscillators |
-| **Keys** | (a) FM electric piano + organ models (no samples needed); (b) acoustic piano via the Sampler using the **Salamander Grand Piano** (CC-BY 3.0) as an optional download | Dexed (GPL-3) FM ideas; Salamander attribution required |
+| **Keys** | (a) FM electric piano + organ models (no samples needed, later); (b) **built (Phase 6):** acoustic piano via the Sampler track with the **Salamander Grand Piano** (CC-BY 3.0) or any SFZ pack the user downloads; nothing is bundled, so the user's copy carries its own license | Dexed (GPL-3) FM ideas |
 | **Drums** | **Built (Phase 1):** 16 synthesized pads on General MIDI notes 36–51 (kick, rim, 2 snares, clap, 6 toms, 3 hi-hats with choke, crash, ride), group levels, tune/decay controls, 3 kits. **Later:** sample pads, step sequencer | LMMS Kicker; classic 808/909 circuit models |
 | **Bass** | **Built (Phase 1):** the Synth in mono mode with bass presets (Sub Bass, Fat Bass, Acid Bass). **Later:** drive, sampled electric bass via Sampler | Synth engine above with bass-focused presets |
-| **Sampler** | SFZ-format player (velocity layers, round robins, loop points) | sfizz (BSD-2) as reference |
+| **Sampler** | **Built (Phase 6):** SFZ player (`daw-sampler`): key/velocity mapping, `<global>/<master>/<group>` inheritance, loop points, one-shots, release times, sustain pedal, `#define`/`#include`; release-trigger regions and round robins are skipped. Packs load in the background and big ones keep evenly spaced velocity layers to stay under 512 MB | sfizz (BSD-2) as reference (no code copied) |
 
 ### Playing without a MIDI keyboard
 - **On-screen piano:** click or drag to play; shows held notes; octave and velocity controls.
@@ -183,7 +183,7 @@ Each phase ends with a Windows installer you can download from GitHub Actions an
 | **3. Claude** ✅ | Control server, MCP bridge, full tool list, analysis tools | Ask Claude to build or remix a track |
 | **4. Record** ✅ | Audio tracks; import audio (phone m4a/AAC and ALAC, mp3, wav, flac, ogg) by button or drag-and-drop; microphone recording lined up with the beat; waveforms; trim, split, clip gain, fades, normalize; audio kept in a `Song Audio` folder beside the project; Claude can import, edit, record, and analyze audio | Record guitar/vocals (or bring them over from your phone) and mix them in |
 | **5. Godot + notation** ✅ | Godot export (seamless OGG/WAV loops with tail wrap, stems, `AudioStreamSynchronized` layers, `AudioStreamInteractive` sections, loudness normalization, `.import` settings), MIDI import/export, MusicXML import/export (incl. `.mxl`), sheet music view | Drop music straight into your game; turn sheet music into tracks |
-| **6. Expand** | ASIO for audio interfaces, CLAP then VST3 hosting, multi-input recording, sampled piano/bass packs, automation lanes, time-stretch | Use outside plugins, record a band |
+| **6. Expand** (in progress) | ✅ Automation lanes (volume, pan, any instrument or effect setting); ✅ SFZ sampler for recorded pianos/basses (memory-capped velocity layers); ✅ time-stretch (audio clips can follow tempo, pitch kept); next: CLAP then VST3 hosting, ASIO and multi-input recording | Use outside plugins, record a band |
 
 Phase 3 (Claude) comes before recording on purpose: once Claude can drive the app, it can help test everything that follows.
 

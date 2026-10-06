@@ -21,6 +21,12 @@ In the app, click **Open** and choose `examples/Demo Groove.nptune` from this re
 - **Editing:** drag a clip's left or right edge to trim it, **Ctrl+E** splits the selected clip at the playhead, and the Audio panel has gain, fade in/out and **Normalize**.
 - Audio is saved in a `<Song name> Audio` folder next to your `.nptune` file. Keep them together when you move or back up a song.
 
+## More sounds, movement, and tempo
+
+- **Automation:** click **A** on a track to show its automation row, pick a setting (Volume, Pan, a filter, an effect amount...) and click to draw the line it follows over time. Drag points to move them; double-click one to remove it.
+- **Real piano (or any sampled instrument):** add a **Sampler track**, then **Load sample pack…** and choose an `.sfz` file. For a free concert grand, download the *Salamander Grand Piano* (SFZ + FLAC version) from freepats.zenvoid.org and unzip it first. Big packs load in the background; to save memory the app may keep only some of the pack's velocity layers (the panel tells you).
+- **Audio that follows the tempo:** select an audio clip and tick **Follow song tempo**; changing the tempo then speeds it up or slows it down without changing its pitch.
+
 ## Put music in your Godot game
 
 **Export ▾ → To Godot (loops, stems)…**, pick your Godot project folder once, then **Export**. You get looping OGG files in `res://music/` that Godot loops on its own (no clicks at the loop point; reverb carries over), at a consistent game-music loudness. Tick **stems** for one file per track plus an `AudioStreamSynchronized` (`*_layers.tres`) to fade instruments in and out from code. Claude can also export named sections (say *explore* and *combat*) as an `AudioStreamInteractive` that switches on the next bar.

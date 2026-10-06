@@ -49,6 +49,11 @@ judging tone) to check loudness, balance, and peaks. Game music usually sits aro
 - Sheet music: export_musicxml / import_musicxml (MuseScore and other notation apps); \
 to turn a photo or PDF of a score into tracks, read it yourself, write MusicXML, and pass \
 it to import_musicxml as text. MIDI files: import_midi / export_midi.
+- Automation: add_automation_lane moves volume, pan, or any instrument/effect setting \
+over time (fade-ins, filter sweeps, swelling reverb); points are (beats, value).
+- Sampler tracks (instrument \"sampler\") play an SFZ sample pack the user downloaded \
+(e.g. the Salamander Grand Piano); load one with load_sample_pack and check \
+sample_pack_status in get_track. Audio clips can follow tempo changes with set_clip_tempo.
 - Games: export_godot writes seamless loops (plus optional stems and adaptive-music \
 resources) straight into the user's Godot project, already set to loop.
 - Don't open or start a new project without asking if the user may have unsaved work.";
