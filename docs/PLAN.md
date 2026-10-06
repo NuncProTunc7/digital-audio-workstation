@@ -39,7 +39,7 @@
 | Plugins (later) | **CLAP first, then VST3** | Both are open (CLAP: MIT; VST3: MIT since SDK 3.8, Oct 2025). |
 | Internal audio format | 32-bit float, 48 kHz default, stereo buses | Industry norm; matches Godot's mixer. |
 | Tempo convention | BPM counts the time signature's beat (quarter notes in 4/4, eighth notes in 6/8); the metronome clicks every beat | Simple and predictable; revisit if compound-meter users want dotted-quarter clicks. |
-| Project file | Folder: `MySong.daw/project.json` + `audio/` | Human-readable, diff-able, easy for Claude to inspect. |
+| Project file | One JSON file, `MySong.nptune` (versioned, validated on load). Recorded audio (Phase 4) goes in a `MySong Audio/` folder beside it | Human-readable, diff-able, easy for Claude to inspect; a single file is simpler to open, save, and email than a folder. *Changed in Phase 2 from a `.daw` folder — owner to confirm.* |
 
 ## 3. Architecture
 
@@ -83,6 +83,7 @@ crates/
   daw-dsp/          shared DSP: oscillators, filters, envelopes, effects
   daw-instruments/  Keys, Synth, Drums, Bass, Sampler (SFZ)
   daw-notation/     MusicXML + MIDI file import/export, quantization
+  daw-effects/      EQ, compressor, reverb, delay, chorus, distortion, limiter
   daw-export/       WAV/OGG/FLAC render, loop points, stems, Godot export
   daw-analysis/     loudness, peaks, spectrum summary, tempo/key estimate
   daw-control/      local JSON-RPC server; command schema registry
@@ -113,7 +114,7 @@ All share one voice engine (polyphony, voice stealing, MIDI CC, pitch bend, sust
 - **Drum pads:** a clickable 4×4 pad grid, also mapped to keys.
 - All three feed the same input path as a hardware MIDI keyboard, so they can be recorded to a track, quantized, and edited in the piano roll. A USB MIDI keyboard plugs into the same path later with no extra work.
 
-Effects v1: EQ (parametric), compressor, reverb, delay, chorus, distortion, limiter. Every channel has gain, pan, mute, solo, and sends.
+Effects v1 (**built in Phase 2**): 3-band EQ with low cut, compressor, reverb (Freeverb-style), tempo-synced delay with ping-pong, chorus, distortion, look-ahead limiter. Every track has volume, pan, mute, solo, and an effect chain; the master bus has volume and its own chain. **Later:** sends/return buses, automation.
 
 Only use sample content that is CC0, CC-BY, or similar, and record its license in `assets/LICENSES.md`.
 
@@ -169,7 +170,7 @@ Each phase ends with a Windows installer you can download from GitHub Actions an
 |---|---|---|
 | **0. Skeleton** ✅ | Rust workspace, Tauri app opens, CI builds a Windows installer, headless render test | Install and open an empty app |
 | **1. Make sound** ✅ | Audio device selection (WASAPI), play/stop transport, metronome, Synth (keys, pads, leads, basses) and Drum machine instruments with presets, **on-screen piano + computer-keyboard playing + clickable drum pads**, MIDI keyboard input | Play the Keys, Bass, and Drums tracks with your mouse, computer keyboard, or a MIDI keyboard; shape sounds with presets and sliders |
-| **2. Arrange** | Timeline, MIDI clips, **recording what you play into clips**, piano roll, add/remove tracks, mixer with basic effects, save/load | Record and write a full instrumental track |
+| **2. Arrange** ✅ | Timeline with clips (create, move between tracks, resize, duplicate, delete), loop region, **recording what you play into clips**, piano roll (add/move/resize notes, quantize, transpose, velocity), add/rename/delete tracks, mixer (volume, pan, mute, solo, 7 effects per track and on the master), save/open/new project files, `npt render` to WAV | Record and write a full instrumental track |
 | **3. Claude** | Control server, MCP bridge, full tool list, analysis tools | Ask Claude to build or remix a track |
 | **4. Record** | Audio input recording, latency compensation, audio clip editing, import audio files | Record guitar/vocals and mix them in |
 | **5. Godot + notation** | Loop/stem/adaptive export, MusicXML/MIDI import-export, notation view | Drop music straight into your game; turn sheet music into tracks |

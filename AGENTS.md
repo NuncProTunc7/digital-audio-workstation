@@ -16,7 +16,7 @@ Instructions for AI coding agents (Claude Code and others) working in this repos
 
 ## Stack
 
-- Rust workspace in `crates/`: `daw-model` (project, Commands, instrument catalog), `daw-dsp` (oscillators, filters, envelopes), `daw-instruments` (Synth, DrumMachine), `daw-engine` (real-time processor, Engine handle, sound card, MIDI input, offline render), `daw-cli` (`npt` headless tool).
+- Rust workspace in `crates/`: `daw-model` (project, tracks/clips/notes, mixer, Commands, instrument and effect catalogs, `.nptune` file format), `daw-dsp` (oscillators, filters, biquads, envelopes), `daw-instruments` (Synth, DrumMachine), `daw-effects` (EQ, compressor, reverb, delay, chorus, distortion, limiter), `daw-engine` (real-time processor with clip sequencer, mixer, loop, recording capture; Engine handle; sound card; MIDI input; offline render), `daw-cli` (`npt` headless tool).
 - Tauri 2 app in `app/`: `app/src/` is the React + TypeScript + Vite UI, `app/src-tauri/` is the Rust shell.
 - In a plain browser (`npm --prefix app run dev`), the UI uses an in-memory preview backend (`app/src/backend.ts`) so it can be developed without the engine.
 - Audio I/O: cpal (WASAPI; ASIO in Phase 6). MIDI: midir. MCP: rmcp.
@@ -38,8 +38,12 @@ npm --prefix app run tauri build             # release build + Windows installer
 cargo run -p daw-cli -- render-test-tone --out tone.wav   # headless render
 cargo run -p daw-cli -- schema               # JSON Schema of every Command
 cargo run -p daw-cli -- instruments          # instrument parameters, presets, drum pads (JSON)
-cargo run -p daw-cli -- render-demo --out demo.wav   # 10 s groove on Keys, Bass, Drums
+cargo run -p daw-cli -- render-demo --out demo.wav   # demo song rendered to WAV
+cargo run -p daw-cli -- demo-project --out demo.nptune   # demo song as a project file
+cargo run -p daw-cli -- render --project song.nptune --out song.wav   # any project to WAV
 ```
+
+Dev builds optimize the audio crates (see `[profile.dev.package.*]` in `Cargo.toml`); unoptimized DSP cannot keep up in real time.
 
 Linux builds need: `libwebkit2gtk-4.1-dev libasound2-dev libgtk-3-dev librsvg2-dev libayatana-appindicator3-dev libxdo-dev`.
 
@@ -59,7 +63,10 @@ Use lock-free queues (`rtrb`) to talk to the audio thread. Pre-allocate buffers.
 ### 2. Commands are the only way to change a project
 - All edits — from UI, shortcuts, or MCP — go through a `Command` in `daw-model`.
 - Live actions (notes, play/stop, metronome, device choice) are not project edits: they go straight to the `Engine` and are not undoable. Don't use them to change saved state.
-- Instrument parameters and presets are data in `daw-model/src/instrument.rs` (append-only order: the index is the engine's parameter id). The DSP in `daw-instruments` matches on parameter ids. After changing either, regenerate the UI copy: `cargo run -p daw-cli -- instruments > app/src/generated/instruments.json` (a test fails if you forget).
+- Every Command's `apply` returns its exact inverse. Removals return a `Restore*` Command carrying the full object (with ids), so undo/redo keeps ids stable. Commands that a drag repeats (sliders, clip moves, note edits) must be listed in `Command::coalesces_with` so a drag is one undo step; the UI calls `end_gesture` when the drag ends.
+- Ids (`Id`) are allocated from `Project::next_id` and never reused within a project.
+- Instrument parameters and presets are data in `daw-model/src/instrument.rs` (append-only order: the index is the engine's parameter id). The DSP in `daw-instruments` matches on parameter ids. Effect parameters likewise live in `daw-model/src/effect.rs`, with DSP in `daw-effects`. After changing any of these, regenerate the UI copy: `cargo run -p daw-cli -- instruments > app/src/generated/instruments.json` (a test fails if you forget).
+- The browser preview backend (`app/src/preview.ts`) mirrors Commands loosely so UI tests can run without Rust. When adding a Command, add a case there too.
 - Each Command: `serde` + `schemars` derive, a doc comment (it becomes the MCP tool description Claude reads), `apply`, and `undo`.
 - Adding a UI feature without a Command is a bug. The MCP tool list is generated from Commands; do not hand-write MCP tools that bypass them.
 

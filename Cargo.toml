@@ -28,3 +28,20 @@ unwrap_used = "warn"
 
 [profile.release]
 lto = "thin"
+
+# Audio code must run in real time even in development builds, or playback
+# stutters. Optimize the DSP crates (and all dependencies) in dev too.
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.dev.package.daw-dsp]
+opt-level = 3
+
+[profile.dev.package.daw-instruments]
+opt-level = 3
+
+[profile.dev.package.daw-effects]
+opt-level = 3
+
+[profile.dev.package.daw-engine]
+opt-level = 3

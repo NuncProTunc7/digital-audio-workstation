@@ -80,16 +80,19 @@ pub(crate) mod test_util {
     }
 }
 
-/// Everything the UI and Claude need to know about the built-in instruments.
+/// Everything the UI and Claude need to know about the built-in
+/// instruments and effects.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct Catalog {
     pub instruments: Vec<daw_model::instrument::InstrumentDescription>,
+    pub effects: Vec<daw_model::effect::EffectDescription>,
     pub drum_pads: &'static [DrumPad],
 }
 
 pub fn catalog() -> Catalog {
     Catalog {
         instruments: daw_model::instrument::describe_instruments(),
+        effects: daw_model::effect::describe_effects(),
         drum_pads: &DRUM_PADS,
     }
 }
