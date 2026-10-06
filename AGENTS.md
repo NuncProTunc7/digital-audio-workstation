@@ -4,7 +4,7 @@ Instructions for AI coding agents (Claude Code and others) working in this repos
 
 ## Project
 
-An open-source (GPL-3.0-or-later) digital audio workstation for making game music, fully controllable by Claude through MCP. Full plan: [`docs/PLAN.md`](docs/PLAN.md). Read it before starting any feature work.
+**Nunc Pro Tune**: an open-source (GPL-3.0-or-later) digital audio workstation for making game music, fully controllable by Claude through MCP. Full plan: [`docs/PLAN.md`](docs/PLAN.md). Read it before starting any feature work.
 
 ## Working with the owner
 

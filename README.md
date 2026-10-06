@@ -1,4 +1,4 @@
-# Digital Audio Workstation
+# Nunc Pro Tune
 
 A free, open-source DAW for making game music — record real instruments, compose with built-in synths, drums, bass, and keys, read and write sheet music, and export straight into Godot. Claude Desktop and Claude Code can control every part of it through MCP.
 

@@ -1,11 +1,11 @@
-# Project Plan
+# Nunc Pro Tune — Project Plan
 
 **Status:** Draft v0.1 for owner review. Nothing here is built yet.
 **License:** GPL-3.0-or-later.
 
 ## 1. What we are building
 
-A free, open-source digital audio workstation (DAW) for making game music, with Claude able to operate every part of it.
+**Nunc Pro Tune** is a free, open-source digital audio workstation (DAW) for making game music, with Claude able to operate every part of it.
 
 **Goals**
 - Record one live instrument at a time (built so more inputs can be added later), then edit, mix, and fine-tune.
@@ -27,7 +27,7 @@ A free, open-source digital audio workstation (DAW) for making game music, with 
 | Audio engine | **Rust** | Memory-safe; the compiler catches the crash and glitch bugs that plague C++ audio code. |
 | Desktop shell | **Tauri 2** | Small Windows installer; Rust backend plus a web UI. |
 | UI | **TypeScript + React + Vite**; timeline, piano roll, and waveforms drawn on `<canvas>` | Largest ecosystem; DOM is too slow for dense editors. |
-| Audio I/O | **cpal**: WASAPI by default, **ASIO** as an option | ASIO gives the lowest latency for audio interfaces. Steinberg made the ASIO SDK GPLv3-compatible in Oct 2025. |
+| Audio I/O | **cpal** with **WASAPI** (standard Windows audio) for v1; **ASIO** added in Phase 6 | Owner records with a built-in/headset mic, which WASAPI handles well. ASIO matters once an audio interface is involved; Steinberg made the ASIO SDK GPLv3-compatible in Oct 2025. |
 | MIDI I/O | **midir** | Standard Rust MIDI library; works on Windows. |
 | Audio file import | **symphonia** (WAV, FLAC, MP3, OGG, AAC) | Pure Rust. |
 | Audio file export | WAV (**hound**), OGG Vorbis (libvorbis bindings), FLAC | OGG is Godot's preferred music format. |
@@ -166,12 +166,12 @@ Each phase ends with a Windows installer you can download from GitHub Actions an
 | Phase | Deliverable | You can… |
 |---|---|---|
 | **0. Skeleton** | Rust workspace, Tauri app opens, CI builds a Windows installer, headless render test | Install and open an empty app |
-| **1. Make sound** | Audio device selection (WASAPI/ASIO), transport, metronome, Synth instrument, **on-screen piano + computer-keyboard playing + clickable drum pads**, MIDI keyboard input | Play and record the synth with your mouse or computer keyboard (no MIDI hardware needed) |
+| **1. Make sound** | Audio device selection (WASAPI), transport, metronome, Synth instrument, **on-screen piano + computer-keyboard playing + clickable drum pads**, MIDI keyboard input | Play and record the synth with your mouse or computer keyboard (no MIDI hardware needed) |
 | **2. Arrange** | Timeline, MIDI clips, piano roll, Drums + Bass + Keys, mixer with basic effects, save/load, undo/redo | Write a full instrumental track |
 | **3. Claude** | Control server, MCP bridge, full tool list, analysis tools | Ask Claude to build or remix a track |
 | **4. Record** | Audio input recording, latency compensation, audio clip editing, import audio files | Record guitar/vocals and mix them in |
 | **5. Godot + notation** | Loop/stem/adaptive export, MusicXML/MIDI import-export, notation view | Drop music straight into your game; turn sheet music into tracks |
-| **6. Expand** | CLAP then VST3 hosting, multi-input recording, sampled piano/bass packs, automation lanes, time-stretch | Use outside plugins, record a band |
+| **6. Expand** | ASIO for audio interfaces, CLAP then VST3 hosting, multi-input recording, sampled piano/bass packs, automation lanes, time-stretch | Use outside plugins, record a band |
 
 Phase 3 (Claude) comes before recording on purpose: once Claude can drive the app, it can help test everything that follows.
 
@@ -203,17 +203,16 @@ Check each source file's own header before porting; projects sometimes mix licen
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| **Recording latency on Windows** (top risk) | Recording feels out of time | ASIO support, measured round-trip latency compensation, direct monitoring guidance |
+| **Recording latency on Windows** (top risk) | Recording feels out of time | Measured round-trip latency compensation (built-in loopback test), headphone-monitoring guidance, ASIO in Phase 6 |
 | Scope creep | Never ships | Phase gates; each phase must produce something usable |
 | Audio glitches (dropouts, clicks) | Unusable for recording | Real-time rules in §3, CPU meter, buffer-size setting, stress tests |
 | Owner can't debug code | Bugs linger | Strong tests + CI, clear error messages, in-app diagnostic report |
 | Sample library licensing | Legal trouble when distributing | CC0/CC-BY only, tracked in `assets/LICENSES.md` |
 
-## 12. Open items for the owner
+## 12. Owner answers
 
-1. **Product name** (needed before Phase 0 for the installer and app title).
-2. What do you record real instruments with (audio interface, USB mic, built-in mic)? This decides how early ASIO matters.
-
-Answered:
-- MIDI keyboard: none for now → on-screen piano and musical typing are Phase 1 requirements.
-- Godot version: **4.6**. Godot export targets 4.6; verify `.import`/`.tres` formats against it.
+- **Name:** Nunc Pro Tune. No existing software or GitHub repo found with that name (Oct 2026 search; not a formal trademark clearance).
+- **Recording gear:** built-in / headset mic → WASAPI is enough for v1. Recommend headphones while recording so the click and backing tracks don't bleed into the mic.
+- **MIDI keyboard:** none for now → on-screen piano and musical typing are Phase 1 requirements.
+- **Godot version:** **4.6**. Godot export targets 4.6; verify `.import`/`.tres` formats against it.
+- **Claude clients:** Claude Desktop and Claude Code.
