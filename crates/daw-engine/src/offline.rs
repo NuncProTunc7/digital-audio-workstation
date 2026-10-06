@@ -65,6 +65,36 @@ pub fn render_project(
     out
 }
 
+/// Renders beats `start_beats..end_beats` (looping off) plus `tail_seconds`
+/// of ring-out. Returns interleaved stereo.
+pub fn render_region(
+    project: &Project,
+    start_beats: f64,
+    end_beats: f64,
+    tail_seconds: f64,
+    sample_rate_hz: u32,
+) -> Vec<f32> {
+    let mut p = project.clone();
+    p.loop_region.enabled = false;
+    let beats = (end_beats - start_beats).max(0.0);
+    let seconds = beats * 60.0 / p.tempo_bpm + tail_seconds.max(0.0);
+    render_project(
+        &p,
+        vec![
+            TimedMessage {
+                at_seconds: 0.0,
+                message: EngineMessage::Locate(start_beats.max(0.0)),
+            },
+            TimedMessage {
+                at_seconds: 0.0,
+                message: EngineMessage::Play,
+            },
+        ],
+        seconds,
+        sample_rate_hz,
+    )
+}
+
 /// Renders the whole song from the start (looping off) plus `tail_seconds`
 /// for reverb and delay tails. Returns interleaved stereo.
 pub fn render_song(project: &Project, sample_rate_hz: u32, tail_seconds: f64) -> Vec<f32> {
