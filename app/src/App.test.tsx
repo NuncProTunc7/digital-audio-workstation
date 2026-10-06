@@ -333,6 +333,34 @@ describe("Audio", () => {
   });
 });
 
+describe("Import and export", () => {
+  it("offers WAV and MIDI export", async () => {
+    const backend = createPreviewBackend();
+    vi.spyOn(backend, "pickExportPath").mockResolvedValue("C:\\Music\\song.mid");
+    vi.spyOn(backend, "exportMidi");
+    await renderApp(backend);
+    fireEvent.click(screen.getByRole("button", { name: "Export ▾" }));
+    expect(screen.getByRole("menuitem", { name: "Song as WAV audio…" })).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("menuitem", { name: "MIDI file…" }));
+    });
+    expect(backend.pickExportPath).toHaveBeenCalledWith("mid", "Untitled");
+    expect(backend.exportMidi).toHaveBeenCalledWith("C:\\Music\\song.mid");
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("routes dropped MIDI files to the MIDI importer", async () => {
+    const backend = createPreviewBackend();
+    vi.spyOn(backend, "importMidi").mockImplementation(() => backend.getProject());
+    await renderApp(backend);
+    await act(async () => {
+      backend.simulateFileDrop(["C:\\Downloads\\theme.mid"], 10, 10);
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(backend.importMidi).toHaveBeenCalledWith("C:\\Downloads\\theme.mid");
+  });
+});
+
 async function waitForElement(selector: string): Promise<Element> {
   for (let i = 0; i < 50; i++) {
     const el = document.querySelector(selector);

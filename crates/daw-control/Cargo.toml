@@ -14,6 +14,7 @@ daw-analysis = { path = "../daw-analysis" }
 daw-engine = { workspace = true }
 daw-instruments = { path = "../daw-instruments" }
 daw-model.workspace = true
+daw-notation = { path = "../daw-notation" }
 dirs = "6"
 getrandom = "0.3"
 hound.workspace = true

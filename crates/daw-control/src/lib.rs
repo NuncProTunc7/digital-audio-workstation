@@ -10,14 +10,15 @@ pub mod claude_setup;
 mod client;
 mod discovery;
 mod host;
+pub mod notation;
 mod protocol;
 mod server;
 
 pub use client::{ClientError, ControlClient};
 pub use discovery::{APP_ID, ControlFile, control_file_path, unsaved_audio_dir};
 pub use host::{
-    Host, SavedProject, begin_take, end_take, handle, import_audio, new_project, open_project,
-    save_project,
+    Host, SavedProject, begin_take, end_take, export_song_wav, handle, import_audio, new_project,
+    open_project, save_project,
 };
 pub use protocol::{Request, Response};
 pub use server::ControlServer;

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { Backend } from "./backend";
-import { AUDIO_EXTENSIONS } from "./backend";
+import { AUDIO_EXTENSIONS, MIDI_EXTENSIONS } from "./backend";
+import type { ExportKind } from "./backend";
 import AudioPanel from "./components/AudioPanel";
 import ClaudePanel from "./components/ClaudePanel";
 import InstrumentPanel from "./components/InstrumentPanel";
@@ -242,13 +243,16 @@ export default function App({ backend }: AppProps) {
   /** Imports files one by one, then selects the last new clip. */
   const importFiles = useCallback(
     async (paths: string[], trackId: number | null, beats: number) => {
-      const usable = paths.filter((p) => AUDIO_EXTENSIONS.includes(p.split(".").pop()?.toLowerCase() ?? ""));
+      const ext = (p: string) => p.split(".").pop()?.toLowerCase() ?? "";
+      const usable = paths.filter((p) => AUDIO_EXTENSIONS.includes(ext(p)) || MIDI_EXTENSIONS.includes(ext(p)));
       if (usable.length < paths.length) {
-        setError("Only audio files can be imported (WAV, MP3, M4A, FLAC, OGG)");
+        setError("Only audio files (WAV, MP3, M4A, FLAC, OGG) and MIDI files can be imported");
       }
       let latest: Project | undefined;
       for (const path of usable) {
-        const v = await run(() => backend.importAudio(path, trackId, beats));
+        const v = await run(() =>
+          MIDI_EXTENSIONS.includes(ext(path)) ? backend.importMidi(path) : backend.importAudio(path, trackId, beats),
+        );
         if (!v) break;
         latest = applyView(v);
       }
@@ -263,6 +267,21 @@ export default function App({ backend }: AppProps) {
       }
     },
     [backend, run, applyView],
+  );
+
+  const [exportOpen, setExportOpen] = useState(false);
+  const exportAs = useCallback(
+    async (kind: ExportKind) => {
+      setExportOpen(false);
+      const name = view?.project.name ?? "Untitled";
+      const path = await run(() => backend.pickExportPath(kind, name));
+      if (!path) return;
+      setToast(`Exporting ${path.split(/[\\/]/).pop()}…`);
+      const done = await run(() => (kind === "wav" ? backend.exportWav(path) : backend.exportMidi(path)));
+      setToast(done === undefined ? null : `Exported ${path.split(/[\\/]/).pop()}`);
+      window.setTimeout(() => setToast(null), TOAST_MS);
+    },
+    [backend, run, view?.project.name],
   );
 
   const pickAndImport = useCallback(
@@ -593,6 +612,38 @@ export default function App({ backend }: AppProps) {
           <button className="small" onClick={() => void saveFile(false)} title="Save (Ctrl+S). Ctrl+Shift+S: Save as">
             Save{view.dirty ? " •" : ""}
           </button>
+          <button
+            className="small"
+            onClick={() =>
+              void run(() => backend.pickImportFiles()).then((paths) => {
+                if (paths && paths.length > 0) void importFiles(paths, null, snapDown(position, beatsPerBar));
+              })
+            }
+            title="Bring in audio (WAV, MP3, phone recordings) or MIDI files"
+          >
+            Import…
+          </button>
+          <div className="menu-anchor">
+            <button
+              className="small"
+              aria-haspopup="menu"
+              aria-expanded={exportOpen}
+              onClick={() => setExportOpen((o) => !o)}
+              title="Save the song as audio or for other apps"
+            >
+              Export ▾
+            </button>
+            {exportOpen && (
+              <div className="menu" role="menu">
+                <button role="menuitem" onClick={() => void exportAs("wav")}>
+                  Song as WAV audio…
+                </button>
+                <button role="menuitem" onClick={() => void exportAs("mid")}>
+                  MIDI file…
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         <CommitInput

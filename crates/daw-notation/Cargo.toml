@@ -1,0 +1,17 @@
+[package]
+name = "daw-notation"
+description = "Nunc Pro Tune notation: MIDI files and MusicXML, in and out."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+daw-model.workspace = true
+midly = { version = "0.5.3", default-features = false, features = ["alloc", "std"] }
+roxmltree = "0.21.1"
+thiserror.workspace = true
+
+[lints]
+workspace = true

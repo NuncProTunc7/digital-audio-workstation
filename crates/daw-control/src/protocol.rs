@@ -71,6 +71,14 @@ pub enum Request {
     },
     /// Stop recording; the take becomes a clip.
     StopRecording,
+    /// Read a .mid file into new tracks.
+    ImportMidi {
+        path: String,
+    },
+    /// Write the instrument tracks as a .mid file.
+    ExportMidi {
+        path: String,
+    },
 }
 
 /// Reply to a [`Request`].

@@ -22,6 +22,13 @@ const PROJECT_FILTER = [{ name: "Nunc Pro Tune project", extensions: ["nptune"] 
 /** What the audio importer reads (see daw_audio::SUPPORTED_EXTENSIONS). */
 export const AUDIO_EXTENSIONS = ["wav", "wave", "mp3", "m4a", "mp4", "aac", "flac", "ogg", "oga"];
 const AUDIO_FILTER = [{ name: "Audio (WAV, MP3, M4A, FLAC, OGG)", extensions: AUDIO_EXTENSIONS }];
+export const MIDI_EXTENSIONS = ["mid", "midi"];
+/** Things the export menu can write, with their file extension. */
+export type ExportKind = "wav" | "mid";
+const EXPORT_FILTERS: Record<ExportKind, { name: string; extensions: string[] }[]> = {
+  wav: [{ name: "WAV audio", extensions: ["wav"] }],
+  mid: [{ name: "MIDI file", extensions: ["mid"] }],
+};
 
 /** Everything the UI can ask of the Rust side. */
 export interface Backend {
@@ -80,6 +87,14 @@ export interface Backend {
   /** Opens (true) or closes (false) the microphone for metering. */
   monitorInput(on: boolean): Promise<InputStatus>;
   setInputDevice(name: string | null): Promise<InputStatus>;
+  /** Shows an open dialog for anything importable (audio, MIDI); empty if cancelled. */
+  pickImportFiles(): Promise<string[]>;
+  /** Reads a MIDI file into new tracks. */
+  importMidi(path: string): Promise<ProjectView>;
+  /** Shows a save dialog for an export; null if cancelled. */
+  pickExportPath(kind: ExportKind, defaultName: string): Promise<string | null>;
+  exportWav(path: string): Promise<void>;
+  exportMidi(path: string): Promise<void>;
   /** Files dropped on the window, with the drop point in CSS pixels. */
   onFileDrop(callback: (paths: string[], x: number, y: number) => void): Promise<() => void>;
 
@@ -137,6 +152,24 @@ export const tauriBackend: Backend = {
     return Array.isArray(picked) ? picked : [picked];
   },
   audioPeaks: (file) => invoke("audio_peaks", { file }),
+  pickImportFiles: async () => {
+    const picked = await open({
+      multiple: true,
+      directory: false,
+      filters: [
+        { name: "Audio or MIDI", extensions: [...AUDIO_EXTENSIONS, ...MIDI_EXTENSIONS] },
+        ...AUDIO_FILTER,
+        { name: "MIDI file", extensions: MIDI_EXTENSIONS },
+      ],
+    });
+    if (picked === null) return [];
+    return Array.isArray(picked) ? picked : [picked];
+  },
+  importMidi: (path) => invoke("import_midi", { path }),
+  pickExportPath: async (kind, defaultName) =>
+    (await save({ defaultPath: `${defaultName}.${kind}`, filters: EXPORT_FILTERS[kind] })) ?? null,
+  exportWav: (path) => invoke("export_wav", { path }),
+  exportMidi: (path) => invoke("export_midi", { path }),
   inputStatus: () => invoke("input_status"),
   monitorInput: (on) => invoke("monitor_input", { on }),
   setInputDevice: (name) => invoke("set_input_device", { name }),

@@ -527,6 +527,13 @@ export function createPreviewBackend(): PreviewBackend {
       return view();
     },
     pickAudioFiles: async () => [],
+    pickImportFiles: async () => [],
+    importMidi: async (path) => {
+      throw new Error(`Opening MIDI files needs the desktop app (${path})`);
+    },
+    pickExportPath: async () => null,
+    exportWav: noop,
+    exportMidi: noop,
     audioPeaks: async (): Promise<Peaks> => {
       const perSecond = 200;
       const minMax: number[] = [];

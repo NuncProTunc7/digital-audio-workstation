@@ -225,6 +225,15 @@ fn handle_inner<H: Host>(host: &H, request: Request) -> Result<Value, String> {
             host.start_audio_recording(track_id)?;
             Ok(json!({ "recording": true, "track_id": track_id }))
         }
+        Request::ImportMidi { path } => {
+            let tracks = crate::notation::import_midi_file(host, Path::new(&path))?;
+            host.project_changed("Claude imported a MIDI file");
+            Ok(json!({ "new_track_ids": tracks, "song": song_summary(host.session()?.project()) }))
+        }
+        Request::ExportMidi { path } => {
+            crate::notation::export_midi_file(host, Path::new(&path))?;
+            Ok(json!({ "exported_to": path }))
+        }
         Request::StopRecording => {
             let clip_id = host.stop_audio_recording()?;
             if clip_id.is_some() {
@@ -407,7 +416,7 @@ fn engine<H: Host>(host: &H) -> Result<Arc<Engine>, String> {
     })
 }
 
-fn sync<H: Host>(host: &H, session: &Session) {
+pub(crate) fn sync<H: Host>(host: &H, session: &Session) {
     if let Some(e) = host.engine() {
         e.sync(session.project());
     }
@@ -502,6 +511,13 @@ fn with_extension(path: &Path) -> PathBuf {
         s.push(daw_model::PROJECT_EXTENSION);
         PathBuf::from(s)
     }
+}
+
+/// Renders the whole song (plus a 2 s tail) to a 24-bit WAV file. Returns
+/// its length in seconds.
+pub fn export_song_wav<H: Host>(host: &H, path: &Path) -> Result<f64, String> {
+    let project = host.session()?.project().clone();
+    export_wav(&project, &host.audio(), path, None, None, None)
 }
 
 /// Renders a region (default: whole song plus a 2 s tail) to 24-bit WAV.

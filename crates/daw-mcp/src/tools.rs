@@ -284,6 +284,24 @@ fn extra_tools() -> Vec<ToolDef> {
             false,
         ),
         tool(
+            "import_midi",
+            "Read a Standard MIDI File (.mid) into the song: each instrument part becomes a new track with one clip (channel 10 becomes a drum track). An empty song also takes the file's tempo and time signature. One undo step.",
+            object_schema(
+                json!({ "path": { "type": "string", "description": "Absolute path of the .mid file." } }),
+                &["path"],
+            ),
+            false,
+        ),
+        tool(
+            "export_midi",
+            "Write the song's instrument tracks as a type-1 MIDI file (drums on channel 10), for other music apps or notation programs.",
+            object_schema(
+                json!({ "path": { "type": "string", "description": "Absolute path ending in .mid." } }),
+                &["path"],
+            ),
+            false,
+        ),
+        tool(
             "stop_recording",
             "Stop recording audio. The take becomes a clip on the track, lined up with the beat the user heard while playing.",
             object_schema(json!({}), &[]),
@@ -363,6 +381,12 @@ pub fn to_request(name: &str, args: Map<String, Value>) -> Result<Request, Strin
             track_id: get_id("track_id")?,
         },
         "stop_recording" => Request::StopRecording,
+        "import_midi" => Request::ImportMidi {
+            path: get_str("path").ok_or("path is required")?,
+        },
+        "export_midi" => Request::ExportMidi {
+            path: get_str("path").ok_or("path is required")?,
+        },
         command => {
             if HIDDEN_COMMANDS.contains(&command) {
                 return Err(format!("unknown tool {command}"));

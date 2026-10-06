@@ -551,7 +551,8 @@ fn transport_status(state: State<'_, AppState>) -> TransportStatus {
 
 /// Brings an audio file into the project (on `track_id`, or a new audio
 /// track) at `start_beats`.
-#[tauri::command]
+// Off the main thread: decoding and rendering can take seconds.
+#[tauri::command(async)]
 fn import_audio(
     state: State<'_, AppState>,
     path: String,
@@ -562,8 +563,30 @@ fn import_audio(
     get_project(state)
 }
 
+/// Reads a .mid file into new tracks.
+// Off the main thread: decoding and rendering can take seconds.
+#[tauri::command(async)]
+fn import_midi(state: State<'_, AppState>, path: String) -> Result<ProjectView, String> {
+    daw_control::notation::import_midi_file(&*state, Path::new(&path))?;
+    get_project(state)
+}
+
+// Off the main thread: decoding and rendering can take seconds.
+#[tauri::command(async)]
+fn export_midi(state: State<'_, AppState>, path: String) -> Result<(), String> {
+    daw_control::notation::export_midi_file(&*state, Path::new(&path))
+}
+
+/// Renders the song to a WAV file.
+// Off the main thread: decoding and rendering can take seconds.
+#[tauri::command(async)]
+fn export_wav(state: State<'_, AppState>, path: String) -> Result<(), String> {
+    daw_control::export_song_wav(&*state, Path::new(&path)).map(|_| ())
+}
+
 /// Waveform overview of an audio file in the project.
-#[tauri::command]
+// Off the main thread: decoding and rendering can take seconds.
+#[tauri::command(async)]
 fn audio_peaks(state: State<'_, AppState>, file: String) -> Result<daw_audio::Peaks, String> {
     state
         .audio
@@ -898,7 +921,10 @@ pub fn run() {
             audio_peaks,
             input_status,
             monitor_input,
-            set_input_device
+            set_input_device,
+            import_midi,
+            export_midi,
+            export_wav
         ])
         .run(tauri::generate_context!());
     if let Err(e) = result {

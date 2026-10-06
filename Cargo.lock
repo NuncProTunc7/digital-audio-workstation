@@ -796,6 +796,7 @@ dependencies = [
  "daw-engine",
  "daw-instruments",
  "daw-model",
+ "daw-notation",
  "dirs 6.0.0",
  "getrandom 0.3.4",
  "hound",
@@ -862,6 +863,16 @@ dependencies = [
  "schemars 1.2.2",
  "serde",
  "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "daw-notation"
+version = "0.1.0"
+dependencies = [
+ "daw-model",
+ "midly",
+ "roxmltree",
  "thiserror 2.0.21",
 ]
 
@@ -2301,6 +2312,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "midly"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "207d755f4cb882d20c4da58d707ca9130a0c9bc5061f657a4f299b8e36362b7a"
+
+[[package]]
 name = "mime"
 version = "0.3.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3219,6 +3236,15 @@ dependencies = [
  "tokio-util",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "roxmltree"
+version = "0.21.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f1964b10c76125c36f8afe190065a4bf9a87bf324842c05701330bba9f1cacbb"
+dependencies = [
+ "memchr",
 ]
 
 [[package]]
