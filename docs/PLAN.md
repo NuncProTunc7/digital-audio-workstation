@@ -87,8 +87,8 @@ crates/
   daw-mcp/          MCP bridge binary (stdio ↔ control server)
   daw-cli/          headless render/analyze tool (used by tests and CI)
 app/
+  src/              React + TypeScript front end
   src-tauri/        Tauri shell, wires crates together
-  ui/               React + TypeScript front end
 assets/             factory presets, drum kits, sample instruments (with licenses)
 docs/               PLAN.md, design notes, user guide
 ```
@@ -165,7 +165,7 @@ Each phase ends with a Windows installer you can download from GitHub Actions an
 
 | Phase | Deliverable | You can… |
 |---|---|---|
-| **0. Skeleton** | Rust workspace, Tauri app opens, CI builds a Windows installer, headless render test | Install and open an empty app |
+| **0. Skeleton** ✅ | Rust workspace, Tauri app opens, CI builds a Windows installer, headless render test | Install and open an empty app |
 | **1. Make sound** | Audio device selection (WASAPI), transport, metronome, Synth instrument, **on-screen piano + computer-keyboard playing + clickable drum pads**, MIDI keyboard input | Play and record the synth with your mouse or computer keyboard (no MIDI hardware needed) |
 | **2. Arrange** | Timeline, MIDI clips, piano roll, Drums + Bass + Keys, mixer with basic effects, save/load, undo/redo | Write a full instrumental track |
 | **3. Claude** | Control server, MCP bridge, full tool list, analysis tools | Ask Claude to build or remix a track |

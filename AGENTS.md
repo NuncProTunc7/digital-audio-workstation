@@ -17,22 +17,31 @@ Instructions for AI coding agents (Claude Code and others) working in this repos
 ## Stack
 
 - Rust workspace in `crates/` (engine, DSP, instruments, model, MCP).
-- Tauri 2 app in `app/` (`src-tauri/` Rust shell, `ui/` React + TypeScript + Vite).
+- Tauri 2 app in `app/`: `app/src/` is the React + TypeScript + Vite UI, `app/src-tauri/` is the Rust shell.
+- In a plain browser (`npm --prefix app run dev`), the UI uses an in-memory preview backend (`app/src/backend.ts`) so it can be developed without the engine.
 - Audio I/O: cpal (WASAPI; ASIO in Phase 6). MIDI: midir. MCP: rmcp.
 
 ## Commands
 
-Not set up yet; Phase 0 will establish these. Update this section once they exist.
+Run from the repository root unless noted. The UI must be built once (`npm run build` in `app/`) before Rust builds, because Tauri embeds it.
 
 ```
-cargo build --workspace            # build all Rust crates
-cargo test --workspace             # unit + headless render tests
-cargo clippy --workspace -- -D warnings
-cargo fmt --all
-npm --prefix app/ui run lint
-npm --prefix app/ui run test
-npm --prefix app run tauri build   # Windows installer
+cd app && npm ci && npm run build && cd ..   # install UI deps, build UI into app/dist
+cargo fmt --all                              # format Rust
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace                       # unit + headless render tests (no sound card needed)
+npm --prefix app run typecheck
+npm --prefix app run lint                    # oxlint
+npm --prefix app test                        # vitest
+npm --prefix app run tauri dev               # run the desktop app with hot reload
+npm --prefix app run tauri build             # release build + Windows installer (target/release/bundle/nsis/)
+cargo run -p daw-cli -- render-test-tone --out tone.wav   # headless render
+cargo run -p daw-cli -- schema               # JSON Schema of every Command
 ```
+
+Linux builds need: `libwebkit2gtk-4.1-dev libasound2-dev libgtk-3-dev librsvg2-dev libayatana-appindicator3-dev libxdo-dev`.
+
+CI (`.github/workflows/ci.yml`) runs all checks on Linux and builds the Windows installer, uploaded as the `nunc-pro-tune-windows-installer` artifact.
 
 ## Rules
 
@@ -65,7 +74,7 @@ Use lock-free queues (`rtrb`) to talk to the audio thread. Pre-allocate buffers.
 
 ### 5. Style
 - Rust: `cargo fmt`, clippy clean, no `unsafe` without a `// SAFETY:` comment.
-- TypeScript: strict mode, no `any`.
+- TypeScript: strict mode, no `any`. UI types in `app/src/types.ts` mirror the Rust types; keep them in sync.
 - Comments explain *why*, not *what*. Doc comments on public items.
 - Keep audio units explicit in names: `gain_db`, `freq_hz`, `time_samples`, `time_beats`.
 
