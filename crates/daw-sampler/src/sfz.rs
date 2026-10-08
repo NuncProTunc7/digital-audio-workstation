@@ -63,6 +63,34 @@ pub fn parse_note(s: &str) -> Option<u8> {
     u8::try_from(((octave + 1) * 12 + base + accidental).clamp(0, 127)).ok()
 }
 
+/// Removes `// line` and `/* block */` comments in one pass, so a
+/// `//****` divider line is just a line comment.
+fn strip_comments(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    loop {
+        let line = rest.find("//");
+        let block = rest.find("/*");
+        match (line, block) {
+            (Some(l), b) if b.is_none_or(|b| l < b) => {
+                out.push_str(&rest[..l]);
+                // Keep the newline so line structure survives.
+                rest = rest[l..].find('\n').map_or("", |n| &rest[l + n..]);
+            }
+            (_, Some(b)) => {
+                out.push_str(&rest[..b]);
+                rest = rest[b + 2..]
+                    .find("*/")
+                    .map_or("", |e| &rest[b + 2 + e + 2..]);
+            }
+            _ => {
+                out.push_str(rest);
+                return out;
+            }
+        }
+    }
+}
+
 /// Comments removed, `#define`s substituted, `#include`s inlined.
 fn preprocess(
     text: &str,
@@ -73,19 +101,9 @@ fn preprocess(
     if depth > 8 {
         return Err(SamplerError::Parse("#include nests too deeply".into()));
     }
-    // Block comments first, then line comments.
-    let mut plain = String::with_capacity(text.len());
-    let mut rest = text;
-    while let Some(i) = rest.find("/*") {
-        plain.push_str(&rest[..i]);
-        rest = rest[i + 2..]
-            .find("*/")
-            .map_or("", |j| &rest[i + 2 + j + 2..]);
-    }
-    plain.push_str(rest);
+    let plain = strip_comments(text);
     let mut out = String::with_capacity(plain.len());
     for line in plain.lines() {
-        let line = line.find("//").map_or(line, |i| &line[..i]);
         let trimmed = line.trim();
         if let Some(def) = trimmed.strip_prefix("#define") {
             let mut parts = def.split_whitespace();
@@ -329,6 +347,18 @@ pub fn parse_sfz(text: &str, dir: &Path) -> Result<Vec<Region>, SamplerError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn star_lines_in_line_comments_are_not_block_comments() {
+        // Seen in the Ixox Flute pack: a `//***` divider must not start a
+        // `/* */` comment that swallows the rest of the file.
+        let text = "//*******************
+<region> sample=a.wav key=60
+/* real
+block */ <region> sample=b.wav key=62";
+        let r = parse_sfz(text, Path::new("x")).expect("parse");
+        assert_eq!(r.len(), 2, "{r:?}");
+    }
 
     #[test]
     fn note_names() {
