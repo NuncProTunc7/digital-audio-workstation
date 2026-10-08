@@ -50,6 +50,7 @@ The strip under the bar numbers holds **section markers**: named points where a 
 - **Drag** a note to move it, drag its right end to change its length, **double-click** it to delete it.
 - **Shift+click** adds notes to the selection; **Ctrl+A** selects all.
 - **Grid** sets the snap (1/4, 1/8, 1/16...). **Quantize** snaps the selected notes (or all) onto the grid, tidying up a played-in part.
+- **Humanize** does the opposite: it nudges the selected notes (or all) slightly off the grid and varies their loudness, so a part you clicked in sounds played. Click again for a different take; **Ctrl+Z** undoes.
 - On drum tracks, each row is a drum pad instead of a pitch. Drum clips open in the step grid (below); click **Piano roll** to edit them here, **Steps** to go back.
 
 ## The drum step grid

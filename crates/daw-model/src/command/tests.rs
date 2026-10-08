@@ -844,6 +844,54 @@ fn compressors_can_listen_to_another_track() {
 }
 
 #[test]
+fn humanize_nudges_notes_repeatably_and_undoes() {
+    let base = fixture();
+    let clip = clip_id(&base);
+    let humanize = |seed| Command::HumanizeNotes {
+        clip_id: clip,
+        timing_beats: 0.03,
+        velocity: 12,
+        seed,
+        note_ids: None,
+    };
+    let json = serde_json::to_string(&humanize(7)).expect("json");
+    assert_eq!(
+        serde_json::from_str::<Command>(&json).expect("back"),
+        humanize(7)
+    );
+    let mut a = base.clone();
+    let undo = humanize(7).apply(&mut a).expect("humanize");
+    let mut b = base.clone();
+    humanize(7).apply(&mut b).expect("again");
+    assert_eq!(a, b, "same seed, same result");
+    let mut c = base.clone();
+    humanize(8).apply(&mut c).expect("other seed");
+    assert_ne!(a, c, "another seed varies");
+    for (before, after) in base.tracks[0].clips[0]
+        .notes
+        .iter()
+        .zip(&a.tracks[0].clips[0].notes)
+    {
+        assert!((before.start_beats - after.start_beats).abs() <= 0.03 + 1e-12);
+        assert!(i32::from(before.velocity).abs_diff(i32::from(after.velocity)) <= 12);
+    }
+    undo.apply(&mut a).expect("undo");
+    assert_eq!(a.tracks[0].clips[0].notes, base.tracks[0].clips[0].notes);
+    let mut d = base.clone();
+    assert!(
+        Command::HumanizeNotes {
+            clip_id: clip,
+            timing_beats: 1.0,
+            velocity: 0,
+            seed: 1,
+            note_ids: None,
+        }
+        .apply(&mut d)
+        .is_err()
+    );
+}
+
+#[test]
 fn swing_slider_drag_is_one_undo_step() {
     let mut s = Session::new(fixture());
     let clip = clip_id(s.project());

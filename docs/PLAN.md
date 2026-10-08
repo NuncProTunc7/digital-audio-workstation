@@ -295,7 +295,7 @@ Original spec: adaptive "explore/combat" export was Claude-only.
 ### C. Smaller
 
 **10. User presets** ✅ (built Oct 2026): `daw_control::presets` keeps them in `<app data>/presets.json` (not a Command: it isn't song data); applying one is an ordinary `SetInstrument`. Preset list shows **Your presets** after the built-in ones, with **Save preset…** and delete. Claude: `save_preset`, `user_presets`, `load_user_preset`.
-**11. Humanize:** `HumanizeNotes { clip_id, note_ids, timing_beats, velocity }` with a seeded random so undo/redo is exact.
+**11. Humanize** ✅ (built Oct 2026): `HumanizeNotes { clip_id, timing_beats ≤ 0.25, velocity ≤ 64, seed, note_ids }`, splitmix per note id so the same seed repeats; undo is the `EditNotes` inverse. Piano roll **Humanize** button (new seed per click).
 **12. Key signature:** `Project.key` (`SetKey`), shown in the top bar, written to MusicXML/MIDI, and given to Claude in `get_song`.
 
 Owner requests (Oct 2026), done:

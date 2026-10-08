@@ -155,6 +155,23 @@ describe("Arranging", () => {
     expect(document.querySelectorAll(".roll-note").length).toBe(1);
   });
 
+  it("humanizes the notes in a clip", async () => {
+    const backend = await renderApp(spyBackend());
+    await act(async () => {
+      fireEvent.doubleClick(document.querySelectorAll(".lane")[0], { clientX: 10, clientY: 10 });
+    });
+    const grid = await waitForElement(".roll-grid");
+    await act(async () => {
+      fireEvent.pointerDown(grid, { clientX: 5, clientY: 5, button: 0 });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Humanize" }));
+    });
+    expect(backend.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ command: "humanize_notes", velocity: 10, note_ids: null }),
+    );
+  });
+
   it("deletes the selected clip with the Delete key and undoes it", async () => {
     await renderApp(spyBackend());
     await act(async () => {

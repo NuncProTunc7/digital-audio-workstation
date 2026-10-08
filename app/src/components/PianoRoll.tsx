@@ -195,6 +195,23 @@ export default function PianoRoll(props: PianoRollProps) {
         >
           Quantize
         </button>
+        <button
+          onClick={() =>
+            void props
+              .onCommand({
+                command: "humanize_notes",
+                clip_id: clip.id,
+                timing_beats: Math.min(0.03, grid / 8),
+                velocity: 10,
+                seed: Math.floor(Math.random() * 1_000_000),
+                note_ids: targetIds,
+              })
+              .then(props.onEndGesture)
+          }
+          title="Nudge timing and loudness slightly (selected notes, or all), so a programmed part sounds played. Click again for a different take; Ctrl+Z undoes."
+        >
+          Humanize
+        </button>
         <div className="button-group" role="group" aria-label="Transpose">
           {[-12, -1, 1, 12].map((st) => (
             <button

@@ -462,6 +462,21 @@ pub enum Command {
         semitones: i32,
         note_ids: Option<Vec<NoteId>>,
     },
+    /// Make programmed notes sound played: nudge each note's start by up to
+    /// ±`timing_beats` and its velocity by up to ±`velocity`, at random.
+    /// The same `seed` always gives the same result. Applies to all notes
+    /// in the clip unless `note_ids` is given. Typical: timing 0.01–0.03
+    /// beats, velocity 5–15.
+    HumanizeNotes {
+        clip_id: ClipId,
+        /// Largest timing shift, in beats (0–0.25).
+        timing_beats: f64,
+        /// Largest velocity change (0–64).
+        velocity: u8,
+        /// Any number; changing it gives a different variation.
+        seed: u64,
+        note_ids: Option<Vec<NoteId>>,
+    },
 
     // ---- Grouping ----
     /// Apply several commands in order as ONE undoable step. If any command
@@ -725,6 +740,13 @@ impl Command {
                 semitones,
                 note_ids,
             } => notes::transpose(project, clip_id, semitones, note_ids),
+            C::HumanizeNotes {
+                clip_id,
+                timing_beats,
+                velocity,
+                seed,
+                note_ids,
+            } => notes::humanize(project, clip_id, timing_beats, velocity, seed, note_ids),
             C::Batch { commands } => batch(project, commands),
         }
     }

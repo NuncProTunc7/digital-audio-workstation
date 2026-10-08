@@ -195,6 +195,18 @@ export function applyCommand(project: Project, command: Command): Project {
     case "set_effect_enabled":
       effect(command.track_id, command.effect_id).enabled = command.enabled;
       break;
+    case "humanize_notes": {
+      const [, c] = clipOf(command.clip_id);
+      // Not the app's exact numbers, just repeatable ones.
+      const jitter = (n: number) => Math.sin(command.seed * 12.9898 + n * 78.233) % 1;
+      for (const n of c.notes) {
+        if (command.note_ids && !command.note_ids.includes(n.id)) continue;
+        n.start_beats = Math.max(0, n.start_beats + jitter(n.id * 2) * command.timing_beats);
+        n.velocity = Math.min(127, Math.max(1, Math.round(n.velocity + jitter(n.id * 2 + 1) * command.velocity)));
+      }
+      sortNotes(c);
+      break;
+    }
     case "set_effect_sidechain": {
       const e = effect(command.track_id, command.effect_id);
       if (e.kind !== "compressor") throw new Error("only compressors can listen to another track");

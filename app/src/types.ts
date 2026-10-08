@@ -273,6 +273,14 @@ export type Command =
   | { command: "rename_clip"; clip_id: number; name: string }
   | { command: "set_clip_swing"; clip_id: number; swing: Swing | null }
   | { command: "set_effect_sidechain"; track_id: number | null; effect_id: number; source: number | null }
+  | {
+      command: "humanize_notes";
+      clip_id: number;
+      timing_beats: number;
+      velocity: number;
+      seed: number;
+      note_ids: number[] | null;
+    }
   | { command: "add_bus"; name: string }
   | { command: "remove_bus"; bus_id: number }
   | { command: "rename_bus"; bus_id: number; name: string }

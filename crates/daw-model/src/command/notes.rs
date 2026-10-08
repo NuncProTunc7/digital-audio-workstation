@@ -309,6 +309,57 @@ pub(super) fn quantize(
     edit(project, clip_id, edits)
 }
 
+/// A number in -1.0..1.0 from `seed` and `n` (splitmix64), so humanizing
+/// is repeatable.
+fn jitter(seed: u64, n: u64) -> f64 {
+    let mut z = seed
+        .wrapping_add(n.wrapping_mul(0x9E37_79B9_7F4A_7C15))
+        .wrapping_add(0x9E37_79B9_7F4A_7C15);
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    z ^= z >> 31;
+    (z >> 11) as f64 / (1u64 << 53) as f64 * 2.0 - 1.0
+}
+
+pub(super) fn humanize(
+    project: &mut Project,
+    clip_id: ClipId,
+    timing_beats: f64,
+    velocity: u8,
+    seed: u64,
+    note_ids: Option<Vec<NoteId>>,
+) -> Result<Command, CommandError> {
+    if !(timing_beats.is_finite() && (0.0..=0.25).contains(&timing_beats)) {
+        return Err(invalid(
+            "timing",
+            format!("must be 0–0.25 beats, got {timing_beats}"),
+        ));
+    }
+    if velocity > 64 {
+        return Err(invalid("velocity", format!("must be 0–64, got {velocity}")));
+    }
+    let clip = clip_mut(project, clip_id)?;
+    let edits: Vec<NoteEdit> = selected(clip, &note_ids)?
+        .into_iter()
+        .map(|n| {
+            // Each note gets its own numbers, from its id.
+            let id = u64::from(n.id);
+            let start = (n.start_beats + jitter(seed, id * 2) * timing_beats).max(0.0);
+            let v =
+                f64::from(n.velocity) + (jitter(seed, id * 2 + 1) * f64::from(velocity)).round();
+            NoteEdit {
+                id: n.id,
+                pitch: None,
+                start_beats: (timing_beats > 0.0).then_some(start),
+                length_beats: None,
+                velocity: (velocity > 0).then_some(v.clamp(1.0, 127.0) as u8),
+                chance: None,
+            }
+        })
+        .collect();
+    edit(project, clip_id, edits)
+}
+
 pub(super) fn transpose(
     project: &mut Project,
     clip_id: ClipId,
