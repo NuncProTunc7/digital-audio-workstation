@@ -29,7 +29,7 @@ pub use daw_audio::{AudioBuffer, AudioPool};
 pub use engine::Engine;
 pub use message::{EngineMessage, RecordedEvent};
 pub use processor::{AudioProcessor, MAX_BLOCK_FRAMES};
-pub use sequence::build_sequence;
+pub use sequence::{build_sequence, plays_frozen, track_sequence};
 pub use status::{ClockAnchor, EngineStatus, StatusSnapshot};
 pub use tone::ToneGenerator;
 

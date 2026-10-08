@@ -10,7 +10,8 @@
 - Select a track, then open the **Instrument** tab to change its sound. Pick a **Preset** first, then adjust knobs.
 - **Sounds** tab: every built-in sound and every preset you saved, in one list. Search ("bass", "retro", "warm"), click a mood button to filter, and star your favorites (**★ Favorites** shows only those). **Try on …** puts the sound on the selected track and plays a short phrase so you hear it (**Ctrl+Z** puts the old sound back); sounds for a different kind of instrument offer **+ New track** instead.
 - **Your own presets**: when you like a sound, click **Save preset…**, name it ("Dungeon Pad") and click **Save**. It appears under **Your presets** in the Preset list of every track with the same kind of instrument, in every song. Saving with the same name updates it; **✕** next to the list deletes it (tracks using it keep their sound). Claude can save and load them too.
-- Double-click a track's name to rename it. Each track header has **M** (mute), **S** (solo), **A** (automation) and a delete button.
+- Double-click a track's name to rename it. Each track header has **M** (mute), **S** (solo), **❄** (freeze), **A** (automation) and a delete button.
+- **❄ Freeze** renders the track's instrument and effects to audio and plays that instead, to save CPU when the computer struggles. Its fader, pan, mute and sends still work. If you change its notes, sound, effects or the tempo, the ❄ turns dashed and the track plays live again; click it to freeze it again. Click a lit ❄ to unfreeze.
 
 ### Built-in sounds
 

@@ -4,7 +4,7 @@
 use daw_audio::AudioPool;
 use daw_model::effect::effect_params;
 use daw_model::instrument::param_specs;
-use daw_model::{AutomationTarget, Track};
+use daw_model::{AutomationTarget, Project, Track};
 
 use crate::message::{AudioRegionPlay, AutoCurve, AutoTarget, SeqEvent, Sequence};
 
@@ -38,6 +38,45 @@ fn build_automation(track: &Track) -> Vec<AutoCurve> {
             ))
         })
         .collect()
+}
+
+/// Whether `track` plays its frozen rendering: it has one, nothing changed
+/// since, and the file can be loaded.
+pub fn plays_frozen(project: &Project, track: &Track, audio: &AudioPool) -> bool {
+    track
+        .frozen
+        .as_ref()
+        .is_some_and(|f| audio.has(&f.file) && project.frozen_is_current(track))
+}
+
+/// What the audio thread plays for `track`: its frozen rendering (with its
+/// automation) when it plays frozen, else its clips.
+pub fn track_sequence(
+    project: &Project,
+    track: &Track,
+    audio: &AudioPool,
+    sample_rate_hz: u32,
+) -> Sequence {
+    if plays_frozen(project, track, audio)
+        && let Some(f) = &track.frozen
+        && let Ok(buffer) = audio.buffer(&f.file, sample_rate_hz)
+    {
+        let seconds = buffer.frames() as f64 / f64::from(sample_rate_hz.max(1));
+        return Sequence {
+            events: Vec::new(),
+            audio: vec![AudioRegionPlay {
+                start_beats: 0.0,
+                end_beats: seconds * project.tempo_bpm / 60.0,
+                buffer,
+                offset_frames: 0.0,
+                gain: 1.0,
+                fade_in_frames: 0.0,
+                fade_out_frames: 0.0,
+            }],
+            automation: build_automation(track),
+        };
+    }
+    build_sequence(track, audio, sample_rate_hz, project.tempo_bpm)
 }
 
 /// Flattens all clips on a track. Notes are cut at their clip's end; at the

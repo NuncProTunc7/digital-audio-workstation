@@ -30,6 +30,10 @@ interface TimelineProps {
   peaks: Readonly<Record<string, Peaks>>;
   /** Audio files that can't be found. */
   missingAudio: ReadonlySet<string>;
+  /** Frozen tracks whose rendering is up to date. */
+  frozenCurrent: ReadonlySet<number>;
+  /** Renders a track and plays that instead (freeze). */
+  onFreeze: (trackId: number) => void;
   /** Asks for audio files and imports them onto `trackId` (null: new tracks) at `beats`. */
   onImportAudio: (trackId: number | null, beats: number) => void;
   catalog: Catalog;
@@ -571,6 +575,32 @@ export default function Timeline(props: TimelineProps) {
                     <div className="track-meter" aria-hidden>
                       <div style={{ width: `${meterPercent(props.trackPeaks[i] ?? 0)}%` }} />
                     </div>
+                    {!isAudio(t) && (
+                      <button
+                        className={
+                          t.frozen ? (props.frozenCurrent.has(t.id) ? "tiny on frozen" : "tiny stale") : "tiny"
+                        }
+                        aria-pressed={Boolean(t.frozen)}
+                        aria-label={`${t.frozen ? "Unfreeze" : "Freeze"} ${t.name}`}
+                        title={
+                          !t.frozen
+                            ? "Freeze: play a rendering of this track instead of its instrument and effects, to save CPU"
+                            : props.frozenCurrent.has(t.id)
+                              ? "Frozen (saving CPU). Click to unfreeze and play it live again."
+                              : "Frozen, but out of date: you changed it, so it plays live. Click to freeze it again."
+                        }
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (t.frozen && props.frozenCurrent.has(t.id)) {
+                            void props.onCommand({ command: "unfreeze_track", track_id: t.id }).then(props.onEndGesture);
+                          } else {
+                            props.onFreeze(t.id);
+                          }
+                        }}
+                      >
+                        ❄
+                      </button>
+                    )}
                     <button
                       className={openAutomation.has(t.id) ? "tiny on" : "tiny"}
                       aria-pressed={openAutomation.has(t.id)}

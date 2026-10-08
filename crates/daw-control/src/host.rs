@@ -141,6 +141,76 @@ pub fn handle<H: Host>(host: &H, request: Request) -> Response {
     result.into()
 }
 
+/// Seconds of ring-out kept after the song's end in a frozen rendering.
+const FREEZE_TAIL_SECONDS: f64 = 4.0;
+/// Sample rate frozen renderings are made at (resampled to the device's).
+const FREEZE_SAMPLE_RATE_HZ: u32 = 48_000;
+
+/// Renders `track_id`'s sound (instrument and effects, fader flat, nothing
+/// else playing) for the whole song, saves it in the project's audio
+/// folder, and freezes the track to it (one undo step).
+pub fn freeze_track<H: Host>(host: &H, track_id: TrackId) -> Result<(), String> {
+    let project = host.session()?.project().clone();
+    let track = project
+        .track(track_id)
+        .ok_or_else(|| format!("there is no track with id {track_id}"))?;
+    if track.instrument.kind.is_audio() {
+        return Err("audio tracks are already audio; there's nothing to freeze".into());
+    }
+    let fingerprint = project.freeze_fingerprint(track);
+    // Only this track, as it sounds before its fader.
+    let mut solo = project.clone();
+    solo.loop_region.enabled = false;
+    solo.master.volume_db = 0.0;
+    solo.master.effects.clear();
+    for t in &mut solo.tracks {
+        if t.id == track_id {
+            t.frozen = None;
+            t.mixer.volume_db = 0.0;
+            t.mixer.pan = 0.0;
+            t.mixer.mute = false;
+            t.mixer.solo = false;
+            t.output = None;
+            t.sends.clear();
+            t.automation.retain(|l| {
+                !matches!(
+                    l.target,
+                    daw_model::AutomationTarget::Volume | daw_model::AutomationTarget::Pan
+                )
+            });
+        } else {
+            t.mixer.solo = false;
+            t.mixer.mute = true;
+        }
+    }
+    let audio = host.audio();
+    let stereo =
+        daw_engine::offline::render_song(&solo, &audio, FREEZE_SAMPLE_RATE_HZ, FREEZE_TAIL_SECONDS);
+    let data = daw_audio::AudioData {
+        sample_rate_hz: FREEZE_SAMPLE_RATE_HZ,
+        channels: vec![
+            stereo.iter().step_by(2).copied().collect(),
+            stereo.iter().skip(1).step_by(2).copied().collect(),
+        ],
+    };
+    let file = format!("freeze-{track_id}-{fingerprint:016x}.wav");
+    let path = audio.write_folder().join(&file);
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    daw_audio::write_wav(&path, &data).map_err(|e| e.to_string())?;
+    let mut session = host.session()?;
+    session
+        .execute(Command::FreezeTrack {
+            track_id,
+            frozen: daw_model::Frozen { file, fingerprint },
+        })
+        .map_err(|e| e.to_string())?;
+    session.end_gesture();
+    sync(host, &session);
+    Ok(())
+}
+
 /// Saves `track_id`'s instrument as the user's preset `name`.
 pub fn save_user_preset<H: Host>(
     host: &H,
@@ -264,6 +334,11 @@ fn handle_inner<H: Host>(host: &H, request: Request) -> Result<Value, String> {
             Ok(json!({ "metronome": on }))
         }
         Request::DiagnosticReport => Ok(json!({ "report": diagnostic_report(host)? })),
+        Request::FreezeTrack { track_id } => {
+            freeze_track(host, track_id)?;
+            host.project_changed("Claude froze a track");
+            Ok(json!({ "frozen": track_id }))
+        }
         Request::InspectExport(options) => {
             serde_json::to_value(inspect_export(host, &options)?).map_err(|e| e.to_string())
         }
@@ -991,6 +1066,100 @@ pub(crate) mod tests {
 
     fn ok(r: Response) -> Value {
         r.into_result().expect("request succeeded")
+    }
+
+    #[test]
+    fn a_frozen_track_sounds_the_same_until_it_is_edited() {
+        let host = TestHost::default();
+        ok(execute(
+            &host,
+            Command::CreateClip {
+                track_id: 1,
+                start_beats: 0.0,
+                length_beats: 4.0,
+                name: None,
+                notes: (0..4)
+                    .map(|b| daw_model::NoteInput {
+                        chance: 100,
+                        pitch: 60 + b as u8 * 2,
+                        start_beats: f64::from(b),
+                        length_beats: 0.8,
+                        velocity: 100,
+                        id: None,
+                    })
+                    .collect(),
+            },
+        ));
+        ok(execute(
+            &host,
+            Command::SetTrackMixer {
+                track_id: 1,
+                volume_db: Some(-6.0),
+                pan: Some(0.4),
+                mute: None,
+                solo: None,
+            },
+        ));
+        let render = |host: &TestHost| {
+            let p = host.session.lock().expect("session").project().clone();
+            daw_engine::offline::render_song(&p, &host.audio, 48_000, 1.0)
+        };
+        let live = render(&host);
+        ok(handle(&host, Request::FreezeTrack { track_id: 1 }));
+        let p = host.session.lock().expect("session").project().clone();
+        assert!(p.frozen_is_current(&p.tracks[0]));
+        assert!(daw_engine::plays_frozen(&p, &p.tracks[0], &host.audio));
+        assert!(
+            host.audio
+                .has(&p.tracks[0].frozen.as_ref().expect("frozen").file)
+        );
+        assert!(p.audio_files().iter().any(|f| f.starts_with("freeze-1-")));
+        // The frozen track (with its fader and pan applied live) sounds
+        // like the live one.
+        let frozen = render(&host);
+        let rms = |x: &[f32]| (x.iter().map(|v| v * v).sum::<f32>() / x.len() as f32).sqrt();
+        let diff: Vec<f32> = live.iter().zip(&frozen).map(|(a, b)| a - b).collect();
+        assert!(
+            rms(&diff) < 0.02 * rms(&live),
+            "{} vs {}",
+            rms(&diff),
+            rms(&live)
+        );
+        // An edit makes it stale: it plays live again.
+        ok(execute(
+            &host,
+            Command::TransposeNotes {
+                clip_id: p.tracks[0].clips[0].id,
+                semitones: 12,
+                note_ids: None,
+            },
+        ));
+        let p = host.session.lock().expect("session").project().clone();
+        assert!(p.tracks[0].frozen.is_some() && !p.frozen_is_current(&p.tracks[0]));
+        // Unfreeze and undo work like any edit.
+        ok(execute(&host, Command::UnfreezeTrack { track_id: 1 }));
+        ok(handle(&host, Request::Undo));
+        assert!(
+            host.session.lock().expect("session").project().tracks[0]
+                .frozen
+                .is_some()
+        );
+        // Audio tracks can't freeze.
+        ok(execute(
+            &host,
+            Command::AddTrack {
+                name: "Vox".into(),
+                instrument: InstrumentKind::Audio,
+                preset: None,
+                index: None,
+            },
+        ));
+        let vox = host.session.lock().expect("session").project().tracks[3].id;
+        assert!(
+            handle(&host, Request::FreezeTrack { track_id: vox })
+                .into_result()
+                .is_err()
+        );
     }
 
     #[test]

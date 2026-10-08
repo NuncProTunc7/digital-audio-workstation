@@ -114,6 +114,8 @@ export interface Track {
   mixer: Mixer;
   clips: Clip[];
   automation?: AutomationLane[];
+  /** A rendering played instead of the instrument and effects (saves CPU). */
+  frozen?: { file: string; fingerprint: number } | null;
   /** The bus it plays into (missing/null = the master). */
   output?: number | null;
   /** Extra feeds into buses. */
@@ -334,6 +336,8 @@ export type Command =
   | { command: "rename_bus"; bus_id: number; name: string }
   | { command: "set_bus_mixer"; bus_id: number; volume_db: number | null; pan: number | null; mute: boolean | null }
   | { command: "set_track_output"; track_id: number; bus_id: number | null }
+  | { command: "freeze_track"; track_id: number; frozen: { file: string; fingerprint: number } }
+  | { command: "unfreeze_track"; track_id: number }
   | { command: "set_send"; track_id: number; bus_id: number; level_db: number | null; pre_fader: boolean | null }
   | { command: "remove_send"; track_id: number; bus_id: number }
   | { command: "add_marker"; name: string; start_beats: number }
@@ -393,6 +397,8 @@ export interface ProjectView {
   file_path: string | null;
   /** Audio files clips refer to that can't be found (those clips are silent). */
   missing_audio: string[];
+  /** Frozen tracks whose rendering is up to date (others play live). */
+  frozen_current?: number[];
 }
 
 /** Waveform overview of an audio file. */

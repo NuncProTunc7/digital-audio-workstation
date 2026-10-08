@@ -23,8 +23,8 @@ pub use file::{
 pub use instrument::{Instrument, InstrumentKind};
 pub use project::{
     AudioRegion, AutomationLane, AutomationPoint, AutomationTarget, Bus, Clip, ClipId, EffectId,
-    FORMAT_VERSION, Id, LaneId, LoopRegion, MAX_BEATS, MAX_TRACKS, MAX_VOLUME_DB, MIN_LENGTH_BEATS,
-    MIN_VOLUME_DB, Marker, MasterBus, Mixer, Note, NoteId, Project, Send, Snapshot, SongSection,
-    SongState, Swing, TimeSignature, Track, TrackId,
+    FORMAT_VERSION, Frozen, Id, LaneId, LoopRegion, MAX_BEATS, MAX_TRACKS, MAX_VOLUME_DB,
+    MIN_LENGTH_BEATS, MIN_VOLUME_DB, Marker, MasterBus, Mixer, Note, NoteId, Project, Send,
+    Snapshot, SongSection, SongState, Swing, TimeSignature, Track, TrackId,
 };
 pub use session::Session;

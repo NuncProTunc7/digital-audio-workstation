@@ -680,6 +680,27 @@ describe("Sidechain", () => {
   });
 });
 
+describe("Track freeze", () => {
+  it("freezes a track and unfreezes it", async () => {
+    const backend = createPreviewBackend();
+    vi.spyOn(backend, "freezeTrack");
+    await renderApp(backend);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Freeze Keys" }));
+    });
+    expect(backend.freezeTrack).toHaveBeenCalledWith(1);
+    expect((await backend.getProject()).project.tracks[0].frozen).toBeTruthy();
+    const button = screen.getByRole("button", { name: "Unfreeze Keys" });
+    expect(button.getAttribute("aria-pressed")).toBe("true");
+    await act(async () => {
+      fireEvent.click(button);
+    });
+    expect((await backend.getProject()).project.tracks[0].frozen).toBeNull();
+    // Audio tracks have nothing to freeze.
+    expect(screen.queryByRole("button", { name: "Freeze Vox" })).toBeNull();
+  });
+});
+
 describe("Sound browser", () => {
   it("searches, tries, favorites, and adds a track with a sound", async () => {
     const backend = spyBackend();

@@ -41,6 +41,10 @@ pub enum Request {
     },
     /// Plain-text report on devices, load, the song, and recent log lines.
     DiagnosticReport,
+    /// Render a track's sound to audio and play that instead (saves CPU).
+    FreezeTrack {
+        track_id: TrackId,
+    },
     /// Check a Godot export without writing it (project_dir is ignored).
     InspectExport(GodotOptions),
     /// Save a track's instrument settings as the user's own preset.

@@ -43,6 +43,7 @@ pub(super) fn add(
     project.tracks.insert(
         index,
         Track {
+            frozen: None,
             output: None,
             sends: Vec::new(),
             id,

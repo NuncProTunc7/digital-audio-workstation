@@ -665,9 +665,11 @@ impl AudioProcessor {
             bl.fill(0.0);
             br.fill(0.0);
 
-            // Play sequence events at their exact sample.
+            // Play sequence events at their exact sample. A frozen track
+            // has none, and its instrument rests: its rendering plays as
+            // audio below.
             let mut done = 0;
-            if playing {
+            if playing && !t.frozen {
                 while let Some(ev) = t.sequence.events.get(t.cursor).copied() {
                     if ev.beat >= window_end {
                         break;
@@ -696,7 +698,9 @@ impl AudioProcessor {
                     t.cursor += 1;
                 }
             }
-            t.instrument.process(&mut bl[done..], &mut br[done..]);
+            if !t.frozen {
+                t.instrument.process(&mut bl[done..], &mut br[done..]);
+            }
             if playing {
                 let declick = DECLICK_SECONDS * f64::from(self.sample_rate_hz);
                 mix_audio(

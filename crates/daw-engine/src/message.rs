@@ -144,6 +144,8 @@ pub struct TrackSlot {
     pub output: Option<usize>,
     /// Feeds into buses.
     pub sends: Box<[SendSlot]>,
+    /// Plays a rendering (in its sequence) instead of its instrument.
+    pub frozen: bool,
 }
 
 /// Part of a track's sound fed to a bus.
@@ -226,7 +228,14 @@ impl TrackSlot {
             layer_step: 0.0,
             output: None,
             sends: Box::new([]),
+            frozen: false,
         }
+    }
+
+    /// Marks the track as playing its frozen rendering.
+    pub fn with_frozen(mut self, frozen: bool) -> Self {
+        self.frozen = frozen;
+        self
     }
 
     /// Routes the track into bus `output` (None = master) with `sends`.

@@ -1788,6 +1788,16 @@ button.tiny.power.on {
   color: var(--accent);
 }
 
+.tiny.frozen {
+  color: #8fd3ff;
+  border-color: #8fd3ff;
+}
+
+.tiny.stale {
+  color: var(--accent);
+  border-style: dashed;
+}
+
 .findings {
   margin: 8px 0;
   padding: 0;

@@ -309,6 +309,12 @@ export function applyCommand(project: Project, command: Command): Project {
       if (command.mute !== null) m.mute = command.mute;
       break;
     }
+    case "freeze_track":
+      track(command.track_id).frozen = command.frozen;
+      break;
+    case "unfreeze_track":
+      track(command.track_id).frozen = null;
+      break;
     case "set_track_output":
       if (command.bus_id !== null) busOf(command.bus_id);
       track(command.track_id).output = command.bus_id;
@@ -599,6 +605,8 @@ export function createPreviewBackend(): PreviewBackend {
     dirty: project !== saved,
     file_path: filePath,
     missing_audio: [],
+    // The preview has no fingerprints: a frozen track counts as current.
+    frozen_current: project.tracks.filter((t) => t.frozen).map((t) => t.id),
   });
   let bufferSetting: number | null = null;
   const audio = (): AudioStatus => ({
@@ -746,6 +754,18 @@ export function createPreviewBackend(): PreviewBackend {
     }),
     audioStatus: async () => audio(),
     setOutputDevice: async () => audio(),
+    freezeTrack: async (trackId) => {
+      const t = project.tracks.find((x) => x.id === trackId);
+      if (!t || t.instrument.kind === "audio") throw new Error("this track can't be frozen");
+      undoStack.push(project);
+      redoStack.length = 0;
+      project = applyCommand(project, {
+        command: "freeze_track",
+        track_id: trackId,
+        frozen: { file: `freeze-${trackId}.wav`, fingerprint: 1 },
+      });
+      return view();
+    },
     inspectExport: async () => ({
       findings: [
         { level: project.tracks.some((t) => t.clips.length > 0) ? "ok" : "problem", message: project.tracks.some((t) => t.clips.length > 0) ? "Something plays." : "The export would be silent: nothing plays in this part of the song." },

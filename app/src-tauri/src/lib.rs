@@ -505,6 +505,8 @@ struct ProjectView {
     file_path: Option<String>,
     /// Audio files clips refer to that can't be found (those clips are silent).
     missing_audio: Vec<String>,
+    /// Frozen tracks whose rendering is up to date (others play live).
+    frozen_current: Vec<TrackId>,
 }
 
 fn view(state: &AppState, session: &Session) -> ProjectView {
@@ -518,8 +520,16 @@ fn view(state: &AppState, session: &Session) -> ProjectView {
         .map(|a| a.file.clone())
         .collect();
     missing_audio.dedup();
+    let project = session.project();
+    let frozen_current = project
+        .tracks
+        .iter()
+        .filter(|t| t.frozen.is_some() && daw_engine::plays_frozen(project, t, &state.audio))
+        .map(|t| t.id)
+        .collect();
     ProjectView {
         missing_audio,
+        frozen_current,
         project: session.project().clone(),
         can_undo: session.can_undo(),
         can_redo: session.can_redo(),
@@ -772,6 +782,14 @@ fn set_metronome(state: State<'_, AppState>, on: bool) {
 #[tauri::command]
 fn set_count_in(state: State<'_, AppState>, bars: u32) -> Result<u32, String> {
     state.set_count_in_bars(bars)
+}
+
+/// Freezes a track: renders its sound and plays that instead (saves CPU).
+/// Renders, so off the main thread.
+#[tauri::command(async)]
+fn freeze_track(state: State<'_, AppState>, track_id: TrackId) -> Result<ProjectView, String> {
+    daw_control::freeze_track(&*state, track_id)?;
+    get_project(state)
 }
 
 /// Checks a Godot export without writing it. Renders, so off the main
@@ -1497,6 +1515,7 @@ pub fn run() {
             compare_stop,
             inspect_export,
             audition_seam,
+            freeze_track,
             user_presets,
             save_preset,
             delete_preset,

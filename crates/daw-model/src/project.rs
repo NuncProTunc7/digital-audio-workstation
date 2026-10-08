@@ -80,6 +80,17 @@ pub struct Bus {
     pub mixer: Mixer,
 }
 
+/// A track's sound rendered to audio (instrument and effects, before the
+/// fader and pan), from the song start.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct Frozen {
+    /// The audio file in the project's audio folder.
+    pub file: String,
+    /// Fingerprint of everything that shaped the sound; when it no longer
+    /// matches (an edit), the track plays live again.
+    pub fingerprint: u64,
+}
+
 /// Some of a track's sound sent to a bus as well as its own output, e.g.
 /// to a shared reverb.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -168,6 +179,40 @@ impl Project {
         }
     }
 
+    /// Fingerprint of everything that shapes `track`'s sound before its
+    /// fader: instrument, notes and audio, effects, automation of those,
+    /// tempo and meter. Fader, pan, mute, routing and volume/pan automation
+    /// aren't part of it; they still work live on a frozen track.
+    pub fn freeze_fingerprint(&self, track: &Track) -> u64 {
+        let shaping: Vec<&AutomationLane> = track
+            .automation
+            .iter()
+            .filter(|l| !matches!(l.target, AutomationTarget::Volume | AutomationTarget::Pan))
+            .collect();
+        let text = serde_json::json!({
+            "instrument": track.instrument,
+            "clips": track.clips,
+            "effects": track.mixer.effects,
+            "automation": shaping,
+            "tempo": self.tempo_bpm,
+            "meter": self.time_signature,
+        })
+        .to_string();
+        // FNV-1a: stable across runs and Rust versions (it's saved).
+        text.bytes().fold(0xcbf2_9ce4_8422_2325u64, |h, b| {
+            (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3)
+        })
+    }
+
+    /// Whether `track` should play its frozen rendering (it has one and
+    /// nothing has changed since).
+    pub fn frozen_is_current(&self, track: &Track) -> bool {
+        track
+            .frozen
+            .as_ref()
+            .is_some_and(|f| f.fingerprint == self.freeze_fingerprint(track))
+    }
+
     /// The chord playing at `beats`, if any.
     pub fn chord_at(&self, beats: f64) -> Option<&crate::music::Chord> {
         self.chords
@@ -226,14 +271,18 @@ impl Project {
         Some(p)
     }
 
-    /// Every audio file the song or any of its saved versions plays.
+    /// Every audio file the song or any of its saved versions plays,
+    /// including frozen tracks' renderings.
     pub fn audio_files(&self) -> Vec<String> {
-        let mut files: Vec<String> = self
-            .tracks
-            .iter()
-            .chain(self.snapshots.iter().flat_map(|s| &s.song.tracks))
+        let tracks = || {
+            self.tracks
+                .iter()
+                .chain(self.snapshots.iter().flat_map(|s| &s.song.tracks))
+        };
+        let mut files: Vec<String> = tracks()
             .flat_map(|t| &t.clips)
             .filter_map(|c| c.audio.as_ref().map(|a| a.file.clone()))
+            .chain(tracks().filter_map(|t| t.frozen.as_ref().map(|f| f.file.clone())))
             .collect();
         files.sort();
         files.dedup();
@@ -334,6 +383,7 @@ impl Default for Project {
     /// A new song with the three instruments most game tracks start from.
     fn default() -> Self {
         let track = |id, name: &str, kind, preset| Track {
+            frozen: None,
             output: None,
             sends: Vec::new(),
             id,
@@ -381,6 +431,10 @@ pub struct Track {
     /// Settings that change over time (volume rides, filter sweeps, ...).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub automation: Vec<AutomationLane>,
+    /// A rendering of the track's sound, played instead of its instrument
+    /// and effects to save CPU, while it is up to date.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frozen: Option<Frozen>,
     /// The bus this track plays into (None = the master).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output: Option<Id>,

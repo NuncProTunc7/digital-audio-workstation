@@ -4,6 +4,7 @@
 |---|---|
 | No sound | Check the output device in the status bar; check the track isn't muted, or another soloed; check the master fader. |
 | Crackles or dropouts | Pick a bigger **Buffer** in the status bar (the app offers one when it hears the computer struggling). Close other audio apps; remove heavy effects (reverb) from tracks that don't need them. |
+| Crackles with lots of tracks or heavy sounds (big reverbs, samplers) | **Freeze** the tracks you're not working on: click **❄** on the track header. The track's sound is rendered once and played back, which costs almost no CPU. |
 | Playing the keyboard feels laggy | Pick a smaller **Buffer** in the status bar (256 or 128). If that crackles, go back up one. |
 | Recording is silent | Pick the right **Input** in the Audio tab; check Windows privacy settings allow microphone access. |
 | Recording hears the song | Wear headphones. |

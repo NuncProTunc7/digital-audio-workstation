@@ -11,7 +11,7 @@ use crate::message::{
 use crate::processor::{
     AudioProcessor, ProcessorInit, ProcessorOutputs, db_to_fader_gain, strip_settings,
 };
-use crate::sequence::build_sequence;
+use crate::sequence::{plays_frozen, track_sequence};
 use crate::status::{EngineStatus, StatusSnapshot};
 
 const MESSAGE_CAPACITY: usize = 8192;
@@ -107,15 +107,15 @@ impl Engine {
         for t in project
             .tracks
             .iter()
-            .filter(|t| t.instrument.kind.is_audio())
+            .filter(|t| t.instrument.kind.is_audio() || t.frozen.is_some())
         {
             self.send(EngineMessage::ReplaceSequence {
                 track_id: t.id,
-                sequence: Box::new(build_sequence(
+                sequence: Box::new(track_sequence(
+                    project,
                     t,
                     &self.audio,
                     self.sample_rate_hz as u32,
-                    project.tempo_bpm,
                 )),
             });
         }
@@ -310,6 +310,8 @@ impl Engine {
                 .iter()
                 .zip(&project.buses)
                 .all(|(a, b)| a.id == b.id);
+        // Freezing or thawing swaps what a track plays: part of the layout.
+        let frozen = |p: &Project, t: &Track| t.frozen.is_some() && plays_frozen(p, t, &self.audio);
         let same_layout = same_buses
             && synced.tracks.len() == project.tracks.len()
             && synced.tracks.iter().zip(&project.tracks).all(|(a, b)| {
@@ -317,11 +319,12 @@ impl Engine {
                     && a.instrument.kind == b.instrument.kind
                     && a.instrument.sample_pack == b.instrument.sample_pack
                     && same_routing(a, b)
+                    && frozen(&synced, a) == frozen(project, b)
             });
         if same_layout {
             let tempo_changed = synced.tempo_bpm != project.tempo_bpm;
             for (old, new) in synced.tracks.iter().zip(&project.tracks) {
-                self.sync_track(&project.tracks, old, new, project.tempo_bpm, tempo_changed);
+                self.sync_track(project, old, new, tempo_changed);
                 for (index, (a, b)) in old.sends.iter().zip(&new.sends).enumerate() {
                     if a.level_db != b.level_db {
                         self.send(EngineMessage::SetSendGain {
@@ -375,14 +378,8 @@ impl Engine {
         *synced = project.clone();
     }
 
-    fn sync_track(
-        &self,
-        tracks: &[Track],
-        old: &Track,
-        new: &Track,
-        tempo_bpm: f64,
-        tempo_changed: bool,
-    ) {
+    fn sync_track(&self, project: &Project, old: &Track, new: &Track, tempo_changed: bool) {
+        let (tracks, tempo_bpm) = (&project.tracks, project.tempo_bpm);
         for (index, spec) in param_specs(new.instrument.kind).iter().enumerate() {
             let value = new.instrument.value(spec.id);
             if old.instrument.value(spec.id) != value {
@@ -411,11 +408,11 @@ impl Engine {
         if old.clips != new.clips || automation_changed || restretch {
             self.send(EngineMessage::ReplaceSequence {
                 track_id: new.id,
-                sequence: Box::new(build_sequence(
+                sequence: Box::new(track_sequence(
+                    project,
                     new,
                     &self.audio,
                     self.sample_rate_hz as u32,
-                    tempo_bpm,
                 )),
             });
         }
@@ -567,25 +564,23 @@ fn build_tracks(project: &Project, sample_rate_hz: f32, audio: &AudioPool) -> Bo
                     ))
                 })
                 .collect();
+            // A frozen track's effects are in its rendering already.
+            let frozen = plays_frozen(project, t, audio);
             TrackSlot::new(
                 t.id,
                 daw_instruments::create(&t.instrument, sample_rate_hz),
                 build_chain(
                     &project.tracks,
-                    &t.mixer.effects,
+                    if frozen { &[] } else { &t.mixer.effects },
                     project.tempo_bpm,
                     sample_rate_hz,
                 ),
-                Box::new(build_sequence(
-                    t,
-                    audio,
-                    sample_rate_hz as u32,
-                    project.tempo_bpm,
-                )),
+                Box::new(track_sequence(project, t, audio, sample_rate_hz as u32)),
                 strip_settings(&t.mixer),
                 sample_rate_hz,
             )
             .with_routing(t.output.and_then(bus_index), sends)
+            .with_frozen(frozen)
         })
         .collect()
 }

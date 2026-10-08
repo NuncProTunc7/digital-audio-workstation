@@ -186,6 +186,15 @@ pub enum Command {
         pan: Option<f64>,
         mute: Option<bool>,
     },
+    /// Use a rendering of the track instead of its instrument and effects
+    /// (to save CPU). Made by the freeze_track tool, which renders the
+    /// file first; call that rather than this.
+    FreezeTrack {
+        track_id: TrackId,
+        frozen: crate::project::Frozen,
+    },
+    /// Play the track live again (its instrument and effects).
+    UnfreezeTrack { track_id: TrackId },
     /// Choose where a track plays: a bus id, or null for the master.
     SetTrackOutput {
         track_id: TrackId,
@@ -645,6 +654,38 @@ impl Command {
                 mute,
             } => buses::set_mixer(project, bus_id, volume_db, pan, mute),
             C::SetTrackOutput { track_id, bus_id } => buses::set_output(project, track_id, bus_id),
+            C::FreezeTrack { track_id, frozen } => {
+                audio::check_file_name(&frozen.file)?;
+                let t = project
+                    .track_mut(track_id)
+                    .ok_or(CommandError::UnknownTrack(track_id))?;
+                if t.instrument.kind.is_audio() {
+                    return Err(invalid(
+                        "track",
+                        "audio tracks are already audio; there's nothing to freeze",
+                    ));
+                }
+                Ok(match t.frozen.replace(frozen) {
+                    Some(old) => C::FreezeTrack {
+                        track_id,
+                        frozen: old,
+                    },
+                    None => C::UnfreezeTrack { track_id },
+                })
+            }
+            C::UnfreezeTrack { track_id } => {
+                let t = project
+                    .track_mut(track_id)
+                    .ok_or(CommandError::UnknownTrack(track_id))?;
+                let old = t
+                    .frozen
+                    .take()
+                    .ok_or_else(|| invalid("track", format!("\"{}\" isn't frozen", t.name)))?;
+                Ok(C::FreezeTrack {
+                    track_id,
+                    frozen: old,
+                })
+            }
             C::SetSend {
                 track_id,
                 bus_id,

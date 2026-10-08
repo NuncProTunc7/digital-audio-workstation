@@ -985,6 +985,15 @@ export default function App({ backend }: AppProps) {
           onRemoveTrack={(t) => void removeTrack(t)}
           peaks={peaks}
           missingAudio={missingAudio}
+          frozenCurrent={new Set(view.frozen_current ?? [])}
+          onFreeze={(id) => {
+            setToast("Freezing…");
+            void run(() => backend.freezeTrack(id)).then((v) => {
+              applyView(v);
+              setToast(v ? "Frozen: this track now costs almost no CPU" : null);
+              window.setTimeout(() => setToast(null), TOAST_MS);
+            });
+          }}
           onImportAudio={(trackId, beats) => void pickAndImport(trackId, beats)}
           catalog={catalog}
         />

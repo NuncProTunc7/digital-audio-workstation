@@ -12,7 +12,16 @@ const HIDDEN_COMMANDS: &[&str] = &[
     "restore_clip",
     "restore_effect",
     "restore_automation_lane",
+    "restore_snapshot",
+    "restore_marker",
+    "restore_bus",
+    "restore_chord",
+    "set_song_state",
 ];
+
+/// Commands whose tool does more than the Command (freeze_track renders
+/// the track first), so the generated tool of that name is left out.
+const REPLACED_COMMANDS: &[&str] = &["freeze_track"];
 
 /// The tool that reads the built-in user guide (answered by the bridge itself).
 pub const READ_GUIDE: &str = "read_guide";
@@ -83,7 +92,7 @@ fn command_tools() -> Vec<ToolDef> {
         else {
             continue;
         };
-        if HIDDEN_COMMANDS.contains(&name.as_str()) {
+        if HIDDEN_COMMANDS.contains(&name.as_str()) || REPLACED_COMMANDS.contains(&name.as_str()) {
             continue;
         }
         let description = variant
@@ -355,6 +364,12 @@ fn extra_tools() -> Vec<ToolDef> {
             false,
         ),
         tool(
+            "freeze_track",
+            "Freeze a track: render its instrument and effects to audio and play that instead, so it costs almost no CPU (use when the user hears crackles or the CPU meter is high). Fader, pan, mute, sends and volume/pan automation still work. Any edit to the track's notes, sound, effects, or the tempo makes it play live again until frozen again; unfreeze_track goes back to live. One undo step.",
+            object_schema(json!({ "track_id": { "type": "integer" } }), &["track_id"]),
+            false,
+        ),
+        tool(
             "inspect_export",
             "Check a Godot export before writing it, with the same options as export_godot (project_dir not needed): renders exactly what would be exported and reports, in plain words, missing recordings, clipping or hot peaks, silence, a click or level jump at the loop point, loops that aren't whole beats or bars (Godot can't beat-sync them), and stems of different lengths. Returns findings (level problem/warning/ok), loudness, peak, and length. Run it before export_godot and fix problems first.",
             object_schema(godot_options_properties(), &[]),
@@ -515,6 +530,9 @@ pub fn to_request(name: &str, args: Map<String, Value>) -> Result<Request, Strin
         "calibrate_recording" => Request::CalibrateRecording,
         "import_midi" => Request::ImportMidi {
             path: get_str("path").ok_or("path is required")?,
+        },
+        "freeze_track" => Request::FreezeTrack {
+            track_id: get_id("track_id")?,
         },
         "inspect_export" => Request::InspectExport(
             serde_json::from_value(Value::Object(args))
