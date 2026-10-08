@@ -569,6 +569,38 @@ describe("Section markers", () => {
   });
 });
 
+describe("Your presets", () => {
+  it("saves a sound and loads it on another track", async () => {
+    const backend = await renderApp();
+    // Keys is selected; save its sound.
+    fireEvent.click(screen.getByRole("button", { name: "Save preset…" }));
+    fireEvent.change(screen.getByLabelText("New preset name"), { target: { value: "Glass Keys" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Save this preset" }));
+    });
+    expect(await screen.findByText('Saved preset "Glass Keys"')).toBeTruthy();
+    // Select the Bass track and pick it from "Your presets".
+    await act(async () => {
+      fireEvent.click(trackHeader("Bass"));
+    });
+    const select = screen.getByLabelText("Preset") as HTMLSelectElement;
+    expect([...select.querySelectorAll("optgroup[label='Your presets'] option")].map((o) => o.textContent)).toEqual([
+      "Glass Keys",
+    ]);
+    await act(async () => {
+      fireEvent.change(select, { target: { value: "user:Glass Keys" } });
+    });
+    const bass = (await backend.getProject()).project.tracks[1].instrument;
+    expect(bass.preset).toBe("Glass Keys");
+    await waitFor(() => expect((screen.getByLabelText("Preset") as HTMLSelectElement).value).toBe("user:Glass Keys"));
+    // Delete it: the list empties, the track keeps its sound.
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Delete preset Glass Keys" }));
+    });
+    expect(await backend.userPresets()).toEqual([]);
+  });
+});
+
 describe("Game preview", () => {
   it("switches sections and fades layers like the game will", async () => {
     const backend = createPreviewBackend();

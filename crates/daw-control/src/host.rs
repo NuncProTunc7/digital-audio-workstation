@@ -54,6 +54,10 @@ pub trait Host: Send + Sync {
             ..Default::default()
         }
     }
+    /// Where the user's own presets are kept.
+    fn presets_path(&self) -> PathBuf {
+        crate::presets::presets_path()
+    }
     /// Bars of clicks before recording starts (0 = none).
     fn count_in_bars(&self) -> u32 {
         0
@@ -135,6 +139,43 @@ pub fn handle<H: Host>(host: &H, request: Request) -> Response {
         crate::diagnostics::log_error(&format!("Claude's {method} failed: {e}"));
     }
     result.into()
+}
+
+/// Saves `track_id`'s instrument as the user's preset `name`.
+pub fn save_user_preset<H: Host>(
+    host: &H,
+    track_id: TrackId,
+    name: &str,
+) -> Result<Vec<crate::presets::UserPreset>, String> {
+    let instrument = host
+        .session()?
+        .project()
+        .track(track_id)
+        .ok_or_else(|| format!("there is no track with id {track_id}"))?
+        .instrument
+        .clone();
+    crate::presets::save(&host.presets_path(), name, &instrument)
+}
+
+/// Gives `track_id` the user's preset `name` (as one undoable edit).
+pub fn load_user_preset<H: Host>(host: &H, track_id: TrackId, name: &str) -> Result<(), String> {
+    let mut session = host.session()?;
+    let kind = session
+        .project()
+        .track(track_id)
+        .ok_or_else(|| format!("there is no track with id {track_id}"))?
+        .instrument
+        .kind;
+    let preset = crate::presets::find(&host.presets_path(), kind, name)?;
+    session
+        .execute(Command::SetInstrument {
+            track_id,
+            instrument: preset.instrument(),
+        })
+        .map_err(|e| e.to_string())?;
+    session.end_gesture();
+    sync(host, &session);
+    Ok(())
 }
 
 /// The diagnostic report as plain text.
@@ -223,6 +264,19 @@ fn handle_inner<H: Host>(host: &H, request: Request) -> Result<Value, String> {
             Ok(json!({ "metronome": on }))
         }
         Request::DiagnosticReport => Ok(json!({ "report": diagnostic_report(host)? })),
+        Request::SavePreset { track_id, name } => {
+            let list = save_user_preset(host, track_id, &name)?;
+            host.project_changed(&format!("Claude saved preset {}", name.trim()));
+            Ok(json!({ "saved": name.trim(), "presets": list }))
+        }
+        Request::UserPresets => {
+            Ok(json!({ "presets": crate::presets::load(&host.presets_path()) }))
+        }
+        Request::LoadUserPreset { track_id, name } => {
+            load_user_preset(host, track_id, &name)?;
+            host.project_changed(&format!("Claude: load preset {name}"));
+            Ok(json!({ "track_id": track_id, "preset": name }))
+        }
         Request::SetCountIn { bars } => {
             let bars = host.set_count_in_bars(bars)?;
             host.project_changed("Claude set the count-in");
@@ -857,6 +911,7 @@ pub(crate) mod tests {
         pub audio: Arc<AudioPool>,
         /// Save versions before Claude's edits, like the app does.
         pub keep_versions: bool,
+        pub presets: PathBuf,
         pub last_claude: Mutex<Option<std::time::Instant>>,
         // Keeps the scratch folder alive for the test.
         _scratch: tempfile::TempDir,
@@ -871,6 +926,7 @@ pub(crate) mod tests {
                 changes: Mutex::default(),
                 audio: Arc::new(AudioPool::new(scratch.path().to_owned())),
                 keep_versions: false,
+                presets: scratch.path().join("presets.json"),
                 last_claude: Mutex::default(),
                 _scratch: scratch,
             }
@@ -900,6 +956,9 @@ pub(crate) mod tests {
         fn audio(&self) -> Arc<AudioPool> {
             Arc::clone(&self.audio)
         }
+        fn presets_path(&self) -> PathBuf {
+            self.presets.clone()
+        }
         fn note_claude_edit(&self) -> Option<Option<std::time::Instant>> {
             if !self.keep_versions {
                 return None;
@@ -911,6 +970,57 @@ pub(crate) mod tests {
 
     fn ok(r: Response) -> Value {
         r.into_result().expect("request succeeded")
+    }
+
+    #[test]
+    fn a_saved_preset_can_be_loaded_onto_another_track_and_undone() {
+        let host = TestHost::default();
+        ok(execute(
+            &host,
+            Command::SetInstrumentParam {
+                track_id: 1,
+                param: "filter.cutoff_hz".into(),
+                value: 640.0,
+            },
+        ));
+        ok(handle(
+            &host,
+            Request::SavePreset {
+                track_id: 1,
+                name: "Muffled Keys".into(),
+            },
+        ));
+        let listed = ok(handle(&host, Request::UserPresets));
+        assert_eq!(listed["presets"][0]["name"], "Muffled Keys");
+        // Track 2 is a synth too (the bass).
+        ok(handle(
+            &host,
+            Request::LoadUserPreset {
+                track_id: 2,
+                name: "muffled keys".into(),
+            },
+        ));
+        {
+            let session = host.session.lock().expect("session");
+            let bass = &session.project().tracks[1].instrument;
+            assert_eq!(bass.preset, "Muffled Keys");
+            assert_eq!(bass.params["filter.cutoff_hz"], 640.0);
+        }
+        ok(handle(&host, Request::Undo));
+        let session = host.session.lock().expect("session");
+        assert_eq!(session.project().tracks[1].instrument.preset, "Fat Bass");
+        drop(session);
+        // Drum tracks don't get synth presets.
+        let err = handle(
+            &host,
+            Request::LoadUserPreset {
+                track_id: 3,
+                name: "Muffled Keys".into(),
+            },
+        )
+        .into_result()
+        .expect_err("wrong kind");
+        assert!(err.contains("no saved drums preset"), "{err}");
     }
 
     #[test]

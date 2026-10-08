@@ -8,6 +8,7 @@
   - **+ Sampler track**: a sample pack, i.e. a real recorded piano, bass, strings...
   - **+ Audio track**: recordings (see [audio](audio.md)).
 - Select a track, then open the **Instrument** tab to change its sound. Pick a **Preset** first, then adjust knobs.
+- **Your own presets**: when you like a sound, click **Save preset…**, name it ("Dungeon Pad") and click **Save**. It appears under **Your presets** in the Preset list of every track with the same kind of instrument, in every song. Saving with the same name updates it; **✕** next to the list deletes it (tracks using it keep their sound). Claude can save and load them too.
 - Double-click a track's name to rename it. Each track header has **M** (mute), **S** (solo), **A** (automation) and a delete button.
 
 ### Built-in sounds

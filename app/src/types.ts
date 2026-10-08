@@ -160,6 +160,14 @@ export interface Snapshot {
 
 export type CompareSide = "current" | "version";
 
+/** A sound the user saved under a name. */
+export interface UserPreset {
+  name: string;
+  kind: InstrumentKind;
+  params: Record<string, number>;
+  sample_pack?: string | null;
+}
+
 /** A part of the song between markers. */
 export interface SongSection {
   name: string;

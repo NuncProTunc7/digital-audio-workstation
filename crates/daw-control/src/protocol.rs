@@ -41,6 +41,18 @@ pub enum Request {
     },
     /// Plain-text report on devices, load, the song, and recent log lines.
     DiagnosticReport,
+    /// Save a track's instrument settings as the user's own preset.
+    SavePreset {
+        track_id: TrackId,
+        name: String,
+    },
+    /// The user's own presets.
+    UserPresets,
+    /// Give a track one of the user's own presets (one undo step).
+    LoadUserPreset {
+        track_id: TrackId,
+        name: String,
+    },
     /// Transport position and levels.
     Status,
     Save {

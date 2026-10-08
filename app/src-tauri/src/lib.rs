@@ -774,6 +774,43 @@ fn set_count_in(state: State<'_, AppState>, bars: u32) -> Result<u32, String> {
     state.set_count_in_bars(bars)
 }
 
+/// The user's own presets.
+#[tauri::command]
+fn user_presets(state: State<'_, AppState>) -> Vec<daw_control::presets::UserPreset> {
+    daw_control::presets::load(&state.presets_path())
+}
+
+/// Saves a track's sound as the user's preset `name`.
+#[tauri::command]
+fn save_preset(
+    state: State<'_, AppState>,
+    track_id: TrackId,
+    name: String,
+) -> Result<Vec<daw_control::presets::UserPreset>, String> {
+    daw_control::save_user_preset(&*state, track_id, &name)
+}
+
+/// Deletes one of the user's presets.
+#[tauri::command]
+fn delete_preset(
+    state: State<'_, AppState>,
+    kind: InstrumentKind,
+    name: String,
+) -> Result<Vec<daw_control::presets::UserPreset>, String> {
+    daw_control::presets::delete(&state.presets_path(), kind, &name)
+}
+
+/// Gives a track one of the user's presets (one undo step).
+#[tauri::command]
+fn load_user_preset(
+    state: State<'_, AppState>,
+    track_id: TrackId,
+    name: String,
+) -> Result<ProjectView, String> {
+    daw_control::load_user_preset(&*state, track_id, &name)?;
+    get_project(state)
+}
+
 /// Game preview: loops section `index` with every layer up.
 #[tauri::command]
 fn preview_start(
@@ -1432,6 +1469,10 @@ pub fn run() {
             compare_start,
             compare_listen,
             compare_stop,
+            user_presets,
+            save_preset,
+            delete_preset,
+            load_user_preset,
             preview_start,
             preview_switch,
             preview_layer,

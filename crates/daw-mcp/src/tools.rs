@@ -221,6 +221,36 @@ fn extra_tools() -> Vec<ToolDef> {
             true,
         ),
         tool(
+            "save_preset",
+            "Save a track's current instrument settings as the user's own preset, under a name, so any song can use it (kept on this computer, listed after the built-in presets). Can't reuse a built-in preset's name; saving an existing name replaces it.",
+            object_schema(
+                json!({
+                    "track_id": { "type": "integer" },
+                    "name": { "type": "string", "description": "Up to 40 characters, e.g. \"Dungeon Pad\"." }
+                }),
+                &["track_id", "name"],
+            ),
+            false,
+        ),
+        tool(
+            "user_presets",
+            "List the user's own saved presets (name, instrument kind, parameter values). Built-in presets are in describe_instruments.",
+            object_schema(json!({}), &[]),
+            true,
+        ),
+        tool(
+            "load_user_preset",
+            "Give a track one of the user's own saved presets (one undo step). The preset must be for the track's instrument kind; for built-in presets use load_preset.",
+            object_schema(
+                json!({
+                    "track_id": { "type": "integer" },
+                    "name": { "type": "string" }
+                }),
+                &["track_id", "name"],
+            ),
+            false,
+        ),
+        tool(
             "set_count_in",
             "Set how many bars of metronome clicks play before recording starts (0 = none, 1 or 2 bars), so the performer can come in on the first beat. Applies to recording audio and notes, by the user or with record_audio. The song stays silent during the count-in. Saved on this computer, not in the song.",
             object_schema(
@@ -445,6 +475,15 @@ pub fn to_request(name: &str, args: Map<String, Value>) -> Result<Request, Strin
             on: get_bool("on").ok_or("on is required")?,
         },
         "diagnostic_report" => Request::DiagnosticReport,
+        "save_preset" => Request::SavePreset {
+            track_id: get_id("track_id")?,
+            name: get_str("name").ok_or("name is required")?,
+        },
+        "user_presets" => Request::UserPresets,
+        "load_user_preset" => Request::LoadUserPreset {
+            track_id: get_id("track_id")?,
+            name: get_str("name").ok_or("name is required")?,
+        },
         "set_count_in" => Request::SetCountIn {
             bars: args
                 .get("bars")

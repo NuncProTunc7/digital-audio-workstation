@@ -12,7 +12,9 @@ import type {
   ClaudeStatus,
   CompareSide,
   Comparison,
+  InstrumentKind,
   PreviewPlan,
+  UserPreset,
   Command,
   ExportReport,
   GodotOptions,
@@ -86,6 +88,13 @@ export interface Backend {
   transportStatus(): Promise<TransportStatus>;
   audioStatus(): Promise<AudioStatus>;
   setOutputDevice(name: string | null): Promise<AudioStatus>;
+  /** The user's own presets. */
+  userPresets(): Promise<UserPreset[]>;
+  /** Saves a track's sound as the user's preset `name`; returns the list. */
+  savePreset(trackId: number, name: string): Promise<UserPreset[]>;
+  deletePreset(kind: InstrumentKind, name: string): Promise<UserPreset[]>;
+  /** Gives a track one of the user's presets (one undo step). */
+  loadUserPreset(trackId: number, name: string): Promise<ProjectView>;
   /** Game preview: loops section `index` with every layer up. */
   previewStart(index: number): Promise<PreviewPlan>;
   /** Game preview: changes to section `index` at the next bar line. */
@@ -193,6 +202,10 @@ export const tauriBackend: Backend = {
   audioStatus: () => invoke("audio_status"),
   setOutputDevice: (name) => invoke("set_output_device", { name }),
   setBufferSize: (frames) => invoke("set_buffer_size", { frames }),
+  userPresets: () => invoke("user_presets"),
+  savePreset: (trackId, name) => invoke("save_preset", { trackId, name }),
+  deletePreset: (kind, name) => invoke("delete_preset", { kind, name }),
+  loadUserPreset: (trackId, name) => invoke("load_user_preset", { trackId, name }),
   previewStart: (index) => invoke("preview_start", { index }),
   previewSwitch: (index) => invoke("preview_switch", { index }),
   previewLayer: (trackId, on, fadeBeats) => invoke("preview_layer", { trackId, on, fadeBeats }),

@@ -9,6 +9,7 @@ import type {
   Catalog,
   ClaudeStatus,
   CompareSide,
+  UserPreset,
   InputStatus,
   Peaks,
   Clip,
@@ -475,6 +476,7 @@ export function createPreviewBackend(): PreviewBackend {
   let countInBars = 1;
   let comparing: { snapshot_id: number; side: CompareSide } | null = null;
   const uiErrors: string[] = [];
+  let userPresets: UserPreset[] = [];
   let startedAt = 0;
   let startBeats = 0;
 
@@ -632,6 +634,33 @@ export function createPreviewBackend(): PreviewBackend {
     }),
     audioStatus: async () => audio(),
     setOutputDevice: async () => audio(),
+    userPresets: async () => structuredClone(userPresets),
+    savePreset: async (trackId, name) => {
+      const t = project.tracks.find((x) => x.id === trackId);
+      if (!t) throw new Error(`there is no track with id ${trackId}`);
+      const n = name.trim();
+      if (!n) throw new Error("give the preset a name");
+      userPresets = userPresets.filter((p) => !(p.kind === t.instrument.kind && p.name.toLowerCase() === n.toLowerCase()));
+      userPresets.push({ name: n, kind: t.instrument.kind, params: { ...t.instrument.params } });
+      return structuredClone(userPresets);
+    },
+    deletePreset: async (kind, name) => {
+      userPresets = userPresets.filter((p) => !(p.kind === kind && p.name === name));
+      return structuredClone(userPresets);
+    },
+    loadUserPreset: async (trackId, name) => {
+      const t = project.tracks.find((x) => x.id === trackId);
+      const p = userPresets.find((x) => x.kind === t?.instrument.kind && x.name.toLowerCase() === name.toLowerCase());
+      if (!t || !p) throw new Error(`there is no saved preset called "${name}"`);
+      undoStack.push(project);
+      redoStack.length = 0;
+      project = applyCommand(project, {
+        command: "set_instrument",
+        track_id: trackId,
+        instrument: { kind: p.kind, preset: p.name, params: { ...p.params } },
+      });
+      return view();
+    },
     previewStart: async (index) => {
       const sections = (project.markers ?? []).map((m, i, all) => ({
         name: m.name,

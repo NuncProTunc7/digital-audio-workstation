@@ -293,7 +293,7 @@ Original spec: adaptive "explore/combat" export was Claude-only.
 
 ### C. Smaller
 
-**10. User presets:** `SavePreset` saves the track's instrument settings under a name in app data; listed after factory presets; Claude gets `save_preset`.
+**10. User presets** ✅ (built Oct 2026): `daw_control::presets` keeps them in `<app data>/presets.json` (not a Command: it isn't song data); applying one is an ordinary `SetInstrument`. Preset list shows **Your presets** after the built-in ones, with **Save preset…** and delete. Claude: `save_preset`, `user_presets`, `load_user_preset`.
 **11. Humanize:** `HumanizeNotes { clip_id, note_ids, timing_beats, velocity }` with a seeded random so undo/redo is exact.
 **12. Key signature:** `Project.key` (`SetKey`), shown in the top bar, written to MusicXML/MIDI, and given to Claude in `get_song`.
 

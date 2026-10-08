@@ -16,6 +16,7 @@ mod discovery;
 pub mod game_preview;
 mod host;
 pub mod notation;
+pub mod presets;
 mod protocol;
 mod server;
 pub mod settings;
@@ -24,8 +25,8 @@ pub use client::{ClientError, ControlClient};
 pub use discovery::{APP_ID, ControlFile, control_file_path, unsaved_audio_dir};
 pub use host::{
     CalibrationResult, Host, RecordingDelay, SavedProject, begin_take, diagnostic_report, end_take,
-    export_godot, export_song_wav, handle, import_audio, new_project, open_project,
-    sample_pack_status, save_project,
+    export_godot, export_song_wav, handle, import_audio, load_user_preset, new_project,
+    open_project, sample_pack_status, save_project, save_user_preset,
 };
 pub use protocol::{GodotOptions, Request, Response};
 pub use server::ControlServer;

@@ -34,6 +34,7 @@ import type {
   Command,
   Comparison,
   PreviewPlan,
+  UserPreset,
   InputStatus,
   Peaks,
   Project,
@@ -80,6 +81,14 @@ export default function App({ backend }: AppProps) {
   const [claude, setClaude] = useState<ClaudeStatus | null>(null);
   const [claudeOpen, setClaudeOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  // The user's own presets (any instrument kind).
+  const [userPresets, setUserPresets] = useState<UserPreset[]>([]);
+  useEffect(() => {
+    backend
+      .userPresets()
+      .then(setUserPresets)
+      .catch(() => {});
+  }, [backend, view?.project]);
   // The game preview's sections and layers while it is open.
   const [previewPlan, setPreviewPlan] = useState<PreviewPlan | null>(null);
   // Loudness of the song and the version being compared A/B.
@@ -992,6 +1001,26 @@ export default function App({ backend }: AppProps) {
                 }
                 onEndGesture={endGesture}
                 onPreset={(preset) => void execute({ command: "load_preset", track_id: selectedTrack.id, preset })}
+                userPresets={userPresets.filter((p) => p.kind === selectedTrack.instrument.kind)}
+                onUserPreset={(name) =>
+                  void run(() => backend.loadUserPreset(selectedTrack.id, name)).then((v) => {
+                    applyView(v);
+                    endGesture();
+                  })
+                }
+                onSavePreset={(name) =>
+                  void run(() => backend.savePreset(selectedTrack.id, name)).then((list) => {
+                    if (!list) return;
+                    setUserPresets(list);
+                    setToast(`Saved preset "${name}"`);
+                    window.setTimeout(() => setToast(null), TOAST_MS);
+                  })
+                }
+                onDeletePreset={(name) =>
+                  void run(() => backend.deletePreset(selectedTrack.instrument.kind, name)).then(
+                    (list) => list && setUserPresets(list),
+                  )
+                }
                 onPadHit={noteOn}
                 onPadRelease={noteOff}
                 onChooseSamplePack={() =>
