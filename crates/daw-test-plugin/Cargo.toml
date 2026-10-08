@@ -1,0 +1,15 @@
+[package]
+name = "daw-test-plugin"
+description = "A tiny VST3 plugin (a sine synth and a gain effect) that daw-plugins' tests load. Not shipped."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+vst3 = "0.3.0"

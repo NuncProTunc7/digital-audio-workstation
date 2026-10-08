@@ -1,0 +1,21 @@
+[package]
+name = "daw-plugins"
+description = "Nunc Pro Tune plugin hosting: finds, loads and runs VST3 instruments and effects."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+vst3 = "0.3.0"
+libloading = "0.8"
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+daw-test-plugin = { path = "../daw-test-plugin" }
+tempfile = "3.27.0"
+
+[lints]
+workspace = true
