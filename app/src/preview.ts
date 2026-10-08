@@ -810,6 +810,8 @@ export function createPreviewBackend(): PreviewBackend {
     }),
     audioStatus: async () => audio(),
     setOutputDevice: async () => audio(),
+    checkForUpdate: async () => null,
+    installUpdate: async () => {},
     freezeTrack: async (trackId) => {
       const t = project.tracks.find((x) => x.id === trackId);
       if (!t || t.instrument.kind === "audio") throw new Error("this track can't be frozen");

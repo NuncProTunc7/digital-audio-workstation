@@ -50,5 +50,16 @@
         "installMode": "currentUser"
       }
     }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDFFNEYwNTlDOTk0MDg3QzkKUldUSmgwQ1puQVZQSHVDakQxZ2FNeUx5eG1HSy9vQzdPMEVDaVUwVTlGMnlOTUQrT0tXaTJ5bVkK",
+      "endpoints": [
+        "https://github.com/NuncProTunc7/digital-audio-workstation/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

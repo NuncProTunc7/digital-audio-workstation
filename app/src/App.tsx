@@ -93,6 +93,20 @@ export default function App({ backend }: AppProps) {
   const [claude, setClaude] = useState<ClaudeStatus | null>(null);
   const [claudeOpen, setClaudeOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  // A newer version on GitHub, offered once per run.
+  const [update, setUpdate] = useState<{ version: string; notes: string | null } | null>(null);
+  const [updating, setUpdating] = useState(false);
+  useEffect(() => {
+    if (backend.preview) return;
+    // A little after starting, so it never slows the app opening.
+    const timer = window.setTimeout(() => {
+      backend
+        .checkForUpdate()
+        .then(setUpdate)
+        .catch(() => {});
+    }, 5000);
+    return () => window.clearTimeout(timer);
+  }, [backend]);
   // The user's own presets (any instrument kind).
   const [userPresets, setUserPresets] = useState<UserPreset[]>([]);
   useEffect(() => {
@@ -513,16 +527,19 @@ export default function App({ backend }: AppProps) {
     if (p?.tracks[0]) setSelectedTrackId(p.tracks[0].id);
   }, [backend, run, applyView, confirmDiscard]);
 
+  /** Saves (asking where for a new song). Returns whether it was saved. */
   const saveFile = useCallback(
-    async (saveAs: boolean) => {
+    async (saveAs: boolean): Promise<boolean> => {
       const current = viewRef.current;
-      if (!current) return;
+      if (!current) return false;
       let path: string | null = null;
       if (saveAs || !current.file_path) {
         path = (await run(() => backend.pickSavePath(current.project.name))) ?? null;
-        if (!path) return;
+        if (!path) return false;
       }
-      applyView(await run(() => backend.saveProject(path)));
+      const saved = await run(() => backend.saveProject(path));
+      applyView(saved);
+      return saved !== undefined && !saved.dirty;
     },
     [backend, run, applyView],
   );
@@ -1312,6 +1329,30 @@ export default function App({ backend }: AppProps) {
           onClose={() => setClaudeOpen(false)}
           onCopyReport={() => void copyReport()}
         />
+      )}
+      {update && (
+        <div className="update-banner" role="status">
+          <span>
+            Nunc Pro Tune {update.version} is available.
+            {update.notes ? <span className="muted"> {update.notes.split("\n")[0]}</span> : null}
+          </span>
+          <button
+            disabled={updating}
+            onClick={async () => {
+              // Never lose work: save first (the update restarts the app).
+              if (viewRef.current?.dirty && !(await saveFile(false))) return;
+              setUpdating(true);
+              const done = await run(() => backend.installUpdate());
+              if (done === undefined) setUpdating(false);
+            }}
+            title="Download the new version, install it, and restart (your song is saved first)"
+          >
+            {updating ? "Updating…" : view?.dirty ? "Save, update and restart" : "Update and restart"}
+          </button>
+          <button className="small" onClick={() => setUpdate(null)}>
+            Later
+          </button>
+        </div>
       )}
       {toast && (
         <div className="toast" role="status">

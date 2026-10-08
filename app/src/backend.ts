@@ -89,6 +89,10 @@ export interface Backend {
   transportStatus(): Promise<TransportStatus>;
   audioStatus(): Promise<AudioStatus>;
   setOutputDevice(name: string | null): Promise<AudioStatus>;
+  /** A newer version published on GitHub, if there is one (desktop app only). */
+  checkForUpdate(): Promise<{ version: string; notes: string | null } | null>;
+  /** Downloads and installs the newer version, then restarts the app. */
+  installUpdate(): Promise<void>;
   /** Renders a track's sound and plays that instead, to save CPU. */
   freezeTrack(trackId: number): Promise<ProjectView>;
   /** Checks a Godot export without writing it. */
@@ -210,6 +214,19 @@ export const tauriBackend: Backend = {
   setOutputDevice: (name) => invoke("set_output_device", { name }),
   setBufferSize: (frames) => invoke("set_buffer_size", { frames }),
   freezeTrack: (trackId) => invoke("freeze_track", { trackId }),
+  checkForUpdate: async () => {
+    const { check } = await import("@tauri-apps/plugin-updater");
+    const update = await check();
+    return update ? { version: update.version, notes: update.body ?? null } : null;
+  },
+  installUpdate: async () => {
+    const { check } = await import("@tauri-apps/plugin-updater");
+    const { relaunch } = await import("@tauri-apps/plugin-process");
+    const update = await check();
+    if (!update) return;
+    await update.downloadAndInstall();
+    await relaunch();
+  },
   inspectExport: (options) => invoke("inspect_export", { options }),
   auditionSeam: (startBeats, endBeats) => invoke("audition_seam", { startBeats, endBeats }),
   userPresets: () => invoke("user_presets"),

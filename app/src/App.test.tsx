@@ -680,6 +680,38 @@ describe("Sidechain", () => {
   });
 });
 
+describe("Updates", () => {
+  it("offers a new version and saves the song before updating", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const backend = createPreviewBackend();
+      Object.defineProperty(backend, "preview", { value: false });
+      vi.spyOn(backend, "checkForUpdate").mockResolvedValue({ version: "0.2.0", notes: "Sidechain and more" });
+      vi.spyOn(backend, "installUpdate").mockResolvedValue();
+      vi.spyOn(backend, "pickSavePath").mockResolvedValue("C:\\Music\\Song.nptune");
+      vi.spyOn(backend, "saveProject");
+      await renderApp(backend);
+      // An unsaved change.
+      const tempo = screen.getByLabelText("Tempo in BPM");
+      fireEvent.change(tempo, { target: { value: "100" } });
+      fireEvent.blur(tempo);
+      await screen.findByDisplayValue("100");
+      await act(async () => {
+        vi.advanceTimersByTime(5_000);
+      });
+      const button = await screen.findByRole("button", { name: /Save, update and restart/ });
+      expect(screen.getByText(/0\.2\.0 is available/)).toBeTruthy();
+      await act(async () => {
+        fireEvent.click(button);
+      });
+      expect(backend.saveProject).toHaveBeenCalledWith("C:\\Music\\Song.nptune");
+      expect(backend.installUpdate).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe("Linked clips", () => {
   it("duplicates a clip linked, edits both at once, and unlinks", async () => {
     const backend = createPreviewBackend();

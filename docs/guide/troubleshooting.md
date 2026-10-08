@@ -14,6 +14,7 @@
 | Sampler track is silent | Load a sample pack; wait for *loading…* to finish; check the panel for an error. |
 | Claude can't find the app | Open Nunc Pro Tune first. In Claude Desktop, quit fully and reopen after setup. |
 | Windows warns about the installer | It's unsigned: **More info → Run anyway**. |
+| Getting new versions | When a new version is published, the app shows **Update and restart** at the bottom a few seconds after it opens. It saves your song first, installs, and reopens. **Later** hides it until next time. |
 
 When reporting a problem, say what you did, what you heard, and what you expected ("it crackles when I add reverb to the drums"). Claude turns that into a test and a fix.
 

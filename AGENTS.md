@@ -56,7 +56,7 @@ Linux builds need: `libwebkit2gtk-4.1-dev libasound2-dev libgtk-3-dev librsvg2-d
 
 CI (`.github/workflows/ci.yml`) runs all checks on Linux and builds the Windows installer (with `npt-mcp.exe` bundled), uploaded as the `nunc-pro-tune-windows-installer` artifact.
 
-Releases (`.github/workflows/release.yml`): `node scripts/set-version.mjs 0.2.0`, commit, then `git tag v0.2.0 && git push origin v0.2.0`. The tag builds the installer and publishes it as a GitHub Release (the job fails if the tag and the three version fields disagree). Ask the owner before pushing a tag: it publishes.
+Releases (`.github/workflows/release.yml`): `node scripts/set-version.mjs 0.2.0`, commit, then `git tag v0.2.0 && git push origin v0.2.0`. The tag builds the installer and publishes it as a GitHub Release (the job fails if the tag and the three version fields disagree). Ask the owner before pushing a tag: it publishes. With the `TAURI_SIGNING_PRIVATE_KEY` secret set, the release also carries a signature and `latest.json`, and installed apps offer the update (`tauri.release.conf.json`); never commit the private key.
 
 ## Rules
 
