@@ -304,7 +304,7 @@ Owner requests (Oct 2026), done:
 
 ### D. Getting builds to the owner
 
-**13. Releases and auto-update.** A tag (`v0.x.y`) builds the installer and publishes a GitHub Release (no login needed, doesn't expire). Add `tauri-plugin-updater` with a signing key in repository secrets; the app checks on launch and offers "Update and restart". Unsaved work is protected by item 1.
+**13. Releases and auto-update.** Releases ✅ (built Oct 2026): `.github/workflows/release.yml` publishes the installer for `v*` tags; `scripts/set-version.mjs` sets the version. Auto-update is not built yet: it needs an update-signing key pair whose private half the owner adds as the `TAURI_SIGNING_PRIVATE_KEY` repository secret (owner decision). Original plan: A tag (`v0.x.y`) builds the installer and publishes a GitHub Release (no login needed, doesn't expire). Add `tauri-plugin-updater` with a signing key in repository secrets; the app checks on launch and offers "Update and restart". Unsaved work is protected by item 1.
 **14. Code signing** (optional, costs money: certificate ~$100–400/yr or Azure Trusted Signing [Confidence: Med]). Removes the SmartScreen warning. Owner decides.
 
 ### E. Owner's recommendations (Oct 2026)
