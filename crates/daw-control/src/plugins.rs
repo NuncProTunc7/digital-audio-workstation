@@ -38,6 +38,8 @@ pub fn load_cache(path: &Path) -> ScanCache {
 /// Looks through the plugin folders again (only new or changed plugins
 /// are opened), and remembers the result.
 pub fn rescan<H: Host>(host: &H) -> ScanCache {
+    // Looking again is the user's way to retry plugins that crashed.
+    daw_plugins::guard::unblock_all();
     let path = host.plugin_cache_path();
     let old = load_cache(&path);
     let folders = host.plugin_folders();

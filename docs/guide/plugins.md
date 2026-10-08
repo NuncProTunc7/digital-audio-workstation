@@ -44,4 +44,4 @@ Claude can list your plugins, put one on a track or in an effect chain, and chan
 
 - **Silent plugin track**: check the panel. *Loading* means wait; an error usually means the plugin isn't installed any more. Reinstall it, then **Look for new plugins…**.
 - **A plugin isn't in the menu**: make sure it's the **VST3** version (not VST2/.dll or AAX) and installed in the VST3 folder, then **Look for new plugins…**.
-- **The app closed while using a plugin**: plugins run inside the app, so a broken one can close it. Your work is kept: when you reopen, the app offers to recover it. Tell Claude or the plugin's maker which plugin it was.
+- **The app closed while using a plugin**: plugins run inside the app, so a broken one can close it. Your work is kept: when you reopen, the app offers to recover it. If the plugin closed the app while starting or opening its window, it is **switched off** next time (its panel says so), so the app can't get stuck crashing. After updating or reinstalling that plugin, choose **Look for new plugins…** to switch it back on. Tell Claude or the plugin's maker which plugin it was.

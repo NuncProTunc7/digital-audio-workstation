@@ -1606,6 +1606,16 @@ pub fn run() {
         .setup(|app| {
             let state = app.state::<AppState>();
             let _ = state.app.set(app.handle().clone());
+            // A plugin that closed the app last time stays off for now.
+            let guard_dir = daw_control::plugins::cache_path()
+                .parent()
+                .map(Path::to_path_buf)
+                .unwrap_or_else(std::env::temp_dir);
+            if let Some(name) = daw_plugins::guard::init(&guard_dir) {
+                diagnostics::log_error(&format!(
+                    "{name} closed the app the last time it started, so it is switched off"
+                ));
+            }
             // Plugins are created and shown on this, the main thread.
             let main = app.handle().clone();
             daw_plugins::main_thread::install(move |job| {

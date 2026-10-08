@@ -12,6 +12,7 @@
 
 pub mod com;
 pub mod editor;
+pub mod guard;
 pub mod instance;
 pub mod main_thread;
 pub mod module;

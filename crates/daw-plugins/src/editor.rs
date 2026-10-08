@@ -16,7 +16,9 @@ pub fn open(
 ) -> Result<(), String> {
     let instance = instance.clone();
     let title = title.to_owned();
-    main_thread::run(move || imp::open(&instance, key, &title, owner))?
+    main_thread::run(move || {
+        crate::guard::watch(instance.info(), || imp::open(&instance, key, &title, owner))
+    })?
 }
 
 /// Closes the window named `key`, if open.

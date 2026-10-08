@@ -151,8 +151,17 @@ impl Instance {
         setup: Setup,
         state: Option<Vec<u8>>,
     ) -> Result<(Instance, PluginProcessor), String> {
+        if crate::guard::is_blocked(&info.uid) {
+            return Err(format!(
+                "{} is switched off because it closed the app the last time it started;                  after updating or reinstalling it, choose Look for new plugins to try again",
+                info.name
+            ));
+        }
         let info = info.clone();
-        main_thread::run(move || Self::create_here(info, setup, state))?
+        main_thread::run(move || {
+            let watched = info.clone();
+            crate::guard::watch(&watched, || Self::create_here(info, setup, state))
+        })?
     }
 
     #[allow(unsafe_code)]
