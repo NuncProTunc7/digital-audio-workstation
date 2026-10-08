@@ -647,6 +647,156 @@ fn marker_commands_round_trip_undo_and_drag_as_one_step() {
 }
 
 #[test]
+fn buses_take_tracks_sends_and_effects_and_undo_cleanly() {
+    let mut s = Session::new(fixture());
+    s.execute(Command::AddBus {
+        name: "Drums".into(),
+    })
+    .expect("bus");
+    s.execute(Command::AddBus {
+        name: "Reverb".into(),
+    })
+    .expect("bus");
+    let (drums, verb) = (s.project().buses[0].id, s.project().buses[1].id);
+    s.execute(Command::SetTrackOutput {
+        track_id: 3,
+        bus_id: Some(drums),
+    })
+    .expect("route");
+    s.execute(Command::SetSend {
+        track_id: 1,
+        bus_id: verb,
+        level_db: None,
+        pre_fader: None,
+    })
+    .expect("send");
+    // Effects on a bus are addressed by its id.
+    s.execute(Command::AddEffect {
+        track_id: Some(verb),
+        kind: EffectKind::Reverb,
+        index: None,
+    })
+    .expect("bus reverb");
+    s.execute(Command::SetBusMixer {
+        bus_id: drums,
+        volume_db: Some(-3.0),
+        pan: None,
+        mute: None,
+    })
+    .expect("bus level");
+    let p = s.project();
+    assert_eq!(p.tracks[2].output, Some(drums));
+    assert_eq!(
+        p.tracks[0].sends,
+        vec![crate::project::Send {
+            bus_id: verb,
+            level_db: -6.0,
+            pre_fader: false,
+        }]
+    );
+    assert_eq!(p.buses[1].mixer.effects.len(), 1);
+    assert_eq!(p.buses[0].mixer.volume_db, -3.0);
+    let summary = crate::summary::song_summary(p);
+    assert_eq!(summary["buses"][0]["tracks_playing_into_it"][0], 3);
+
+    // A send drag is one undo step.
+    for db in [-5.0, -4.0, -3.0] {
+        s.execute(Command::SetSend {
+            track_id: 1,
+            bus_id: verb,
+            level_db: Some(db),
+            pre_fader: None,
+        })
+        .expect("drag");
+    }
+    s.end_gesture();
+    s.undo();
+    assert_eq!(s.project().tracks[0].sends[0].level_db, -6.0);
+
+    // Removing a bus sends its tracks to the master; undo puts it all back.
+    let before = s.project().clone();
+    s.execute(Command::RemoveBus { bus_id: verb })
+        .expect("remove");
+    s.execute(Command::RemoveBus { bus_id: drums })
+        .expect("remove");
+    let p = s.project();
+    assert!(p.buses.is_empty() && p.tracks[2].output.is_none() && p.tracks[0].sends.is_empty());
+    s.undo();
+    s.undo();
+    assert_eq!(s.project(), &before);
+
+    // Bad routing is refused.
+    for bad in [
+        Command::SetTrackOutput {
+            track_id: 1,
+            bus_id: Some(9_999),
+        },
+        Command::SetSend {
+            track_id: 1,
+            bus_id: 9_999,
+            level_db: None,
+            pre_fader: None,
+        },
+        Command::SetSend {
+            track_id: 1,
+            bus_id: drums,
+            level_db: Some(40.0),
+            pre_fader: None,
+        },
+        Command::RemoveSend {
+            track_id: 2,
+            bus_id: drums,
+        },
+        Command::AddBus { name: " ".into() },
+    ] {
+        assert!(s.execute(bad).is_err());
+    }
+
+    // Commands round-trip; files keep buses and drop routing to lost buses.
+    let bus = s.project().buses[0].clone();
+    for command in [
+        Command::AddBus { name: "Fx".into() },
+        Command::RenameBus {
+            bus_id: drums,
+            name: "Kit".into(),
+        },
+        Command::RemoveSend {
+            track_id: 1,
+            bus_id: verb,
+        },
+        Command::RestoreBus {
+            bus,
+            index: 0,
+            outputs: vec![3],
+            sends: vec![(
+                1,
+                crate::project::Send {
+                    bus_id: drums,
+                    level_db: -12.0,
+                    pre_fader: true,
+                },
+            )],
+        },
+    ] {
+        let json = serde_json::to_string(&command).expect("serialize");
+        assert_eq!(
+            command,
+            serde_json::from_str::<Command>(&json).expect("back"),
+            "{json}"
+        );
+    }
+    let mut p = s.project().clone();
+    let json = crate::file::project_to_json(&p);
+    assert_eq!(crate::file::project_from_json(&json).expect("load"), p);
+    p.tracks[1].output = Some(4_242);
+    let json = crate::file::project_to_json(&p);
+    assert_eq!(
+        crate::file::project_from_json(&json).expect("load").tracks[1].output,
+        None
+    );
+}
+
+#[test]
 fn swing_slider_drag_is_one_undo_step() {
     let mut s = Session::new(fixture());
     let clip = clip_id(s.project());

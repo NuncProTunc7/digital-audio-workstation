@@ -11,6 +11,13 @@ fn chain_mut(
 ) -> Result<&mut Vec<Effect>, CommandError> {
     match track_id {
         None => Ok(&mut project.master.effects),
+        // A bus's effects are addressed by its id.
+        Some(id) if project.buses.iter().any(|b| b.id == id) => Ok(project
+            .buses
+            .iter_mut()
+            .find(|b| b.id == id)
+            .map(|b| &mut b.mixer.effects)
+            .ok_or(CommandError::UnknownTrack(id))?),
         Some(id) => project
             .track_mut(id)
             .map(|t| &mut t.mixer.effects)

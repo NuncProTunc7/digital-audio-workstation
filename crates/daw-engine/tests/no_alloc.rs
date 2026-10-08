@@ -135,6 +135,36 @@ fn audio_thread_never_allocates() {
             })
             .expect("lane");
     }
+    // A bus with an effect that the drums play into and the keys send to.
+    session
+        .execute(Command::AddBus {
+            name: "Room".into(),
+        })
+        .expect("bus");
+    let bus = session.project().buses[0].id;
+    session
+        .execute(Command::AddEffect {
+            track_id: Some(bus),
+            kind: daw_model::EffectKind::Reverb,
+            index: None,
+        })
+        .expect("bus reverb");
+    session
+        .execute(Command::SetTrackOutput {
+            track_id: 3,
+            bus_id: Some(bus),
+        })
+        .expect("route");
+    for pre_fader in [false, true] {
+        session
+            .execute(Command::SetSend {
+                track_id: if pre_fader { 2 } else { 1 },
+                bus_id: bus,
+                level_db: Some(-3.0),
+                pre_fader: Some(pre_fader),
+            })
+            .expect("send");
+    }
     let (engine, mut processor) = Engine::with_audio(session.project(), 48_000, pool);
     // The sound card reports when each buffer will be heard.
     processor.set_output_time(1_000_000_000);
@@ -190,6 +220,26 @@ fn audio_thread_never_allocates() {
     engine.stop();
     engine.play_with_count_in(1.0);
     assert_eq!(process_counting(&mut processor, &mut out), 0, "count-in");
+
+    // Bus and send levels change live.
+    session
+        .execute(Command::SetBusMixer {
+            bus_id: bus,
+            volume_db: Some(-4.0),
+            pan: Some(0.3),
+            mute: None,
+        })
+        .expect("bus level");
+    session
+        .execute(Command::SetSend {
+            track_id: 1,
+            bus_id: bus,
+            level_db: Some(-9.0),
+            pre_fader: None,
+        })
+        .expect("send level");
+    engine.sync(session.project());
+    assert_eq!(process_counting(&mut processor, &mut out), 0, "bus levels");
 
     // Game preview: layer fades and a section change at the next bar.
     engine.fade_layer(1, 0.2, 0.3);

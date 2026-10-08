@@ -5,7 +5,9 @@ use daw_model::effect::effect_params;
 use daw_model::instrument::param_specs;
 use daw_model::{Effect, Project, Track, TrackId};
 
-use crate::message::{EffectChain, EffectSlot, EngineMessage, Garbage, RecordedEvent, TrackSlot};
+use crate::message::{
+    BusSlot, EffectChain, EffectSlot, EngineMessage, Garbage, RecordedEvent, SendSlot, TrackSlot,
+};
 use crate::processor::{
     AudioProcessor, ProcessorInit, ProcessorOutputs, db_to_fader_gain, strip_settings,
 };
@@ -63,6 +65,7 @@ impl Engine {
             Arc::clone(&status),
             ProcessorInit {
                 tracks: build_tracks(project, sample_rate, &audio),
+                buses: build_buses(project, sample_rate),
                 master_effects: build_chain(
                     &project.master.effects,
                     project.tempo_bpm,
@@ -279,18 +282,59 @@ impl Engine {
             project.tempo_bpm,
         );
 
-        let same_layout = synced.tracks.len() == project.tracks.len()
+        // Routing (which bus each track plays into or sends to) is part of
+        // the layout; levels are not.
+        let same_routing = |a: &Track, b: &Track| {
+            a.output == b.output
+                && a.sends.len() == b.sends.len()
+                && a.sends
+                    .iter()
+                    .zip(&b.sends)
+                    .all(|(x, y)| x.bus_id == y.bus_id && x.pre_fader == y.pre_fader)
+        };
+        let same_buses = synced.buses.len() == project.buses.len()
+            && synced
+                .buses
+                .iter()
+                .zip(&project.buses)
+                .all(|(a, b)| a.id == b.id);
+        let same_layout = same_buses
+            && synced.tracks.len() == project.tracks.len()
             && synced.tracks.iter().zip(&project.tracks).all(|(a, b)| {
                 a.id == b.id
                     && a.instrument.kind == b.instrument.kind
                     && a.instrument.sample_pack == b.instrument.sample_pack
+                    && same_routing(a, b)
             });
         if same_layout {
             let tempo_changed = synced.tempo_bpm != project.tempo_bpm;
             for (old, new) in synced.tracks.iter().zip(&project.tracks) {
                 self.sync_track(old, new, project.tempo_bpm, tempo_changed);
+                for (index, (a, b)) in old.sends.iter().zip(&new.sends).enumerate() {
+                    if a.level_db != b.level_db {
+                        self.send(EngineMessage::SetSendGain {
+                            track_id: new.id,
+                            index,
+                            gain: db_to_fader_gain(b.level_db),
+                        });
+                    }
+                }
+            }
+            for (old, new) in synced.buses.iter().zip(&project.buses) {
+                let (o, n) = (&old.mixer, &new.mixer);
+                if (o.volume_db, o.pan, o.mute) != (n.volume_db, n.pan, n.mute) {
+                    self.send(EngineMessage::SetBusStrip {
+                        bus_id: new.id,
+                        strip: strip_settings(n),
+                    });
+                }
+                self.sync_chain(Some(new.id), &o.effects, &n.effects, project.tempo_bpm);
             }
         } else {
+            // Buses first: the new tracks' routing points into them.
+            if !same_buses {
+                self.send(EngineMessage::ReplaceBuses(build_buses(project, sr)));
+            }
             self.send(EngineMessage::ReplaceTracks(build_tracks(
                 project,
                 sr,
@@ -430,11 +474,39 @@ fn build_chain(effects: &[Effect], tempo_bpm: f64, sample_rate_hz: f32) -> Box<E
     })
 }
 
+fn build_buses(project: &Project, sample_rate_hz: f32) -> Box<[BusSlot]> {
+    project
+        .buses
+        .iter()
+        .map(|b| {
+            BusSlot::new(
+                b.id,
+                build_chain(&b.mixer.effects, project.tempo_bpm, sample_rate_hz),
+                strip_settings(&b.mixer),
+                sample_rate_hz,
+            )
+        })
+        .collect()
+}
+
 fn build_tracks(project: &Project, sample_rate_hz: f32, audio: &AudioPool) -> Box<[TrackSlot]> {
+    let bus_index = |id: daw_model::Id| project.buses.iter().position(|b| b.id == id);
     project
         .tracks
         .iter()
         .map(|t| {
+            let sends: Box<[SendSlot]> = t
+                .sends
+                .iter()
+                .filter_map(|s| {
+                    Some(SendSlot::new(
+                        bus_index(s.bus_id)?,
+                        db_to_fader_gain(s.level_db),
+                        s.pre_fader,
+                        sample_rate_hz,
+                    ))
+                })
+                .collect();
             TrackSlot::new(
                 t.id,
                 daw_instruments::create(&t.instrument, sample_rate_hz),
@@ -448,6 +520,7 @@ fn build_tracks(project: &Project, sample_rate_hz: f32, audio: &AudioPool) -> Bo
                 strip_settings(&t.mixer),
                 sample_rate_hz,
             )
+            .with_routing(t.output.and_then(bus_index), sends)
         })
         .collect()
 }
@@ -878,6 +951,87 @@ mod tests {
         // About half of the 64 kicks play, and not the same in every lap.
         assert!((16..=48).contains(&total), "{per_lap:?}");
         assert!(per_lap.iter().any(|&n| n != per_lap[0]), "{per_lap:?}");
+    }
+
+    #[test]
+    fn tracks_play_through_their_bus() {
+        let mut s = kick_session();
+        s.execute(Command::AddBus {
+            name: "Drums".into(),
+        })
+        .expect("bus");
+        let bus = s.project().buses[0].id;
+        let (engine, mut p) = Engine::new(s.project(), SR);
+        engine.set_metronome(false);
+        engine.play();
+        let direct = peak(&render(&mut p, 0.5));
+        // Into the bus: same sound at 0 dB.
+        s.execute(Command::SetTrackOutput {
+            track_id: 3,
+            bus_id: Some(bus),
+        })
+        .expect("route");
+        engine.sync(s.project());
+        engine.locate(0.0);
+        let routed = peak(&render(&mut p, 0.5));
+        assert!((direct - routed).abs() < 0.02, "{direct} vs {routed}");
+        assert!(engine.status().bus_peaks[0] > 0.1);
+        // Muting the bus silences the track; the level change is live.
+        s.execute(Command::SetBusMixer {
+            bus_id: bus,
+            volume_db: None,
+            pan: None,
+            mute: Some(true),
+        })
+        .expect("mute");
+        engine.sync(s.project());
+        // Let the fader glide down (it smooths over ~10 ms).
+        render(&mut p, 0.2);
+        assert!(peak(&render(&mut p, 1.0)) < 1e-3);
+    }
+
+    #[test]
+    fn sends_feed_a_bus_before_or_after_the_fader() {
+        let mut s = kick_session();
+        s.execute(Command::AddBus {
+            name: "Reverb".into(),
+        })
+        .expect("bus");
+        let bus = s.project().buses[0].id;
+        // The drums' own fader all the way down; only a send can be heard.
+        s.execute(Command::SetTrackMixer {
+            track_id: 3,
+            volume_db: Some(-60.0),
+            pan: None,
+            mute: None,
+            solo: None,
+        })
+        .expect("fader");
+        s.execute(Command::SetSend {
+            track_id: 3,
+            bus_id: bus,
+            level_db: Some(0.0),
+            pre_fader: Some(true),
+        })
+        .expect("send");
+        let (engine, mut p) = Engine::new(s.project(), SR);
+        engine.set_metronome(false);
+        engine.play();
+        assert!(peak(&render(&mut p, 0.5)) > 0.1, "pre-fader send is heard");
+        // After the fader, the send is as silent as the track.
+        s.execute(Command::SetSend {
+            track_id: 3,
+            bus_id: bus,
+            level_db: None,
+            pre_fader: Some(false),
+        })
+        .expect("post");
+        engine.sync(s.project());
+        render(&mut p, 0.2);
+        assert!(
+            peak(&render(&mut p, 1.0)) < 1e-3,
+            "post-fader send follows the fader"
+        );
     }
 
     #[test]

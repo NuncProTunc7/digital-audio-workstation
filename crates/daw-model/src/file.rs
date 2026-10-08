@@ -137,11 +137,27 @@ pub(crate) fn validate_project(project: &mut Project) -> Result<(), FileError> {
     project
         .markers
         .sort_by(|a, b| a.start_beats.total_cmp(&b.start_beats));
+    // Routing to a bus that isn't there plays into the master instead.
+    let bus_ids: Vec<_> = project.buses.iter().map(|b| b.id).collect();
+    for t in &mut project.tracks {
+        if t.output.is_some_and(|b| !bus_ids.contains(&b)) {
+            t.output = None;
+        }
+        t.sends.retain(|s| bus_ids.contains(&s.bus_id));
+        t.sends.dedup_by_key(|s| s.bus_id);
+    }
+    if project.buses.len() > crate::command::MAX_BUSES {
+        return Err(FileError::Invalid(format!(
+            "it has more than {} buses",
+            crate::command::MAX_BUSES
+        )));
+    }
     let chains = project
         .tracks
         .iter_mut()
         .map(|t| &mut t.mixer.effects)
-        .chain(std::iter::once(&mut project.master.effects));
+        .chain(std::iter::once(&mut project.master.effects))
+        .chain(project.buses.iter_mut().map(|b| &mut b.mixer.effects));
     for chain in chains {
         for effect in chain.iter_mut() {
             for (id, value) in &effect.params {

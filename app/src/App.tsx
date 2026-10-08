@@ -1133,6 +1133,7 @@ export default function App({ backend }: AppProps) {
               project={project}
               catalog={catalog}
               trackPeaks={transport?.track_peaks ?? []}
+              busPeaks={transport?.bus_peaks ?? []}
               masterPeaks={[transport?.peak_left ?? 0, transport?.peak_right ?? 0]}
               selectedTrackId={selectedTrack.id}
               onSelectTrack={selectTrack}

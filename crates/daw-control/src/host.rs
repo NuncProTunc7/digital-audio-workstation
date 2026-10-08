@@ -829,6 +829,7 @@ pub fn export_godot<H: Host>(
         looped: options.looped.unwrap_or(true),
         intro: options.intro.unwrap_or(false),
         stems: options.stems.unwrap_or(false),
+        bus_stems: options.bus_stems.unwrap_or(false),
         layers_resource: options.layers.unwrap_or(true),
         sections: match &options.sections {
             Some(s) => s.clone(),

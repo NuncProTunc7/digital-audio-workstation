@@ -79,7 +79,17 @@ export function applyCommand(project: Project, command: Command): Project {
     }
     throw new Error(`there is no clip with id ${clipId}`);
   };
-  const chain = (trackId: number | null) => (trackId === null ? p.master.effects : track(trackId).mixer.effects);
+  const chain = (trackId: number | null) => {
+    if (trackId === null) return p.master.effects;
+    // Buses' effects are addressed by the bus id.
+    const bus = (p.buses ?? []).find((b) => b.id === trackId);
+    return bus ? bus.mixer.effects : track(trackId).mixer.effects;
+  };
+  const busOf = (busId: number) => {
+    const b = (p.buses ?? []).find((x) => x.id === busId);
+    if (!b) throw new Error(`there is no bus with id ${busId}`);
+    return b;
+  };
   const effect = (trackId: number | null, effectId: number): Effect => {
     const e = chain(trackId).find((x) => x.id === effectId);
     if (!e) throw new Error(`there is no effect with id ${effectId} there`);
@@ -219,6 +229,55 @@ export function applyCommand(project: Project, command: Command): Project {
     case "rename_clip":
       clipOf(command.clip_id)[1].name = command.name;
       break;
+    case "add_bus": {
+      const name = command.name.trim();
+      if (!name) throw new Error("bus name can't be empty");
+      p.buses = [
+        ...(p.buses ?? []),
+        { id: id(), name, mixer: { volume_db: 0, pan: 0, mute: false, solo: false, effects: [] } },
+      ];
+      break;
+    }
+    case "remove_bus":
+      busOf(command.bus_id);
+      p.buses = (p.buses ?? []).filter((b) => b.id !== command.bus_id);
+      for (const t of p.tracks) {
+        if (t.output === command.bus_id) t.output = null;
+        t.sends = (t.sends ?? []).filter((s) => s.bus_id !== command.bus_id);
+      }
+      break;
+    case "rename_bus":
+      busOf(command.bus_id).name = command.name.trim();
+      break;
+    case "set_bus_mixer": {
+      const m = busOf(command.bus_id).mixer;
+      if (command.volume_db !== null) m.volume_db = command.volume_db;
+      if (command.pan !== null) m.pan = command.pan;
+      if (command.mute !== null) m.mute = command.mute;
+      break;
+    }
+    case "set_track_output":
+      if (command.bus_id !== null) busOf(command.bus_id);
+      track(command.track_id).output = command.bus_id;
+      break;
+    case "set_send": {
+      busOf(command.bus_id);
+      const t = track(command.track_id);
+      const sends = (t.sends = [...(t.sends ?? [])]);
+      const s = sends.find((x) => x.bus_id === command.bus_id);
+      if (s) {
+        if (command.level_db !== null) s.level_db = command.level_db;
+        if (command.pre_fader !== null) s.pre_fader = command.pre_fader;
+      } else {
+        sends.push({ bus_id: command.bus_id, level_db: command.level_db ?? -6, pre_fader: command.pre_fader ?? false });
+      }
+      break;
+    }
+    case "remove_send": {
+      const t = track(command.track_id);
+      t.sends = (t.sends ?? []).filter((s) => s.bus_id !== command.bus_id);
+      break;
+    }
     case "add_marker":
     case "restore_marker": {
       const m =

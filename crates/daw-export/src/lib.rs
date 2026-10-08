@@ -97,6 +97,10 @@ pub struct GodotExport {
     pub intro: bool,
     /// Also export each track on its own.
     pub stems: bool,
+    /// With stems: one per bus (the tracks playing into it, with what they
+    /// send to other buses) instead of one per track; tracks that play
+    /// straight into the master share an "other" stem.
+    pub bus_stems: bool,
     /// With stems: an `AudioStreamSynchronized` that plays them together.
     pub layers_resource: bool,
     /// Sections for an `AudioStreamInteractive` (each exported as a loop).
@@ -189,7 +193,46 @@ pub fn export_to_godot(
 
     write(&base, &main)?;
     let mut stem_paths = Vec::new();
-    if spec.stems {
+    if spec.stems && spec.bus_stems && !project.buses.is_empty() {
+        let mut groups: Vec<(String, Vec<daw_model::TrackId>)> = project
+            .buses
+            .iter()
+            .map(|b| {
+                let ids = project
+                    .tracks
+                    .iter()
+                    .filter(|t| t.output == Some(b.id))
+                    .map(|t| t.id)
+                    .collect();
+                (b.name.clone(), ids)
+            })
+            .collect();
+        groups.push((
+            "other".into(),
+            project
+                .tracks
+                .iter()
+                .filter(|t| t.output.is_none())
+                .map(|t| t.id)
+                .collect(),
+        ));
+        for (name, ids) in groups {
+            if ids.is_empty() {
+                continue;
+            }
+            let mut only = project.clone();
+            for t in &mut only.tracks {
+                t.mixer.solo = false;
+                t.mixer.mute = t.mixer.mute || !ids.contains(&t.id);
+            }
+            let stem = render::render_with_intro(&only, audio, from, start, end, spec.looped, None);
+            if stem.is_silent() {
+                continue;
+            }
+            let res = write(&format!("{base}_{}", file_slug(&name)), &stem)?;
+            stem_paths.push(res);
+        }
+    } else if spec.stems {
         for t in &project.tracks {
             let stem = render::render_with_intro(
                 project,

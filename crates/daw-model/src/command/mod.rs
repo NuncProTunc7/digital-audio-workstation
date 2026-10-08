@@ -3,9 +3,11 @@
 
 mod audio;
 mod automation;
+mod buses;
 mod clips;
 mod effects;
 mod instruments;
+pub use buses::MAX_BUSES;
 mod markers;
 mod notes;
 mod snapshots;
@@ -124,6 +126,52 @@ pub enum Command {
     },
     /// Set the master volume in dB (-60 to +6).
     SetMasterVolume { volume_db: f64 },
+
+    // ---- Buses ----
+    /// Add a group bus (e.g. "Drums", "Reverb") at the end of the mixer.
+    /// Tracks play into it with set_track_output or feed it with set_send;
+    /// add effects to it with add_effect using the bus id as track_id.
+    /// At most 16.
+    AddBus { name: String },
+    /// Delete a bus; tracks that played into it play into the master, and
+    /// sends to it are removed.
+    RemoveBus { bus_id: Id },
+    /// Put back a deleted bus with its routing (used by undo).
+    RestoreBus {
+        bus: crate::project::Bus,
+        index: usize,
+        /// Tracks that played into it.
+        outputs: Vec<TrackId>,
+        /// Sends that fed it.
+        sends: Vec<(TrackId, crate::project::Send)>,
+    },
+    /// Rename a bus.
+    RenameBus { bus_id: Id, name: String },
+    /// Set a bus's level (dB, -60 to +6), pan (-1 to 1), or mute. Omitted
+    /// fields keep their value.
+    SetBusMixer {
+        bus_id: Id,
+        volume_db: Option<f64>,
+        pan: Option<f64>,
+        mute: Option<bool>,
+    },
+    /// Choose where a track plays: a bus id, or null for the master.
+    SetTrackOutput {
+        track_id: TrackId,
+        bus_id: Option<Id>,
+    },
+    /// Send some of a track's sound to a bus as well (e.g. a shared
+    /// reverb), or change an existing send. New sends start at -6 dB,
+    /// after the fader. `pre_fader: true` ignores the track's fader.
+    SetSend {
+        track_id: TrackId,
+        bus_id: Id,
+        /// Send level in dB, -60 to +6.
+        level_db: Option<f64>,
+        pre_fader: Option<bool>,
+    },
+    /// Stop sending a track to a bus.
+    RemoveSend { track_id: TrackId, bus_id: Id },
 
     // ---- Instruments ----
     /// Change one instrument parameter on a track, such as filter cutoff or
@@ -493,6 +541,29 @@ impl Command {
                 solo,
             } => tracks::set_mixer(project, track_id, volume_db, pan, mute, solo),
             C::SetMasterVolume { volume_db } => tracks::set_master_volume(project, volume_db),
+            C::AddBus { name } => buses::add(project, name),
+            C::RemoveBus { bus_id } => buses::remove(project, bus_id),
+            C::RestoreBus {
+                bus,
+                index,
+                outputs,
+                sends,
+            } => buses::restore(project, bus, index, outputs, sends),
+            C::RenameBus { bus_id, name } => buses::rename(project, bus_id, name),
+            C::SetBusMixer {
+                bus_id,
+                volume_db,
+                pan,
+                mute,
+            } => buses::set_mixer(project, bus_id, volume_db, pan, mute),
+            C::SetTrackOutput { track_id, bus_id } => buses::set_output(project, track_id, bus_id),
+            C::SetSend {
+                track_id,
+                bus_id,
+                level_db,
+                pre_fader,
+            } => buses::set_send(project, track_id, bus_id, level_db, pre_fader),
+            C::RemoveSend { track_id, bus_id } => buses::remove_send(project, track_id, bus_id),
 
             C::SetInstrumentParam {
                 track_id,
@@ -719,6 +790,41 @@ impl Command {
             ) => a == b && sa.is_some() == sb.is_some() && ta.is_some() == tb.is_some(),
             (C::ResizeClip { clip_id: a, .. }, C::ResizeClip { clip_id: b, .. }) => a == b,
             (C::SetClipSwing { clip_id: a, .. }, C::SetClipSwing { clip_id: b, .. }) => a == b,
+            (
+                C::SetBusMixer {
+                    bus_id: a,
+                    volume_db: va,
+                    pan: pa,
+                    mute: ma,
+                },
+                C::SetBusMixer {
+                    bus_id: b,
+                    volume_db: vb,
+                    pan: pb,
+                    mute: mb,
+                },
+            ) => {
+                a == b
+                    && va.is_some() == vb.is_some()
+                    && pa.is_some() == pb.is_some()
+                    && ma.is_some() == mb.is_some()
+            }
+            (
+                C::SetSend {
+                    track_id: ta,
+                    bus_id: ba,
+                    level_db: la,
+                    pre_fader: pa,
+                },
+                C::SetSend {
+                    track_id: tb,
+                    bus_id: bb,
+                    level_db: lb,
+                    pre_fader: pb,
+                },
+            ) => {
+                ta == tb && ba == bb && la.is_some() == lb.is_some() && pa.is_some() == pb.is_some()
+            }
             (C::MoveMarker { marker_id: a, .. }, C::MoveMarker { marker_id: b, .. }) => a == b,
             (C::TrimClipStart { clip_id: a, .. }, C::TrimClipStart { clip_id: b, .. }) => a == b,
             (

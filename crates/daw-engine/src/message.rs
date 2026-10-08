@@ -137,6 +137,63 @@ pub struct TrackSlot {
     pub(crate) layer: f32,
     pub(crate) layer_target: f32,
     pub(crate) layer_step: f32,
+    /// Which bus (index into the processor's buses) the track plays into;
+    /// None = the master.
+    pub output: Option<usize>,
+    /// Feeds into buses.
+    pub sends: Box<[SendSlot]>,
+}
+
+/// Part of a track's sound fed to a bus.
+pub struct SendSlot {
+    /// Index into the processor's buses.
+    pub bus: usize,
+    /// Taken before the track's fader and pan.
+    pub pre_fader: bool,
+    pub(crate) gain: daw_dsp::Smoother,
+}
+
+impl SendSlot {
+    pub fn new(bus: usize, gain: f32, pre_fader: bool, sample_rate_hz: f32) -> Self {
+        Self {
+            bus,
+            pre_fader,
+            gain: daw_dsp::Smoother::new(gain, 0.01, sample_rate_hz),
+        }
+    }
+}
+
+/// One group bus, as the audio thread sees it.
+pub struct BusSlot {
+    pub id: TrackId,
+    pub effects: Box<EffectChain>,
+    pub strip: StripSettings,
+    // What tracks and sends put in this block; preallocated.
+    pub(crate) buf_left: Box<[f32]>,
+    pub(crate) buf_right: Box<[f32]>,
+    pub(crate) gain_left: daw_dsp::Smoother,
+    pub(crate) gain_right: daw_dsp::Smoother,
+}
+
+impl BusSlot {
+    pub fn new(
+        id: TrackId,
+        effects: Box<EffectChain>,
+        strip: StripSettings,
+        sample_rate_hz: f32,
+    ) -> Self {
+        let (l, r) = strip.pan_gains();
+        let audible = if strip.mute { 0.0 } else { strip.gain };
+        Self {
+            id,
+            effects,
+            strip,
+            buf_left: vec![0.0; MAX_BLOCK_FRAMES].into_boxed_slice(),
+            buf_right: vec![0.0; MAX_BLOCK_FRAMES].into_boxed_slice(),
+            gain_left: daw_dsp::Smoother::new(audible * l, 0.01, sample_rate_hz),
+            gain_right: daw_dsp::Smoother::new(audible * r, 0.01, sample_rate_hz),
+        }
+    }
 }
 
 impl TrackSlot {
@@ -165,7 +222,16 @@ impl TrackSlot {
             layer: 1.0,
             layer_target: 1.0,
             layer_step: 0.0,
+            output: None,
+            sends: Box::new([]),
         }
+    }
+
+    /// Routes the track into bus `output` (None = master) with `sends`.
+    pub fn with_routing(mut self, output: Option<usize>, sends: Box<[SendSlot]>) -> Self {
+        self.output = output;
+        self.sends = sends;
+        self
     }
 }
 
@@ -192,6 +258,7 @@ pub struct RecordedEvent {
 /// Things the audio thread hands back to be freed on another thread.
 pub enum Garbage {
     Tracks(#[allow(dead_code)] Box<[TrackSlot]>),
+    Buses(#[allow(dead_code)] Box<[BusSlot]>),
     Effects(#[allow(dead_code)] Box<EffectChain>),
     Sequence(#[allow(dead_code)] Box<Sequence>),
 }
@@ -293,6 +360,20 @@ pub enum EngineMessage {
     },
     /// Forget a jump that hasn't happened yet.
     CancelJump,
+    /// Swaps in a new set of buses (send with ReplaceTracks, whose routing
+    /// points into it). The old set is sent back to be freed.
+    ReplaceBuses(Box<[BusSlot]>),
+    /// A bus's level, pan, and mute.
+    SetBusStrip {
+        bus_id: TrackId,
+        strip: StripSettings,
+    },
+    /// The level of a track's `index`th send (linear gain).
+    SetSendGain {
+        track_id: TrackId,
+        index: usize,
+        gain: f32,
+    },
 }
 
 /// A game-preview layer level for the next sample, moving `layer` toward

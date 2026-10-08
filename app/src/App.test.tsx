@@ -569,6 +569,41 @@ describe("Section markers", () => {
   });
 });
 
+describe("Buses", () => {
+  it("groups a track into a bus and sends another to it", async () => {
+    const backend = createPreviewBackend();
+    await renderApp(backend);
+    fireEvent.click(screen.getByRole("tab", { name: /Mixer/ }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "+ Bus" }));
+    });
+    const bus = (await backend.getProject()).project.buses?.[0];
+    expect(bus?.name).toBe("Reverb");
+    expect(screen.getByRole("region", { name: "Reverb channel" })).toBeTruthy();
+    // Drums play into the bus; Keys send some of their sound to it.
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText("Drums output"), { target: { value: String(bus?.id) } });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText("Send Keys to Reverb"));
+    });
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText("Keys send to Reverb"), { target: { value: "-12" } });
+    });
+    let p = (await backend.getProject()).project;
+    expect(p.tracks[2].output).toBe(bus?.id);
+    expect(p.tracks[0].sends).toEqual([{ bus_id: bus?.id, level_db: -12, pre_fader: false }]);
+    expect(screen.getByRole("region", { name: "Reverb channel" }).textContent).toContain("Drums");
+    // Deleting the bus sends the drums back to the master.
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Delete bus Reverb" }));
+    });
+    p = (await backend.getProject()).project;
+    expect(p.buses).toEqual([]);
+    expect(p.tracks[2].output).toBeNull();
+  });
+});
+
 describe("Your presets", () => {
   it("saves a sound and loads it on another track", async () => {
     const backend = await renderApp();

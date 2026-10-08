@@ -40,6 +40,7 @@ Progressions that work: I–V–vi–IV (C G Am F), vi–IV–I–V (Am F C G), 
 ## Layers and sections for games
 
 - **Layers (stems)**: write so each track still sounds complete as layers are removed: base (pad + bass), + drums, + melody. Export with stems; the game fades layers in.
+- **Buses**: for a cohesive space, `add_bus` "Reverb" with one Reverb effect (mix 1.0, add via add_effect with the bus id as track_id) and `set_send` each melodic track to it (-12 to -6 dB) instead of a reverb per track. Group stems for games with `set_track_output` (Drums, Music, Ambience buses) and export with `bus_stems`.
 - **Sections**: mark song parts with `add_marker` ("Explore" at 0, "Combat" at 32...) so the user sees them on the timeline; `export_godot` with `sections_from_markers` makes one loop per section and an `AudioStreamInteractive` that switches on the bar. Keep sections in the same key and tempo, and make each loop on its own.
 - **Sections**: write "explore" and "combat" in the same key and tempo, each a whole number of bars, then `export_godot` with named sections for an `AudioStreamInteractive` that switches on the next bar.
 

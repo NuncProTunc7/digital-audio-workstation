@@ -952,6 +952,8 @@ struct TransportStatus {
     jump_at_beats: Option<f64>,
     /// Peak level per track, in track order.
     track_peaks: Vec<f32>,
+    /// Peak level per bus, in bus order.
+    bus_peaks: Vec<f32>,
     recording: bool,
 }
 
@@ -986,6 +988,7 @@ fn transport_status(state: State<'_, AppState>) -> TransportStatus {
             })
         }),
         track_peaks: snap.track_peaks,
+        bus_peaks: snap.bus_peaks,
         recording: state.recording_track.lock().is_ok_and(|r| r.is_some())
             || state.audio_take.lock().is_ok_and(|t| t.is_some()),
     }

@@ -12,16 +12,18 @@ mod project;
 mod session;
 pub mod summary;
 
-pub use command::{Command, CommandError, MAX_SNAPSHOTS, NoteEdit, NoteInput, command_schema};
+pub use command::{
+    Command, CommandError, MAX_BUSES, MAX_SNAPSHOTS, NoteEdit, NoteInput, command_schema,
+};
 pub use effect::{Effect, EffectKind};
 pub use file::{
     FileError, PROJECT_EXTENSION, load_project, project_from_json, project_to_json, save_project,
 };
 pub use instrument::{Instrument, InstrumentKind};
 pub use project::{
-    AudioRegion, AutomationLane, AutomationPoint, AutomationTarget, Clip, ClipId, EffectId,
+    AudioRegion, AutomationLane, AutomationPoint, AutomationTarget, Bus, Clip, ClipId, EffectId,
     FORMAT_VERSION, Id, LaneId, LoopRegion, MAX_BEATS, MAX_TRACKS, MAX_VOLUME_DB, MIN_LENGTH_BEATS,
-    MIN_VOLUME_DB, Marker, MasterBus, Mixer, Note, NoteId, Project, Snapshot, SongSection,
+    MIN_VOLUME_DB, Marker, MasterBus, Mixer, Note, NoteId, Project, Send, Snapshot, SongSection,
     SongState, Swing, TimeSignature, Track, TrackId,
 };
 pub use session::Session;

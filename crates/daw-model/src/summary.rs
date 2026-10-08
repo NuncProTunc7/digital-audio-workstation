@@ -21,6 +21,15 @@ pub fn song_summary(project: &Project) -> Value {
             "effects": project.master.effects.iter().map(|e| json!({"id": e.id, "kind": e.kind, "enabled": e.enabled})).collect::<Vec<_>>(),
         },
         "tracks": project.tracks.iter().map(track_brief).collect::<Vec<_>>(),
+        "buses": project.buses.iter().map(|b| json!({
+            "id": b.id,
+            "name": b.name,
+            "volume_db": b.mixer.volume_db,
+            "pan": b.mixer.pan,
+            "mute": b.mixer.mute,
+            "effects": b.mixer.effects.iter().map(|e| json!({"id": e.id, "kind": e.kind, "enabled": e.enabled})).collect::<Vec<_>>(),
+            "tracks_playing_into_it": project.tracks.iter().filter(|t| t.output == Some(b.id)).map(|t| t.id).collect::<Vec<_>>(),
+        })).collect::<Vec<_>>(),
         "markers": project.markers.iter().map(|m| json!({
             "id": m.id,
             "name": m.name,
@@ -46,6 +55,8 @@ fn track_brief(t: &Track) -> Value {
         "pan": t.mixer.pan,
         "mute": t.mixer.mute,
         "solo": t.mixer.solo,
+        "output_bus": t.output,
+        "sends": t.sends,
         "effects": t.mixer.effects.iter().map(|e| json!({"id": e.id, "kind": e.kind, "enabled": e.enabled})).collect::<Vec<_>>(),
         "clips": t.clips.iter().map(clip_brief).collect::<Vec<_>>(),
         "automation": t.automation.iter().map(|l| json!({

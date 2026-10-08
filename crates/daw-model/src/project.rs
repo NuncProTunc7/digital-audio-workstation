@@ -57,6 +57,38 @@ pub struct Project {
     /// the next one (or the end of the song).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub markers: Vec<Marker>,
+    /// Group buses (drums, music, ambience, a shared reverb), played into
+    /// the master after the tracks.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub buses: Vec<Bus>,
+}
+
+/// A group bus: tracks play into it (or send some of their sound to it),
+/// it applies its own effects and level, and plays into the master.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct Bus {
+    pub id: Id,
+    pub name: String,
+    /// Level, pan, mute, and effects (solo is not used on buses).
+    #[serde(default)]
+    pub mixer: Mixer,
+}
+
+/// Some of a track's sound sent to a bus as well as its own output, e.g.
+/// to a shared reverb.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct Send {
+    pub bus_id: Id,
+    /// How much is sent, in dB (-60 to +6).
+    pub level_db: f64,
+    /// Taken before the track's fader (the send ignores the fader and pan).
+    #[serde(default)]
+    pub pre_fader: bool,
+}
+
+impl Send {
+    /// Level of a new send.
+    pub const DEFAULT_LEVEL_DB: f64 = -6.0;
 }
 
 /// A named point on the timeline where a section starts ("Explore",
@@ -98,6 +130,8 @@ pub struct SongState {
     pub loop_region: LoopRegion,
     #[serde(default)]
     pub markers: Vec<Marker>,
+    #[serde(default)]
+    pub buses: Vec<Bus>,
 }
 
 fn default_format_version() -> u32 {
@@ -118,6 +152,7 @@ impl Project {
             master: self.master.clone(),
             loop_region: self.loop_region,
             markers: self.markers.clone(),
+            buses: self.buses.clone(),
         }
     }
 
@@ -152,6 +187,7 @@ impl Project {
         self.master = song.master;
         self.loop_region = song.loop_region;
         self.markers = song.markers;
+        self.buses = song.buses;
         if let Some(max) = self.all_ids().into_iter().max() {
             self.reserve_id(max);
         }
@@ -219,6 +255,10 @@ impl Project {
     pub fn id_in_use(&self, id: Id) -> bool {
         self.snapshots.iter().any(|s| s.id == id)
             || self.markers.iter().any(|m| m.id == id)
+            || self
+                .buses
+                .iter()
+                .any(|b| b.id == id || b.mixer.effects.iter().any(|e| e.id == id))
             || self.master.effects.iter().any(|e| e.id == id)
             || self.tracks.iter().any(|t| {
                 t.id == id
@@ -235,6 +275,10 @@ impl Project {
         let mut ids: Vec<Id> = self.master.effects.iter().map(|e| e.id).collect();
         ids.extend(self.snapshots.iter().map(|s| s.id));
         ids.extend(self.markers.iter().map(|m| m.id));
+        for b in &self.buses {
+            ids.push(b.id);
+            ids.extend(b.mixer.effects.iter().map(|e| e.id));
+        }
         for t in &self.tracks {
             ids.push(t.id);
             ids.extend(t.mixer.effects.iter().map(|e| e.id));
@@ -266,6 +310,8 @@ impl Default for Project {
     /// A new song with the three instruments most game tracks start from.
     fn default() -> Self {
         let track = |id, name: &str, kind, preset| Track {
+            output: None,
+            sends: Vec::new(),
             id,
             name: name.to_owned(),
             instrument: Instrument::from_preset(kind, preset)
@@ -275,6 +321,7 @@ impl Default for Project {
             automation: Vec::new(),
         };
         Self {
+            buses: Vec::new(),
             markers: Vec::new(),
             snapshots: Vec::new(),
             format_version: FORMAT_VERSION,
@@ -308,6 +355,12 @@ pub struct Track {
     /// Settings that change over time (volume rides, filter sweeps, ...).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub automation: Vec<AutomationLane>,
+    /// The bus this track plays into (None = the master).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output: Option<Id>,
+    /// Extra feeds into buses (e.g. a shared reverb).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sends: Vec<Send>,
 }
 
 /// Id of an automation lane.

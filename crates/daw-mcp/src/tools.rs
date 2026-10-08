@@ -368,6 +368,7 @@ fn extra_tools() -> Vec<ToolDef> {
                     "looped": { "type": "boolean", "description": "Seamless loop (default true). False: plays once with a ring-out." },
                     "intro": { "type": "boolean", "description": "With looped: the file starts at the song start and Godot loops only the region (default: the loop region), so everything before it is an intro that plays once. Default false." },
                     "stems": { "type": "boolean", "description": "Also export each track separately (default false)." },
+                    "bus_stems": { "type": "boolean", "description": "With stems: one stem per bus (the tracks playing into it) plus an \"other\" stem for tracks playing straight into the master, instead of one per track. Default false." },
                     "layers": { "type": "boolean", "description": "With stems, write an AudioStreamSynchronized .tres (default true)." },
                     "sections": { "type": "array", "description": "Named sections for an AudioStreamInteractive .tres.", "items": { "type": "object", "properties": { "name": { "type": "string" }, "start_beats": { "type": "number" }, "end_beats": { "type": "number" } }, "required": ["name", "start_beats", "end_beats"] } },
                     "sections_from_markers": { "type": "boolean", "description": "Use the song's section markers (see add_marker and get_song's sections) as the sections. Ignored when sections is given." },

@@ -112,6 +112,24 @@ export interface Track {
   mixer: Mixer;
   clips: Clip[];
   automation?: AutomationLane[];
+  /** The bus it plays into (missing/null = the master). */
+  output?: number | null;
+  /** Extra feeds into buses. */
+  sends?: Send[];
+}
+
+/** Part of a track's sound sent to a bus. */
+export interface Send {
+  bus_id: number;
+  level_db: number;
+  pre_fader?: boolean;
+}
+
+/** A group bus: tracks play into it; it plays into the master. */
+export interface Bus {
+  id: number;
+  name: string;
+  mixer: Mixer;
 }
 
 export interface LoopRegion {
@@ -133,6 +151,8 @@ export interface Project {
   snapshots?: Snapshot[];
   /** Section markers, in time order. */
   markers?: Marker[];
+  /** Group buses. */
+  buses?: Bus[];
 }
 
 /** A named point where a section starts. */
@@ -250,6 +270,13 @@ export type Command =
   | { command: "resize_clip"; clip_id: number; length_beats: number }
   | { command: "rename_clip"; clip_id: number; name: string }
   | { command: "set_clip_swing"; clip_id: number; swing: Swing | null }
+  | { command: "add_bus"; name: string }
+  | { command: "remove_bus"; bus_id: number }
+  | { command: "rename_bus"; bus_id: number; name: string }
+  | { command: "set_bus_mixer"; bus_id: number; volume_db: number | null; pan: number | null; mute: boolean | null }
+  | { command: "set_track_output"; track_id: number; bus_id: number | null }
+  | { command: "set_send"; track_id: number; bus_id: number; level_db: number | null; pre_fader: boolean | null }
+  | { command: "remove_send"; track_id: number; bus_id: number }
   | { command: "add_marker"; name: string; start_beats: number }
   | { command: "move_marker"; marker_id: number; start_beats: number }
   | { command: "rename_marker"; marker_id: number; name: string }
@@ -426,6 +453,8 @@ export interface TransportStatus {
   jump_at_beats?: number | null;
   /** Peak level per track, in track order. */
   track_peaks: number[];
+  /** Peak level per bus, in bus order. */
+  bus_peaks?: number[];
   recording: boolean;
 }
 
@@ -481,6 +510,8 @@ export interface GodotOptions {
   start_beats: number | null;
   end_beats: number | null;
   looped: boolean | null;
+  /** With stems: one stem per bus instead of per track. */
+  bus_stems?: boolean | null;
   /** With looped: start at the song start and loop only the region (an intro). */
   intro?: boolean | null;
   /** Export the song's marker sections as an AudioStreamInteractive. */

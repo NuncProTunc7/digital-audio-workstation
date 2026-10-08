@@ -1688,6 +1688,52 @@ button.tiny.power.on {
   position: relative;
 }
 
+.strip.bus {
+  background: rgba(94, 214, 196, 0.06);
+}
+
+.routing {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  font-size: 11px;
+}
+
+.routing-out {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.routing-out select {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+}
+
+.send label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+}
+
+.send input[type="range"] {
+  width: 100%;
+}
+
+.bus-members {
+  font-size: 11px;
+  text-align: center;
+}
+
+.add-bus {
+  align-self: flex-start;
+  margin: 8px;
+  white-space: nowrap;
+}
+
 .versions-menu {
   min-width: 340px;
   gap: 4px;

@@ -3,8 +3,8 @@ use std::sync::Arc;
 use daw_model::TrackId;
 
 use crate::message::{
-    AudioRegionPlay, AutoTarget, EffectChain, EngineMessage, Garbage, PendingJump, RecordedEvent,
-    StripSettings, TrackSlot, next_layer_gain,
+    AudioRegionPlay, AutoTarget, BusSlot, EffectChain, EngineMessage, Garbage, PendingJump,
+    RecordedEvent, StripSettings, TrackSlot, next_layer_gain,
 };
 use crate::metronome::Metronome;
 use crate::status::EngineStatus;
@@ -36,6 +36,7 @@ pub struct AudioProcessor {
     outputs: ProcessorOutputs,
     status: Arc<EngineStatus>,
     tracks: Box<[TrackSlot]>,
+    buses: Box<[BusSlot]>,
     master_effects: Box<EffectChain>,
     master_gain: daw_dsp::Smoother,
     left: Box<[f32]>,
@@ -66,6 +67,7 @@ pub struct AudioProcessor {
 /// Initial transport and mix state for a new processor.
 pub(crate) struct ProcessorInit {
     pub tracks: Box<[TrackSlot]>,
+    pub buses: Box<[BusSlot]>,
     pub master_effects: Box<EffectChain>,
     pub master_gain: f32,
     pub tempo_bpm: f64,
@@ -89,6 +91,7 @@ impl AudioProcessor {
             outputs,
             status,
             tracks: init.tracks,
+            buses: init.buses,
             master_effects: init.master_effects,
             master_gain: daw_dsp::Smoother::new(init.master_gain, 0.01, sample_rate_hz),
             left: vec![0.0; MAX_BLOCK_FRAMES].into_boxed_slice(),
@@ -283,8 +286,13 @@ impl AudioProcessor {
                     }
                 }
                 EngineMessage::ReplaceEffects { track_id, chain } => {
+                    let bus = track_id.and_then(|id| self.buses.iter().position(|b| b.id == id));
                     let old = match track_id {
                         None => Some(std::mem::replace(&mut self.master_effects, chain)),
+                        Some(_) if bus.is_some() => self
+                            .buses
+                            .get_mut(bus.unwrap_or(0))
+                            .map(|b| std::mem::replace(&mut b.effects, chain)),
                         Some(id) => self.track(id).map(|t| {
                             reassert_automation(t);
                             std::mem::replace(&mut t.effects, chain)
@@ -364,6 +372,11 @@ impl AudioProcessor {
                     for e in self.master_effects.effects.iter_mut() {
                         e.processor.set_tempo(bpm);
                     }
+                    for b in self.buses.iter_mut() {
+                        for e in b.effects.effects.iter_mut() {
+                            e.processor.set_tempo(bpm);
+                        }
+                    }
                 }
                 EngineMessage::SetTimeSignature { numerator, .. } => {
                     self.beats_per_bar = numerator.max(1);
@@ -425,6 +438,24 @@ impl AudioProcessor {
                     }
                 }
                 EngineMessage::CancelJump => self.pending_jump = None,
+                EngineMessage::ReplaceBuses(buses) => {
+                    let old = std::mem::replace(&mut self.buses, buses);
+                    self.throw_away(Garbage::Buses(old));
+                }
+                EngineMessage::SetBusStrip { bus_id, strip } => {
+                    if let Some(b) = self.buses.iter_mut().find(|b| b.id == bus_id) {
+                        b.strip = strip;
+                    }
+                }
+                EngineMessage::SetSendGain {
+                    track_id,
+                    index,
+                    gain,
+                } => {
+                    if let Some(s) = self.track(track_id).and_then(|t| t.sends.get_mut(index)) {
+                        s.gain.set_target(gain);
+                    }
+                }
             }
         }
     }
@@ -438,6 +469,12 @@ impl AudioProcessor {
     fn chain(&mut self, track_id: Option<TrackId>) -> Option<&mut EffectChain> {
         match track_id {
             None => Some(&mut self.master_effects),
+            // Buses are addressed by their id, like tracks.
+            Some(id) if self.buses.iter().any(|b| b.id == id) => self
+                .buses
+                .iter_mut()
+                .find(|b| b.id == id)
+                .map(|b| &mut *b.effects),
             Some(id) => self.track(id).map(|t| &mut *t.effects),
         }
     }
@@ -559,6 +596,10 @@ impl AudioProcessor {
         let playing = self.playing && !counting;
         let song_start = window_start.max(self.count_in_end);
         let pass = self.loop_pass;
+        for b in self.buses.iter_mut() {
+            b.buf_left[..n].fill(0.0);
+            b.buf_right[..n].fill(0.0);
+        }
         let any_solo = self.tracks.iter().any(|t| t.strip.solo);
 
         for (index, t) in self.tracks.iter_mut().enumerate() {
@@ -621,21 +662,75 @@ impl AudioProcessor {
             t.gain_left.set_target(level * pan_l);
             t.gain_right.set_target(level * pan_r);
             let mut peak = 0.0f32;
-            for ((l, r), (ml, mr)) in bl.iter().zip(br.iter()).zip(
-                self.left[start..end]
-                    .iter_mut()
-                    .zip(self.right[start..end].iter_mut()),
-            ) {
+            // Pre-fader sends still go quiet when the track can't be heard.
+            let pre_level = if audible { 1.0 } else { 0.0 };
+            for (i, (l, r)) in bl.iter().zip(br.iter()).enumerate() {
                 let layer = next_layer_gain(&mut t.layer, t.layer_target, &mut t.layer_step);
                 let (sl, sr) = (
                     l * t.gain_left.next_value() * layer,
                     r * t.gain_right.next_value() * layer,
                 );
+                // A bus that isn't there (mid-swap) means the master.
+                match t.output.and_then(|b| self.buses.get_mut(b)) {
+                    Some(bus) => {
+                        if let (Some(bl), Some(br)) =
+                            (bus.buf_left.get_mut(i), bus.buf_right.get_mut(i))
+                        {
+                            *bl += sl;
+                            *br += sr;
+                        }
+                    }
+                    None => {
+                        if let (Some(ml), Some(mr)) =
+                            (self.left.get_mut(start + i), self.right.get_mut(start + i))
+                        {
+                            *ml += sl;
+                            *mr += sr;
+                        }
+                    }
+                }
+                for s in t.sends.iter_mut() {
+                    let g = s.gain.next_value();
+                    let (xl, xr) = if s.pre_fader {
+                        (l * layer * pre_level, r * layer * pre_level)
+                    } else {
+                        (sl, sr)
+                    };
+                    if let Some(bus) = self.buses.get_mut(s.bus)
+                        && let (Some(bl), Some(br)) =
+                            (bus.buf_left.get_mut(i), bus.buf_right.get_mut(i))
+                    {
+                        *bl += xl * g;
+                        *br += xr * g;
+                    }
+                }
+                peak = peak.max(sl.abs()).max(sr.abs());
+            }
+            self.status.add_track_peak(index, peak);
+        }
+
+        // Buses: their effects and fader, then into the master.
+        for (index, b) in self.buses.iter_mut().enumerate() {
+            let (bl, br) = (&mut b.buf_left[..n], &mut b.buf_right[..n]);
+            for e in b.effects.effects.iter_mut().filter(|e| e.enabled) {
+                e.processor.process(bl, br);
+            }
+            let (pan_l, pan_r) = b.strip.pan_gains();
+            let level = if b.strip.mute { 0.0 } else { b.strip.gain };
+            b.gain_left.set_target(level * pan_l);
+            b.gain_right.set_target(level * pan_r);
+            let mut peak = 0.0f32;
+            for ((l, r), (ml, mr)) in bl.iter().zip(br.iter()).zip(
+                self.left[start..end]
+                    .iter_mut()
+                    .zip(self.right[start..end].iter_mut()),
+            ) {
+                let (sl, sr) = (l * b.gain_left.next_value(), r * b.gain_right.next_value());
                 *ml += sl;
                 *mr += sr;
                 peak = peak.max(sl.abs()).max(sr.abs());
             }
-            self.status.add_track_peak(index, peak);
+            self.status.add_bus_peak(index, peak);
         }
 
         // Metronome and transport advance, sample by sample.

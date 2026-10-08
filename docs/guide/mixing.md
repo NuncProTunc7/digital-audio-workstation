@@ -18,6 +18,20 @@ Mixing makes every part audible and the whole song sit at the right loudness.
 | Distortion | Grit for bass, leads, drums |
 | Limiter | Last on the master: catches peaks |
 
+## Buses: groups and a shared reverb
+
+A **bus** is an extra channel that other tracks play into. Two common uses:
+
+- **A shared reverb**: click **+ Bus** (the first one is called *Reverb*), add a **Reverb** effect to it, and turn the reverb's mix all the way up. Then on each track tick **→ Reverb** and set how much it sends with the slider under it. All tracks sit in the same room, and one reverb uses less CPU than one per track.
+- **A group**: add a bus called *Drums*, then set each drum track's **Out** to *Drums*. Now one fader (and one compressor, if you add one) controls all of them together.
+
+Details:
+
+- **Out** chooses where a track plays: the **Master**, or one bus.
+- **→ Bus** sends are taken after the track's fader, so turning the track down also turns down its reverb.
+- Buses have a fader, pan, mute (**M**), effects, and a meter; double-click a bus's name to rename it; **✕** deletes it (its tracks go back to the master).
+- Godot export can make one stem per bus (see [Godot](godot.md)).
+
 ## Automation (settings that change over time)
 
 1. Click **A** on a track to show its automation row.

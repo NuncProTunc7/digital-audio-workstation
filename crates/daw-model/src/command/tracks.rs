@@ -43,6 +43,8 @@ pub(super) fn add(
     project.tracks.insert(
         index,
         Track {
+            output: None,
+            sends: Vec::new(),
             id,
             name,
             instrument,

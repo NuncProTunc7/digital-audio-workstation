@@ -40,6 +40,8 @@ export default function GodotExportDialog({ project, onPickFolder, onExport, onC
   const sectionCount = project.markers?.length ?? 0;
   const [markerSections, setMarkerSections] = useState(sectionCount > 0);
   const [stems, setStems] = useState(false);
+  const hasBuses = (project.buses ?? []).length > 0;
+  const [busStems, setBusStems] = useState(hasBuses);
   const [lufs, setLufs] = useState<number | null>(-16);
   const [busy, setBusy] = useState(false);
   const [report, setReport] = useState<ExportReport | null>(null);
@@ -67,6 +69,7 @@ export default function GodotExportDialog({ project, onPickFolder, onExport, onC
       intro: introPossible && intro,
       sections_from_markers: sectionCount > 0 && markerSections,
       stems,
+      bus_stems: stems && hasBuses && busStems,
       layers: stems,
       target_lufs: lufs,
       normalize: lufs !== null,
@@ -173,6 +176,13 @@ export default function GodotExportDialog({ project, onPickFolder, onExport, onC
           <input type="checkbox" checked={stems} onChange={(e) => setStems(e.target.checked)} />
           Also export each track as a stem, with a layers resource for adaptive music
         </label>
+        {stems && hasBuses && (
+          <label className="dialog-check">
+            <input type="checkbox" checked={busStems} onChange={(e) => setBusStems(e.target.checked)} />
+            One stem per bus ({(project.buses ?? []).map((b) => b.name).join(", ")}, plus the other tracks) instead of per
+            track
+          </label>
+        )}
 
         <div className="button-row dialog-actions">
           <button className="primary" disabled={!dir.trim() || busy} onClick={() => void run()}>

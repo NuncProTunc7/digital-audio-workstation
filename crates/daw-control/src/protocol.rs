@@ -146,6 +146,9 @@ pub struct GodotOptions {
     pub intro: Option<bool>,
     #[serde(default)]
     pub stems: Option<bool>,
+    /// With stems: one stem per bus instead of per track (default false).
+    #[serde(default)]
+    pub bus_stems: Option<bool>,
     /// With stems, an AudioStreamSynchronized of them (default true).
     #[serde(default)]
     pub layers: Option<bool>,

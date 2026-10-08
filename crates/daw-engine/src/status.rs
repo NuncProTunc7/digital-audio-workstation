@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 
-use daw_model::MAX_TRACKS;
+use daw_model::{MAX_BUSES, MAX_TRACKS};
 
 /// Live engine readings, written by the audio thread and read by the UI.
 /// All fields are atomics so neither side ever waits on the other.
@@ -25,6 +25,7 @@ pub struct EngineStatus {
     cpu_peak: AtomicU32,
     // Post-fader peak per track slot since the UI last read them (f32 bits).
     track_peaks: [AtomicU32; MAX_TRACKS],
+    bus_peaks: [AtomicU32; MAX_BUSES],
     // Clock anchor, as a seqlock: odd `clock_seq` means a write is underway.
     clock_seq: AtomicU64,
     clock_ns: AtomicU64,
@@ -66,6 +67,7 @@ impl Default for EngineStatus {
             overloads: AtomicU32::new(0),
             cpu_peak: AtomicU32::new(0),
             track_peaks: std::array::from_fn(|_| AtomicU32::new(0)),
+            bus_peaks: std::array::from_fn(|_| AtomicU32::new(0)),
             clock_seq: AtomicU64::new(0),
             clock_ns: AtomicU64::new(0),
             clock_beats: AtomicU64::new(0),
@@ -96,6 +98,8 @@ pub struct StatusSnapshot {
     pub cpu_peak: f32,
     /// Peak level per track, in project track order.
     pub track_peaks: Vec<f32>,
+    /// Peak level per bus, in project bus order.
+    pub bus_peaks: Vec<f32>,
 }
 
 impl EngineStatus {
@@ -170,6 +174,13 @@ impl EngineStatus {
         }
     }
 
+    // RT-SAFE
+    pub(crate) fn add_bus_peak(&self, index: usize, peak: f32) {
+        if let Some(slot) = self.bus_peaks.get(index) {
+            slot.fetch_max(peak.abs().to_bits(), Ordering::Relaxed);
+        }
+    }
+
     #[cfg_attr(not(feature = "device"), allow(dead_code))]
     pub(crate) fn set_callback_stats(&self, load: f32, frames: u32) {
         self.cpu_load.store(load.to_bits(), Ordering::Relaxed);
@@ -213,6 +224,11 @@ impl EngineStatus {
             cpu_peak: f32::from_bits(self.cpu_peak.load(Ordering::Relaxed)),
             track_peaks: self
                 .track_peaks
+                .iter()
+                .map(|p| f32::from_bits(p.swap(0, Ordering::Relaxed)))
+                .collect(),
+            bus_peaks: self
+                .bus_peaks
                 .iter()
                 .map(|p| f32::from_bits(p.swap(0, Ordering::Relaxed)))
                 .collect(),

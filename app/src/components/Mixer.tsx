@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { formatDb, meterPercent } from "../format";
-import type { Catalog, Command, Effect, EffectKind, Project } from "../types";
+import type { Bus, Catalog, Command, Effect, EffectKind, Project, Track } from "../types";
 import Fader from "./Fader";
 import ParamControl from "./ParamControl";
 
@@ -8,6 +8,7 @@ interface MixerProps {
   project: Project;
   catalog: Catalog;
   trackPeaks: number[];
+  busPeaks: number[];
   masterPeaks: [number, number];
   selectedTrackId: number;
   onSelectTrack: (id: number) => void;
@@ -15,9 +16,90 @@ interface MixerProps {
   onEndGesture: () => void;
 }
 
-/** Channel strips for every track plus the master bus. */
+/** Where a track plays, and what it sends to other buses. */
+function Routing({ track, buses, onCommand, onEndGesture }: {
+  track: Track;
+  buses: Bus[];
+  onCommand: (command: Command) => Promise<unknown>;
+  onEndGesture: () => void;
+}) {
+  if (buses.length === 0) return null;
+  const run = (command: Command) => void onCommand(command).then(onEndGesture);
+  const sends = track.sends ?? [];
+  return (
+    <div className="routing">
+      <label className="routing-out" title="Where this track plays: the master, or a group bus">
+        <span>Out</span>
+        <select
+          aria-label={`${track.name} output`}
+          value={track.output ?? ""}
+          onChange={(e) => {
+            run({ command: "set_track_output", track_id: track.id, bus_id: e.target.value === "" ? null : Number(e.target.value) });
+            e.currentTarget.blur();
+          }}
+        >
+          <option value="">Master</option>
+          {buses.map((b) => (
+            <option key={b.id} value={b.id}>
+              {b.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      {buses
+        .filter((b) => b.id !== track.output)
+        .map((b) => {
+          const s = sends.find((x) => x.bus_id === b.id);
+          return (
+            <div className="send" key={b.id} title={`Send some of ${track.name} to ${b.name} as well`}>
+              <label>
+                <input
+                  type="checkbox"
+                  aria-label={`Send ${track.name} to ${b.name}`}
+                  checked={s !== undefined}
+                  onChange={() =>
+                    run(
+                      s
+                        ? { command: "remove_send", track_id: track.id, bus_id: b.id }
+                        : { command: "set_send", track_id: track.id, bus_id: b.id, level_db: null, pre_fader: null },
+                    )
+                  }
+                />
+                <span>→ {b.name}</span>
+              </label>
+              {s && (
+                <input
+                  type="range"
+                  min={-60}
+                  max={6}
+                  step={0.5}
+                  value={s.level_db}
+                  aria-label={`${track.name} send to ${b.name}`}
+                  title={`${s.level_db.toFixed(1)} dB`}
+                  onChange={(e) =>
+                    void onCommand({
+                      command: "set_send",
+                      track_id: track.id,
+                      bus_id: b.id,
+                      level_db: Number(e.target.value),
+                      pre_fader: null,
+                    })
+                  }
+                  onPointerUp={onEndGesture}
+                  onKeyUp={onEndGesture}
+                />
+              )}
+            </div>
+          );
+        })}
+    </div>
+  );
+}
+
+/** Channel strips for every track, the group buses, and the master. */
 export default function Mixer(props: MixerProps) {
   const { project } = props;
+  const buses = project.buses ?? [];
   const send = (command: Command) => void props.onCommand(command);
   return (
     <div className="mixer">
@@ -88,8 +170,86 @@ export default function Mixer(props: MixerProps) {
               S
             </button>
           </div>
+          <Routing track={t} buses={buses} onCommand={props.onCommand} onEndGesture={props.onEndGesture} />
         </Strip>
       ))}
+      {buses.map((b, i) => (
+        <Strip
+          key={b.id}
+          name={b.name}
+          bus
+          selected={false}
+          onSelect={() => {}}
+          volumeDb={b.mixer.volume_db}
+          peak={props.busPeaks[i] ?? 0}
+          effects={b.mixer.effects}
+          trackId={b.id}
+          catalog={props.catalog}
+          onCommand={props.onCommand}
+          onEndGesture={props.onEndGesture}
+          onVolume={(v) => send({ command: "set_bus_mixer", bus_id: b.id, volume_db: v, pan: null, mute: null })}
+          onRename={(name) =>
+            void props.onCommand({ command: "rename_bus", bus_id: b.id, name }).then(props.onEndGesture)
+          }
+        >
+          <label className="pan" title="Pan (double-click to center)">
+            <span>Pan</span>
+            <input
+              type="range"
+              min={-100}
+              max={100}
+              value={Math.round(b.mixer.pan * 100)}
+              aria-label={`${b.name} pan`}
+              onChange={(e) =>
+                send({ command: "set_bus_mixer", bus_id: b.id, volume_db: null, pan: Number(e.target.value) / 100, mute: null })
+              }
+              onPointerUp={props.onEndGesture}
+              onDoubleClick={() => {
+                send({ command: "set_bus_mixer", bus_id: b.id, volume_db: null, pan: 0, mute: null });
+                props.onEndGesture();
+              }}
+            />
+          </label>
+          <div className="strip-buttons">
+            <button
+              className={b.mixer.mute ? "tiny on mute" : "tiny"}
+              aria-pressed={b.mixer.mute}
+              aria-label={`Mute ${b.name}`}
+              onClick={() => {
+                send({ command: "set_bus_mixer", bus_id: b.id, volume_db: null, pan: null, mute: !b.mixer.mute });
+                props.onEndGesture();
+              }}
+            >
+              M
+            </button>
+            <button
+              className="tiny"
+              aria-label={`Delete bus ${b.name}`}
+              title="Delete this bus (its tracks play into the master)"
+              onClick={() => void props.onCommand({ command: "remove_bus", bus_id: b.id }).then(props.onEndGesture)}
+            >
+              ✕
+            </button>
+          </div>
+          <div className="bus-members muted">
+            {project.tracks
+              .filter((t) => t.output === b.id)
+              .map((t) => t.name)
+              .join(", ") || "No tracks yet"}
+          </div>
+        </Strip>
+      ))}
+      <button
+        className="add-bus"
+        onClick={() =>
+          void props
+            .onCommand({ command: "add_bus", name: buses.length === 0 ? "Reverb" : `Bus ${buses.length + 1}` })
+            .then(props.onEndGesture)
+        }
+        title="Add a group bus: send several tracks to one shared reverb, or group drums to set their level together"
+      >
+        + Bus
+      </button>
       <Strip
         name="Master"
         master
@@ -111,6 +271,9 @@ export default function Mixer(props: MixerProps) {
 interface StripProps {
   name: string;
   master?: boolean;
+  bus?: boolean;
+  /** Buses can be renamed by double-clicking their name. */
+  onRename?: (name: string) => void;
   selected: boolean;
   onSelect: () => void;
   volumeDb: number;
@@ -126,13 +289,40 @@ interface StripProps {
 
 function Strip(props: StripProps) {
   const [open, setOpen] = useState<number | null>(null);
+  const [renaming, setRenaming] = useState(false);
   return (
     <section
-      className={`strip${props.master ? " master" : ""}${props.selected ? " selected" : ""}`}
+      className={`strip${props.master ? " master" : ""}${props.bus ? " bus" : ""}${props.selected ? " selected" : ""}`}
       aria-label={`${props.name} channel`}
       onPointerDown={props.onSelect}
     >
-      <header className="strip-name">{props.name}</header>
+      {renaming && props.onRename ? (
+        <input
+          className="strip-name"
+          aria-label="Bus name"
+          autoFocus
+          defaultValue={props.name}
+          onKeyDown={(e) => {
+            e.stopPropagation();
+            if (e.key === "Enter") e.currentTarget.blur();
+            if (e.key === "Escape") setRenaming(false);
+          }}
+          onBlur={(e) => {
+            setRenaming(false);
+            const name = e.target.value.trim();
+            if (name && name !== props.name) props.onRename?.(name);
+          }}
+        />
+      ) : (
+        <header
+          className="strip-name"
+          onDoubleClick={() => props.onRename && setRenaming(true)}
+          title={props.onRename ? "Double-click to rename" : undefined}
+        >
+          {props.bus ? "⇶ " : ""}
+          {props.name}
+        </header>
+      )}
 
       <div className="effects">
         {props.effects.map((e) => (

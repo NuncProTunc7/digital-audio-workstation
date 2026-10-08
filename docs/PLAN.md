@@ -285,9 +285,10 @@ Original spec: adaptive "explore/combat" export was Claude-only.
 - Guide page and Sampler panel link to free packs: *VSCO 2 Community Edition* (strings, brass, woodwinds, percussion; CC0, verify before bundling), Salamander Grand Piano (CC-BY 3.0), and Sonatina Symphonic Orchestra (check license). Prefer an in-app downloader that fetches from the publisher (no redistribution) once one is confirmed reachable.
 - Add composing-playbook recipes that use them (orchestral exploration, epic boss).
 
-**8. Group tracks and shared effects (sends/buses).**
-- Model: `Bus { id, name, mixer, effects }`; tracks gain `output: Master | Bus(id)` and `sends: Vec<Send { bus, level_db, pre_fader }>`. Engine: buses processed after tracks, before master, with preallocated buffers (keep `no_alloc.rs` green). Commands for add/remove/route/send.
-- Godot stems can then be per bus (drums, music, ambience).
+**8. Group tracks and shared effects (sends/buses)** ✅ (built Oct 2026).
+- Model: `Project.buses: Vec<Bus { id, name, mixer }>` (in saved versions too); `Track.output: Option<bus id>` and `Track.sends: Vec<Send { bus_id, level_db, pre_fader }>`. Commands `AddBus`, `RemoveBus`/`RestoreBus` (restores routing), `RenameBus`, `SetBusMixer` (coalesces), `SetTrackOutput`, `SetSend` (adds or changes; coalesces), `RemoveSend`. Bus effects use the effect Commands with the bus id as `track_id`. Files drop routing to missing buses.
+- Engine: `BusSlot`s with preallocated buffers, processed after the tracks and before the master; track output and sends (post-fader, or pre-fader respecting mute) per sample; bus peaks in the status. Routing changes rebuild tracks (and buses only when their layout changes); levels are live messages. `no_alloc.rs` covers buses and sends.
+- UI: bus strips (pan, mute, rename, delete, members), **+ Bus**, per-track **Out** and **→ Bus** sends. Godot `bus_stems`: one stem per bus plus "other".
 
 **9. Tempo changes mid-song** (low priority). A tempo map (`Vec<(beats, bpm)>`), beats↔seconds conversion everywhere that assumes one tempo (engine, recording alignment, export, analysis, MIDI/MusicXML tempo events).
 

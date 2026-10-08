@@ -88,6 +88,7 @@ fn spec(dir: &Path) -> GodotExport {
         looped: true,
         intro: false,
         stems: false,
+        bus_stems: false,
         layers_resource: false,
         sections: Vec::new(),
         target_lufs: None,
@@ -216,6 +217,49 @@ fn writes_intro_loops_for_a_real_godot() {
         s.intro = true;
         export_to_godot(&p, &pool, &s).expect("export");
     }
+}
+
+#[test]
+fn stems_can_be_one_per_bus() {
+    let mut p = song();
+    Command::AddBus {
+        name: "Drums".into(),
+    }
+    .apply(&mut p)
+    .expect("bus");
+    let bus = p.buses[0].id;
+    Command::SetTrackOutput {
+        track_id: 3,
+        bus_id: Some(bus),
+    }
+    .apply(&mut p)
+    .expect("route");
+    let dir = godot_project();
+    let mut s = spec(dir.path());
+    s.stems = true;
+    s.bus_stems = true;
+    let pool = AudioPool::in_temp_dir();
+    let report = export_to_godot(&p, &pool, &s).expect("export");
+    // The drums bus, and the bass (straight to the master) as "other".
+    assert!(
+        report
+            .files
+            .contains(&"res://music/boss/boss_theme_drums.ogg".to_owned()),
+        "{:?}",
+        report.files
+    );
+    assert!(
+        report
+            .files
+            .contains(&"res://music/boss/boss_theme_other.ogg".to_owned()),
+        "{:?}",
+        report.files
+    );
+    assert!(
+        !report.files.iter().any(|f| f.ends_with("_bass.ogg")),
+        "{:?}",
+        report.files
+    );
 }
 
 #[test]
