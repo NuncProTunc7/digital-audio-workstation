@@ -773,6 +773,7 @@ pub fn export_godot<H: Host>(
         start_beats: options.start_beats,
         end_beats: options.end_beats,
         looped: options.looped.unwrap_or(true),
+        intro: options.intro.unwrap_or(false),
         stems: options.stems.unwrap_or(false),
         layers_resource: options.layers.unwrap_or(true),
         sections: options.sections.clone().unwrap_or_default(),

@@ -267,7 +267,9 @@ Original spec:
 
 ### B. Game music
 
-**5. Intro, then loop.** Many game tracks play an intro once and then loop the body.
+**5. Intro, then loop** ✅ (built Oct 2026). `GodotExport::intro` renders from the song start to the loop end and folds the ring-out onto the loop start (`render_with_intro`); OGG `.import` gets `loop_offset`, WAV gets `edit/loop_begin` and the `smpl` loop start. Verified with Godot 4.6.1 headless: it imports `loop_offset=2.0, beat_count=8` and `loop_begin=88200, loop_end=176400` for a one-bar intro at 120 BPM. Godot dialog checkbox and the `intro` option of `export_godot`.
+
+Original spec: many game tracks play an intro once and then loop the body.
 - No new model field: reuse the loop region and add an export option **"Play from the song start, loop the loop region"**. Render from 0 to loop end; fold the tail onto the loop start (not sample 0).
 - Godot: OGG `.import` gets `loop_offset=<seconds of loop start>`; WAV `smpl` chunk gets `loop_begin=<frame>`. Verify with Godot 4.6 headless as in Phase 5.
 - Done when an export test shows a seamless join at the loop start and Godot reports the offset.

@@ -21,8 +21,10 @@ pub struct RenderedLoop {
     /// Interleaved stereo at [`GAME_SAMPLE_RATE_HZ`].
     pub stereo: Vec<f32>,
     pub looped: bool,
-    /// Loop length in beats and the tempo, for Godot's beat-synced looping.
+    /// File length in beats and the tempo, for Godot's beat-synced looping.
     pub beats: f64,
+    /// Beats of intro before the loop starts (0 = the whole file loops).
+    pub intro_beats: f64,
     pub tempo_bpm: f64,
     pub beats_per_bar: u8,
 }
@@ -34,6 +36,16 @@ impl RenderedLoop {
 
     pub fn is_silent(&self) -> bool {
         self.stereo.iter().all(|s| s.abs() < 1e-5)
+    }
+
+    /// Where the loop starts, in frames from the file start.
+    pub fn loop_start_frame(&self) -> usize {
+        (self.intro_beats * 60.0 / self.tempo_bpm * f64::from(GAME_SAMPLE_RATE_HZ)).round() as usize
+    }
+
+    /// Where the loop starts, in seconds from the file start.
+    pub fn loop_start_seconds(&self) -> f64 {
+        self.loop_start_frame() as f64 / f64::from(GAME_SAMPLE_RATE_HZ)
     }
 }
 
@@ -75,6 +87,22 @@ pub fn render_loop(
     looped: bool,
     solo: Option<TrackId>,
 ) -> RenderedLoop {
+    render_with_intro(project, audio, start, start, end, looped, solo)
+}
+
+/// Renders beats `from..end` where the loop is `loop_start..end`: the part
+/// before `loop_start` plays once as an intro, and the ring-out after `end`
+/// is folded onto the loop start (not the file start), so the intro stays
+/// clean and the loop joins seamlessly.
+pub fn render_with_intro(
+    project: &Project,
+    audio: &Arc<AudioPool>,
+    from: f64,
+    loop_start: f64,
+    end: f64,
+    looped: bool,
+    solo: Option<TrackId>,
+) -> RenderedLoop {
     let mut p = project.clone();
     if let Some(id) = solo {
         for t in &mut p.tracks {
@@ -83,28 +111,38 @@ pub fn render_loop(
         }
     }
     let sr = f64::from(GAME_SAMPLE_RATE_HZ);
-    let seconds = (end - start) * 60.0 / p.tempo_bpm;
-    let loop_frames = (seconds * sr).round() as usize;
+    let frames_at = |beats: f64| ((beats - from) * 60.0 / p.tempo_bpm * sr).round() as usize;
+    let file_frames = frames_at(end);
+    let intro_frames = frames_at(loop_start.clamp(from, end));
     let tail = if looped {
         TAIL_SECONDS
     } else {
         ONE_SHOT_TAIL_SECONDS
     };
-    let mut stereo = render_region(&p, audio, start, end, tail, GAME_SAMPLE_RATE_HZ);
-    if looped && loop_frames > 0 {
-        let split = (loop_frames * 2).min(stereo.len());
+    let mut stereo = render_region(&p, audio, from, end, tail, GAME_SAMPLE_RATE_HZ);
+    if looped && file_frames > intro_frames {
+        let split = (file_frames * 2).min(stereo.len());
         let (body, rest) = stereo.split_at_mut(split);
+        let looped_part = &mut body[(intro_frames * 2).min(split)..];
         // The tail may be longer than a short loop: wrap it round as often
         // as needed.
-        for (i, s) in rest.iter().enumerate() {
-            body[i % body.len()] += s;
+        if !looped_part.is_empty() {
+            let len = looped_part.len();
+            for (i, s) in rest.iter().enumerate() {
+                looped_part[i % len] += s;
+            }
         }
-        stereo.truncate(loop_frames * 2);
+        stereo.truncate(file_frames * 2);
     }
     RenderedLoop {
         stereo,
         looped,
-        beats: end - start,
+        beats: end - from,
+        intro_beats: if looped {
+            loop_start.clamp(from, end) - from
+        } else {
+            0.0
+        },
         tempo_bpm: p.tempo_bpm,
         beats_per_bar: p.time_signature.numerator,
     }

@@ -86,10 +86,135 @@ fn spec(dir: &Path) -> GodotExport {
         start_beats: None,
         end_beats: None,
         looped: true,
+        intro: false,
         stems: false,
         layers_resource: false,
         sections: Vec::new(),
         target_lufs: None,
+    }
+}
+
+#[test]
+fn intro_plays_once_then_the_loop_region_repeats_seamlessly() {
+    // Loop bars 2 (beats 4..8); bar 1 is the intro.
+    let mut p = song();
+    Command::SetLoop {
+        enabled: Some(true),
+        start_beats: Some(4.0),
+        end_beats: Some(8.0),
+    }
+    .apply(&mut p)
+    .expect("loop");
+    let pool = AudioPool::in_temp_dir();
+    let file = daw_export::render_with_intro(&p, &pool, 0.0, 4.0, 8.0, true, Some(3));
+    let sr = GAME_SAMPLE_RATE_HZ as usize;
+    // 8 beats at 120 BPM = 4 s, looping from 2 s.
+    assert_eq!(file.stereo.len(), 4 * sr * 2);
+    assert_eq!(file.loop_start_frame(), 2 * sr);
+    // Ground truth: the app playing from the start with the loop on. Its
+    // first 2 s are the intro; its third and fourth second the first lap,
+    // seconds 4-6 the second lap (with the first lap's reverb in it).
+    let mut solo = p.clone();
+    for t in &mut solo.tracks {
+        t.mixer.mute = t.id != 3;
+    }
+    let live = render_project(
+        &solo,
+        &pool,
+        vec![TimedMessage {
+            at_seconds: 0.0,
+            message: EngineMessage::Play,
+        }],
+        6.0,
+        GAME_SAMPLE_RATE_HZ,
+    );
+    let rms = |x: &[f32]| (x.iter().map(|s| s * s).sum::<f32>() / x.len().max(1) as f32).sqrt();
+    let close = |a: &[f32], b: &[f32], what: &str| {
+        for (i, (x, y)) in a.chunks(2 * 882).zip(b.chunks(2 * 882)).enumerate() {
+            let (rx, ry) = (rms(x), rms(y));
+            assert!(
+                (rx - ry).abs() <= 0.1 * rx.max(ry) + 0.002,
+                "{what} window {i}: file {rx} vs app {ry}"
+            );
+        }
+    };
+    // The intro is untouched: the loop's tail is not folded into it.
+    close(&file.stereo[..2 * sr * 2], &live[..2 * sr * 2], "intro");
+    // The looping part sounds like a later lap, ring-out included.
+    close(
+        &file.stereo[2 * sr * 2..],
+        &live[4 * sr * 2..6 * sr * 2],
+        "loop",
+    );
+
+    // Godot is told where the loop starts.
+    let dir = godot_project();
+    let mut ogg = spec(dir.path());
+    ogg.intro = true;
+    let report = export_to_godot(&p, &pool, &ogg).expect("export");
+    assert!((report.loop_start_seconds - 2.0).abs() < 1e-9);
+    let import = std::fs::read_to_string(dir.path().join("music/boss/boss_theme.ogg.import"))
+        .expect("import");
+    assert!(
+        import.contains("loop=true") && import.contains("loop_offset=2.0"),
+        "{import}"
+    );
+    assert!(import.contains("beat_count=8"), "{import}");
+    let mut wav = spec(dir.path());
+    wav.intro = true;
+    wav.format = AudioFormat::Wav;
+    export_to_godot(&p, &pool, &wav).expect("export wav");
+    let import = std::fs::read_to_string(dir.path().join("music/boss/boss_theme.wav.import"))
+        .expect("import");
+    assert!(
+        import.contains(&format!("edit/loop_begin={}", 2 * sr)),
+        "{import}"
+    );
+    assert!(
+        import.contains(&format!("edit/loop_end={}", 4 * sr)),
+        "{import}"
+    );
+    let bytes = std::fs::read(dir.path().join("music/boss/boss_theme.wav")).expect("wav");
+    let smpl = bytes
+        .windows(4)
+        .position(|w| w == b"smpl")
+        .expect("smpl chunk");
+    let loop_begin = u32::from_le_bytes(
+        bytes[smpl + 8 + 36 + 8..smpl + 8 + 36 + 12]
+            .try_into()
+            .expect("4"),
+    );
+    assert_eq!(loop_begin as usize, 2 * sr);
+}
+
+/// For checking with a real Godot: `NPT_GODOT_DIR=<godot project> cargo test
+/// -p daw-export --test godot -- --ignored` writes an intro loop there as
+/// OGG and WAV (`music/intro_ogg.ogg`, `music/intro_wav.wav`).
+#[test]
+#[ignore = "needs a Godot project folder in NPT_GODOT_DIR"]
+fn writes_intro_loops_for_a_real_godot() {
+    let Some(dir) = std::env::var_os("NPT_GODOT_DIR") else {
+        return;
+    };
+    let mut p = song();
+    Command::SetLoop {
+        enabled: Some(true),
+        start_beats: Some(4.0),
+        end_beats: Some(8.0),
+    }
+    .apply(&mut p)
+    .expect("loop");
+    let pool = AudioPool::in_temp_dir();
+    for (name, format) in [
+        ("intro_ogg", AudioFormat::Ogg),
+        ("intro_wav", AudioFormat::Wav),
+    ] {
+        let mut s = spec(Path::new(&dir));
+        s.folder = "music".into();
+        s.name = name.into();
+        s.format = format;
+        s.intro = true;
+        export_to_godot(&p, &pool, &s).expect("export");
     }
 }
 

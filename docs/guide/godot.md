@@ -5,6 +5,7 @@
 1. **Godot project**: browse to the folder with `project.godot` (once; it's remembered).
 2. **Folder in the project**: `music` by default (`res://music/`).
 3. **What**: **Loop region** (when Loop is on) or **Whole song**. Tick **stems** for one file per track as well.
+   - **Intro, then loop**: set the loop region to the part that should repeat (say bars 5–12), then tick **Play from the song start, then loop the loop region**. Bars 1–4 play once as an intro; after that Godot repeats bars 5–12 forever, with no gap at the join.
 4. **Format**: OGG (small, recommended) or WAV.
 5. **Loudness**: leave it on game level (-16 LUFS), or **Keep the mix level**.
 6. **Export**.

@@ -20,7 +20,7 @@ use serde::Serialize;
 use thiserror::Error;
 
 pub use encode::{write_ogg, write_wav};
-pub use render::{RenderedLoop, render_loop};
+pub use render::{RenderedLoop, render_loop, render_with_intro};
 
 /// Sample rate for game audio: Godot mixes at 44.1 kHz by default.
 pub const GAME_SAMPLE_RATE_HZ: u32 = 44_100;
@@ -92,6 +92,9 @@ pub struct GodotExport {
     /// Make a seamless loop (and tell Godot to loop it). Off: the region
     /// plays once and rings out.
     pub looped: bool,
+    /// With `looped`: start the file at the song start and loop only the
+    /// region, so everything before it plays once as an intro.
+    pub intro: bool,
     /// Also export each track on its own.
     pub stems: bool,
     /// With stems: an `AudioStreamSynchronized` that plays them together.
@@ -113,6 +116,8 @@ pub struct ExportReport {
     pub gain_db: f64,
     pub seconds: f64,
     pub looped: bool,
+    /// Seconds of intro before the loop starts (0 = loops from the start).
+    pub loop_start_seconds: f64,
 }
 
 /// `Boss Theme!` → `boss_theme`.
@@ -151,7 +156,13 @@ pub fn export_to_godot(
     let base = file_slug(&spec.name);
 
     let (start, end) = render::default_region(project, spec.start_beats, spec.end_beats)?;
-    let main = render_loop(project, audio, start, end, spec.looped, None);
+    // An intro plays from the song start up to the loop.
+    let from = if spec.intro && spec.looped {
+        0.0
+    } else {
+        start
+    };
+    let main = render::render_with_intro(project, audio, from, start, end, spec.looped, None);
     let gain_db = render::normalize_gain(&main, spec.target_lufs);
 
     let mut files = Vec::new();
@@ -165,7 +176,9 @@ pub fn export_to_godot(
                 &path,
                 &samples,
                 GAME_SAMPLE_RATE_HZ,
-                rendered.looped.then_some(samples.len() / 2),
+                rendered
+                    .looped
+                    .then_some((rendered.loop_start_frame(), samples.len() / 2)),
             )?,
         }
         godot::write_import(&path, spec.format, rendered, project)?;
@@ -178,7 +191,15 @@ pub fn export_to_godot(
     let mut stem_paths = Vec::new();
     if spec.stems {
         for t in &project.tracks {
-            let stem = render_loop(project, audio, start, end, spec.looped, Some(t.id));
+            let stem = render::render_with_intro(
+                project,
+                audio,
+                from,
+                start,
+                end,
+                spec.looped,
+                Some(t.id),
+            );
             if stem.is_silent() {
                 continue;
             }
@@ -219,5 +240,6 @@ pub fn export_to_godot(
         gain_db,
         seconds: main.seconds(),
         looped: main.looped,
+        loop_start_seconds: main.loop_start_seconds(),
     })
 }

@@ -443,6 +443,8 @@ export interface GodotOptions {
   start_beats: number | null;
   end_beats: number | null;
   looped: boolean | null;
+  /** With looped: start at the song start and loop only the region (an intro). */
+  intro?: boolean | null;
   stems: boolean | null;
   layers: boolean | null;
   target_lufs: number | null;
@@ -457,4 +459,6 @@ export interface ExportReport {
   gain_db: number;
   seconds: number;
   looped: boolean;
+  /** Seconds of intro before the loop starts (0 = loops from the start). */
+  loop_start_seconds?: number;
 }

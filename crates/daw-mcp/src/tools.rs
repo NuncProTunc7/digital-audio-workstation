@@ -326,7 +326,7 @@ fn extra_tools() -> Vec<ToolDef> {
         ),
         tool(
             "export_godot",
-            "Export music straight into the user's Godot project as seamless loops. Writes OGG (or WAV) files plus Godot .import settings so they loop as soon as Godot imports them (with BPM/beat info for beat-synced transitions). Region: the loop region if looping is on, else the whole song. Options: stems (one file per track) with an AudioStreamSynchronized layers resource for adaptive mixing; sections (named regions, e.g. explore/combat) become an AudioStreamInteractive that switches on the next bar. Loudness is normalized to -16 LUFS unless told otherwise. Ask the user for their Godot project folder if you don't know it.",
+            "Export music straight into the user's Godot project as seamless loops. Writes OGG (or WAV) files plus Godot .import settings so they loop as soon as Godot imports them (with BPM/beat info for beat-synced transitions). Region: the loop region if looping is on, else the whole song; with intro=true the file starts at the song start and only the region loops. Options: stems (one file per track) with an AudioStreamSynchronized layers resource for adaptive mixing; sections (named regions, e.g. explore/combat) become an AudioStreamInteractive that switches on the next bar. Loudness is normalized to -16 LUFS unless told otherwise. Ask the user for their Godot project folder if you don't know it.",
             object_schema(
                 json!({
                     "project_dir": { "type": "string", "description": "The Godot project folder (contains project.godot)." },
@@ -336,6 +336,7 @@ fn extra_tools() -> Vec<ToolDef> {
                     "start_beats": num("Region start (default: loop region or song start)."),
                     "end_beats": num("Region end."),
                     "looped": { "type": "boolean", "description": "Seamless loop (default true). False: plays once with a ring-out." },
+                    "intro": { "type": "boolean", "description": "With looped: the file starts at the song start and Godot loops only the region (default: the loop region), so everything before it is an intro that plays once. Default false." },
                     "stems": { "type": "boolean", "description": "Also export each track separately (default false)." },
                     "layers": { "type": "boolean", "description": "With stems, write an AudioStreamSynchronized .tres (default true)." },
                     "sections": { "type": "array", "description": "Named sections for an AudioStreamInteractive .tres.", "items": { "type": "object", "properties": { "name": { "type": "string" }, "start_beats": { "type": "number" }, "end_beats": { "type": "number" } }, "required": ["name", "start_beats", "end_beats"] } },

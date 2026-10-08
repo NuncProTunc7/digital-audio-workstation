@@ -66,7 +66,8 @@ pub(crate) fn write_import(
     match format {
         AudioFormat::Ogg => {
             let _ = writeln!(s, "loop={}", rendered.looped);
-            s.push_str("loop_offset=0.0\n");
+            // After the intro, Godot jumps back here.
+            let _ = writeln!(s, "loop_offset={:?}", rendered.loop_start_seconds());
             if whole_beats {
                 let _ = writeln!(s, "bpm={}", project.tempo_bpm);
                 let _ = writeln!(s, "beat_count={}", rendered.beats.round() as i64);
@@ -80,7 +81,8 @@ pub(crate) fn write_import(
             if rendered.looped {
                 let _ = writeln!(
                     s,
-                    "edit/loop_mode=2\nedit/loop_begin=0\nedit/loop_end={frames}"
+                    "edit/loop_mode=2\nedit/loop_begin={}\nedit/loop_end={frames}",
+                    rendered.loop_start_frame()
                 );
             } else {
                 s.push_str("edit/loop_mode=1\n");

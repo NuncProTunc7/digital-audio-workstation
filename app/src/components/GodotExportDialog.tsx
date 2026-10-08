@@ -36,12 +36,15 @@ export default function GodotExportDialog({ project, onPickFolder, onExport, onC
   const [format, setFormat] = useState<"ogg" | "wav">("ogg");
   const [region, setRegion] = useState<"loop" | "song">(project.loop_region.enabled ? "loop" : "song");
   const [looped, setLooped] = useState(true);
+  const [intro, setIntro] = useState(false);
   const [stems, setStems] = useState(false);
   const [lufs, setLufs] = useState<number | null>(-16);
   const [busy, setBusy] = useState(false);
   const [report, setReport] = useState<ExportReport | null>(null);
 
   const loop = project.loop_region;
+  // An intro needs a loop that starts after the song start.
+  const introPossible = region === "loop" && looped && loop.enabled && loop.start_beats > 0;
   const run = async () => {
     setBusy(true);
     setReport(null);
@@ -59,6 +62,7 @@ export default function GodotExportDialog({ project, onPickFolder, onExport, onC
       start_beats: useLoop ? loop.start_beats : 0,
       end_beats: useLoop ? loop.end_beats : null,
       looped,
+      intro: introPossible && intro,
       stems,
       layers: stems,
       target_lufs: lufs,
@@ -137,6 +141,18 @@ export default function GodotExportDialog({ project, onPickFolder, onExport, onC
           <input type="checkbox" checked={looped} onChange={(e) => setLooped(e.target.checked)} />
           Seamless loop (the end flows into the start, and Godot loops it)
         </label>
+        <label
+          className="dialog-check"
+          title={introPossible ? undefined : "Needs the loop region on, starting after bar 1, and Seamless loop"}
+        >
+          <input
+            type="checkbox"
+            checked={introPossible && intro}
+            disabled={!introPossible}
+            onChange={(e) => setIntro(e.target.checked)}
+          />
+          Play from the song start, then loop the loop region (what comes before it is an intro that plays once)
+        </label>
         <label className="dialog-check">
           <input type="checkbox" checked={stems} onChange={(e) => setStems(e.target.checked)} />
           Also export each track as a stem, with a layers resource for adaptive music
@@ -152,7 +168,8 @@ export default function GodotExportDialog({ project, onPickFolder, onExport, onC
           <div className="dialog-result" role="status">
             <p>
               ✓ Exported {report.seconds.toFixed(1)} s
-              {report.integrated_lufs !== null ? ` at ${report.integrated_lufs.toFixed(1)} LUFS` : ""}. In Godot, drag{" "}
+              {report.integrated_lufs !== null ? ` at ${report.integrated_lufs.toFixed(1)} LUFS` : ""}
+              {report.loop_start_seconds ? `, looping from ${report.loop_start_seconds.toFixed(2)} s` : ""}. In Godot, drag{" "}
               <code>{report.files[0]}</code> onto an AudioStreamPlayer.
             </p>
             <ul>

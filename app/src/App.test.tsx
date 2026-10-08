@@ -689,6 +689,25 @@ describe("Import and export", () => {
     expect(dialog.textContent).toContain("res://music/untitled_layers.tres");
   });
 
+  it("exports an intro that plays once before the loop", async () => {
+    const backend = createPreviewBackend();
+    vi.spyOn(backend, "exportGodot");
+    await backend.execute({ command: "set_loop", enabled: true, start_beats: 4, end_beats: 12 });
+    await renderApp(backend);
+    fireEvent.click(screen.getByRole("button", { name: "Export ▾" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "To Godot (loops, stems)…" }));
+    fireEvent.change(screen.getByLabelText("Godot project folder"), { target: { value: "C:\\Games\\MyGame" } });
+    const intro = screen.getByLabelText(/Play from the song start/) as HTMLInputElement;
+    expect(intro.disabled).toBe(false);
+    fireEvent.click(intro);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Export" }));
+    });
+    expect(backend.exportGodot).toHaveBeenCalledWith(
+      expect.objectContaining({ start_beats: 4, end_beats: 12, looped: true, intro: true }),
+    );
+  });
+
   it("routes dropped MIDI files to the MIDI importer", async () => {
     const backend = createPreviewBackend();
     vi.spyOn(backend, "importMidi").mockImplementation(() => backend.getProject());

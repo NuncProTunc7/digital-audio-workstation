@@ -41,17 +41,17 @@ pub fn write_ogg(path: &Path, stereo: &[f32], sample_rate_hz: u32) -> Result<(),
     std::fs::rename(&tmp, path).map_err(|e| io_err(path, e))
 }
 
-/// Writes 16-bit stereo WAV. With `loop_end_frame`, adds a `smpl` chunk
-/// looping the whole file; the end is written exclusive, as Godot reads it.
+/// Writes 16-bit stereo WAV. With `loop_frames` (begin, end), adds a `smpl`
+/// chunk looping that span; the end is written exclusive, as Godot reads it.
 pub fn write_wav(
     path: &Path,
     stereo: &[f32],
     sample_rate_hz: u32,
-    loop_end_frame: Option<usize>,
+    loop_frames: Option<(usize, usize)>,
 ) -> Result<(), ExportError> {
     let frames = stereo.len() / 2;
     let data_bytes = (frames * 4) as u32;
-    let smpl_bytes: u32 = if loop_end_frame.is_some() { 36 + 24 } else { 0 };
+    let smpl_bytes: u32 = if loop_frames.is_some() { 36 + 24 } else { 0 };
     let mut out = Vec::with_capacity(44 + data_bytes as usize + 68);
     let riff_size =
         4 + (8 + 16) + (8 + data_bytes) + if smpl_bytes > 0 { 8 + smpl_bytes } else { 0 };
@@ -72,7 +72,7 @@ pub fn write_wav(
         let v = (s.clamp(-1.0, 1.0) * 32767.0).round() as i16;
         out.extend_from_slice(&v.to_le_bytes());
     }
-    if let Some(end) = loop_end_frame {
+    if let Some((begin, end)) = loop_frames {
         out.extend_from_slice(b"smpl");
         out.extend_from_slice(&smpl_bytes.to_le_bytes());
         let period_ns = (1e9 / f64::from(sample_rate_hz.max(1))).round() as u32;
@@ -81,8 +81,8 @@ pub fn write_wav(
         for v in [0u32, 0, period_ns, 60, 0, 0, 0, 1, 0] {
             out.extend_from_slice(&v.to_le_bytes());
         }
-        // One forward loop over the whole file.
-        for v in [0u32, 0, 0, end as u32, 0, 0] {
+        // One forward loop: cue id, type, begin, end, fraction, play count.
+        for v in [0u32, 0, begin as u32, end as u32, 0, 0] {
             out.extend_from_slice(&v.to_le_bytes());
         }
     }

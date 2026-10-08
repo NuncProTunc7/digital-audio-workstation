@@ -127,6 +127,11 @@ pub struct GodotOptions {
     /// Seamless loop (default true).
     #[serde(default)]
     pub looped: Option<bool>,
+    /// With looped: the file starts at the song start and only the region
+    /// (default: the loop region) loops; what comes before plays once as an
+    /// intro (default false).
+    #[serde(default)]
+    pub intro: Option<bool>,
     #[serde(default)]
     pub stems: Option<bool>,
     /// With stems, an AudioStreamSynchronized of them (default true).
