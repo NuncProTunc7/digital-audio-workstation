@@ -39,6 +39,8 @@ pub enum Request {
     SetCountIn {
         bars: u32,
     },
+    /// Plain-text report on devices, load, the song, and recent log lines.
+    DiagnosticReport,
     /// Transport position and levels.
     Status,
     Save {

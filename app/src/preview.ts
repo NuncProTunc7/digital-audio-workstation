@@ -399,6 +399,7 @@ export function createPreviewBackend(): PreviewBackend {
   let recording = false;
   let metronome = true;
   let countInBars = 1;
+  const uiErrors: string[] = [];
   let startedAt = 0;
   let startBeats = 0;
 
@@ -659,6 +660,19 @@ export function createPreviewBackend(): PreviewBackend {
     claudeStatus: async () => claude(),
     claudeInstallDesktop: async () => {
       throw new Error("Connecting Claude needs the desktop app");
+    },
+    diagnosticReport: async () =>
+      [
+        "Nunc Pro Tune diagnostic report",
+        "App: browser preview (no audio engine)",
+        `Song: "${project.name}" · ${project.tempo_bpm} BPM · ${project.tracks.length} tracks`,
+        "",
+        `Recent errors (${uiErrors.length}):`,
+        ...uiErrors.map((e) => `  ${e}`),
+      ].join("\n"),
+    logError: async (message) => {
+      uiErrors.push(message);
+      if (uiErrors.length > 10) uiErrors.shift();
     },
     onProjectChanged: async (callback) => {
       changeListeners.add(callback);

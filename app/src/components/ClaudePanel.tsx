@@ -5,6 +5,7 @@ interface ClaudePanelProps {
   status: ClaudeStatus | null;
   onInstallDesktop: () => void;
   onClose: () => void;
+  onCopyReport: () => void;
 }
 
 /** Things to try first; each exercises a different group of tools. */
@@ -29,7 +30,7 @@ function ago(atMs: number): string {
 }
 
 /** How to connect Claude, and what Claude has done this session. */
-export default function ClaudePanel({ status, onInstallDesktop, onClose }: ClaudePanelProps) {
+export default function ClaudePanel({ status, onInstallDesktop, onClose, onCopyReport }: ClaudePanelProps) {
   const [copied, setCopied] = useState(false);
 
   const copy = (text: string) => {
@@ -93,6 +94,15 @@ export default function ClaudePanel({ status, onInstallDesktop, onClose }: Claud
           ))}
         </ul>
         <p className="muted">Keep this app open while Claude works. Everything Claude does can be undone with Ctrl+Z.</p>
+      </section>
+
+      <section>
+        <h3>Something wrong?</h3>
+        <p>
+          Copy a report about your sound card, CPU load and recent errors, and paste it to Claude with what you heard.
+          Claude can also fetch it itself (<em>diagnostic_report</em>).
+        </p>
+        <button onClick={onCopyReport}>Copy diagnostic report</button>
       </section>
 
       <section>

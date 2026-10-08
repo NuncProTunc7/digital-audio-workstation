@@ -133,6 +133,10 @@ export interface Backend {
   claudeStatus(): Promise<ClaudeStatus>;
   /** Adds Nunc Pro Tune to Claude Desktop's settings. */
   claudeInstallDesktop(): Promise<ClaudeStatus>;
+  /** Plain-text report on devices, load, the song, and recent errors. */
+  diagnosticReport(): Promise<string>;
+  /** Records an error the UI showed, for the diagnostic report. */
+  logError(message: string): Promise<void>;
   /** Calls back when Claude changes the project, with a short description. */
   onProjectChanged(callback: (description: string) => void): Promise<() => void>;
 }
@@ -239,6 +243,8 @@ export const tauriBackend: Backend = {
     }),
   claudeStatus: () => invoke("claude_status"),
   claudeInstallDesktop: () => invoke("claude_install_desktop"),
+  diagnosticReport: () => invoke("diagnostic_report"),
+  logError: (message) => invoke("log_ui_error", { message }),
   onProjectChanged: async (callback) => listen<string>("project-changed", (e) => callback(e.payload)),
 };
 

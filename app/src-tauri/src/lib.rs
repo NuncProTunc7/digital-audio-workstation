@@ -17,6 +17,7 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use daw_control::autosave::{self, AutosaveSlot, Recoverable};
 use daw_control::claude_setup;
+use daw_control::diagnostics::{self, DiagnosticInfo};
 use daw_control::settings::{self, Settings};
 use daw_control::{CalibrationResult, ControlServer, Host, RecordingDelay};
 use daw_engine::capture::AudioRecorder;
@@ -204,12 +205,63 @@ impl daw_control::Host for AppState {
         self.settings.lock().map_or(0, |s| s.count_in_bars)
     }
 
+    fn diagnostic_info(&self) -> DiagnosticInfo {
+        let snap = self.engine().map(|e| e.status()).unwrap_or_default();
+        let (output_device, sample_rate_hz) = self
+            .output
+            .lock()
+            .ok()
+            .and_then(|o| {
+                o.as_ref()
+                    .map(|o| (Some(o.device_name().to_owned()), Some(o.sample_rate_hz())))
+            })
+            .unwrap_or((None, None));
+        let claude = match (
+            self.control.lock().is_ok_and(|c| c.is_some()),
+            self.last_remote.lock().ok().and_then(|t| *t),
+        ) {
+            (false, _) => self
+                .control_error
+                .lock()
+                .ok()
+                .and_then(|e| e.clone())
+                .unwrap_or_else(|| "not listening".into()),
+            (true, None) => "listening, no requests yet".into(),
+            (true, Some(t)) => format!("listening, last request {} s ago", t.elapsed().as_secs()),
+        };
+        DiagnosticInfo {
+            app_version: env!("CARGO_PKG_VERSION").into(),
+            os: os_version(),
+            output_device,
+            sample_rate_hz,
+            buffer_setting: self.settings.lock().ok().and_then(|s| s.buffer_frames),
+            buffer_frames: snap.buffer_frames,
+            audio_error: self.audio_error.lock().ok().and_then(|e| e.clone()),
+            input_device: self.input_name(),
+            input_open: self.input.lock().is_ok_and(|i| i.is_some()),
+            input_error: self.input_error.lock().ok().and_then(|e| e.clone()),
+            recording_offset_ms: self.recording_offset_ms(),
+            cpu_load: snap.cpu_load,
+            cpu_peak: snap.cpu_peak,
+            overloads: snap.overloads,
+            midi_inputs: self
+                .midi
+                .lock()
+                .ok()
+                .and_then(|m| m.as_ref().map(|m| m.port_names().to_vec()))
+                .unwrap_or_default(),
+            count_in_bars: self.count_in_bars(),
+            claude,
+        }
+    }
+
     fn set_count_in_bars(&self, bars: u32) -> Result<u32, String> {
         let mut s = self
             .settings
             .lock()
             .map_err(|_| "settings are unavailable")?;
         let bars = s.set_count_in_bars(bars);
+        diagnostics::log(&format!("Count-in: {bars} bar(s)"));
         s.save(&settings::settings_path())?;
         Ok(bars)
     }
@@ -310,6 +362,20 @@ impl AppState {
             .map_err(|_| "audio state is unavailable")?;
         match result {
             Ok((engine, new_output)) => {
+                diagnostics::log(&format!(
+                    "Audio output: {}, {} Hz, buffer {}",
+                    new_output.device_name(),
+                    new_output.sample_rate_hz(),
+                    new_output
+                        .buffer_frames()
+                        .map_or("default".to_owned(), |f| f.to_string())
+                ));
+                if buffer_frames.is_some() && new_output.buffer_frames().is_none() {
+                    diagnostics::log_error(&format!(
+                        "the sound card refused a {} frame buffer; using its default",
+                        buffer_frames.unwrap_or(0)
+                    ));
+                }
                 engine.set_metronome(self.metronome_on.load(Ordering::Relaxed));
                 if let Some(beats) = position {
                     engine.locate(beats);
@@ -323,6 +389,7 @@ impl AppState {
             }
             Err(e) => {
                 let message = e.to_string();
+                diagnostics::log_error(&format!("audio output failed: {message}"));
                 *error = Some(message.clone());
                 Err(message)
             }
@@ -346,6 +413,11 @@ impl AppState {
             .map_err(|_| "input state is unavailable")?;
         match result {
             Ok((stream, recorder)) => {
+                diagnostics::log(&format!(
+                    "Microphone open: {}, {} Hz",
+                    stream.device_name(),
+                    stream.sample_rate_hz()
+                ));
                 *input = Some(stream);
                 if let Ok(mut r) = self.recorder.lock() {
                     *r = Some(recorder);
@@ -355,6 +427,7 @@ impl AppState {
             }
             Err(e) => {
                 let message = e.to_string();
+                diagnostics::log_error(&format!("microphone failed: {message}"));
                 *error = Some(message.clone());
                 Err(message)
             }
@@ -478,6 +551,7 @@ fn get_project(state: State<'_, AppState>) -> Result<ProjectView, String> {
 #[tauri::command]
 fn new_project(state: State<'_, AppState>) -> Result<ProjectView, String> {
     daw_control::new_project(&*state)?;
+    diagnostics::log("New song");
     state.discard_autosave();
     get_project(state)
 }
@@ -485,6 +559,7 @@ fn new_project(state: State<'_, AppState>) -> Result<ProjectView, String> {
 #[tauri::command]
 fn open_project(state: State<'_, AppState>, path: String) -> Result<ProjectView, String> {
     daw_control::open_project(&*state, Path::new(&path))?;
+    diagnostics::log(&format!("Opened {path}"));
     state.discard_autosave();
     get_project(state)
 }
@@ -493,6 +568,7 @@ fn open_project(state: State<'_, AppState>, path: String) -> Result<ProjectView,
 #[tauri::command]
 fn save_project(state: State<'_, AppState>, path: Option<String>) -> Result<ProjectView, String> {
     daw_control::save_project(&*state, path.as_deref().map(Path::new))?;
+    diagnostics::log("Saved");
     state.discard_autosave();
     get_project(state)
 }
@@ -674,6 +750,31 @@ fn set_metronome(state: State<'_, AppState>, on: bool) {
 #[tauri::command]
 fn set_count_in(state: State<'_, AppState>, bars: u32) -> Result<u32, String> {
     state.set_count_in_bars(bars)
+}
+
+/// The diagnostic report as plain text, for the user to copy.
+#[tauri::command]
+fn diagnostic_report(state: State<'_, AppState>) -> Result<String, String> {
+    daw_control::diagnostic_report(&*state)
+}
+
+/// Records an error the UI showed, for the diagnostic report.
+#[tauri::command]
+fn log_ui_error(message: String) {
+    diagnostics::log_error(&message);
+}
+
+/// "Windows 10.0.26100" (Windows 11 reports 10.0 with a build of 22000+).
+fn os_version() -> String {
+    #[cfg(windows)]
+    {
+        let v = windows_version::OsVersion::current();
+        format!("Windows {}.{}.{}", v.major, v.minor, v.build)
+    }
+    #[cfg(not(windows))]
+    {
+        std::env::consts::OS.to_owned()
+    }
 }
 
 /// Audio CPU load above which sound is about to break up.
@@ -958,6 +1059,11 @@ fn set_buffer_size(state: State<'_, AppState>, frames: Option<u32>) -> Result<Au
             .map_err(|_| "settings are unavailable")?;
         s.buffer_frames = frames.filter(|f| device::BUFFER_SIZES.contains(f));
         s.save(&settings::settings_path())?;
+        diagnostics::log(&format!(
+            "Buffer setting: {}",
+            s.buffer_frames
+                .map_or("default".to_owned(), |f| f.to_string())
+        ));
     }
     let choice = state.output_choice.lock().ok().and_then(|c| c.clone());
     // The error, if any, is reported in the returned status.
@@ -1122,6 +1228,7 @@ fn start_control(app: &AppHandle) {
             }
         }
         Err(e) => {
+            diagnostics::log_error(&format!("control server failed: {e}"));
             if let Ok(mut err) = state.control_error.lock() {
                 *err = Some(format!("Claude can't connect: {e}"));
             }
@@ -1199,6 +1306,8 @@ pub fn run() {
             set_metronome,
             set_count_in,
             set_buffer_size,
+            diagnostic_report,
+            log_ui_error,
             transport_status,
             audio_status,
             set_output_device,

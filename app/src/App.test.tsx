@@ -458,6 +458,29 @@ describe("Sound card buffer", () => {
   });
 });
 
+describe("Diagnostic report", () => {
+  it("copies a report that includes errors the user saw", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    const backend = createPreviewBackend();
+    vi.spyOn(backend, "exportMidi").mockRejectedValue(new Error("the disk is full"));
+    vi.spyOn(backend, "pickExportPath").mockResolvedValue("C:\\Music\\song.mid");
+    await renderApp(backend);
+    fireEvent.click(screen.getByRole("button", { name: "Export ▾" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("menuitem", { name: "MIDI file…" }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Copy diagnostic report" }));
+    });
+    expect(writeText).toHaveBeenCalledTimes(1);
+    const report = writeText.mock.calls[0][0] as string;
+    expect(report).toContain("Nunc Pro Tune diagnostic report");
+    expect(report).toContain("the disk is full");
+    expect(await screen.findByText(/Diagnostic report copied/)).toBeTruthy();
+  });
+});
+
 describe("Count-in", () => {
   it("chooses how many bars to count in before recording", async () => {
     const backend = createPreviewBackend();

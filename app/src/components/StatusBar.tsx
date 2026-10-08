@@ -9,6 +9,7 @@ interface StatusBarProps {
   filePath: string | null;
   onDevice: (name: string | null) => void;
   onBufferSize: (frames: number | null) => void;
+  onCopyReport: () => void;
   onRefreshMidi: () => void;
   claude: ClaudeStatus | null;
   onToggleClaude: () => void;
@@ -41,6 +42,7 @@ export default function StatusBar({
   filePath,
   onDevice,
   onBufferSize,
+  onCopyReport,
   onRefreshMidi,
   claude,
   onToggleClaude,
@@ -139,6 +141,14 @@ export default function StatusBar({
         </span>
       )}
       <span className="spacer" />
+      <button
+        className="small"
+        onClick={onCopyReport}
+        title="Copy a report about your sound card, CPU and recent errors, to paste to Claude when something goes wrong"
+        aria-label="Copy diagnostic report"
+      >
+        Report
+      </button>
       <button
         className="small claude-button"
         onClick={onToggleClaude}

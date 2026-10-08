@@ -38,6 +38,15 @@ pub trait Host: Send + Sync {
     fn metronome_on(&self) -> bool {
         false
     }
+    /// Devices, load, and what happened recently, for
+    /// [`diagnostics::report`](crate::diagnostics::report).
+    fn diagnostic_info(&self) -> crate::diagnostics::DiagnosticInfo {
+        crate::diagnostics::DiagnosticInfo {
+            app_version: env!("CARGO_PKG_VERSION").into(),
+            os: std::env::consts::OS.into(),
+            ..Default::default()
+        }
+    }
     /// Bars of clicks before recording starts (0 = none).
     fn count_in_bars(&self) -> u32 {
         0
@@ -110,7 +119,22 @@ fn describe(command: &Command) -> String {
 
 /// Handles one request. Errors come back as messages written for Claude.
 pub fn handle<H: Host>(host: &H, request: Request) -> Response {
-    handle_inner(host, request).into()
+    let method = serde_json::to_value(&request)
+        .ok()
+        .and_then(|v| v.get("method").and_then(Value::as_str).map(str::to_owned))
+        .unwrap_or_default();
+    let result = handle_inner(host, request);
+    if let Err(e) = &result {
+        crate::diagnostics::log_error(&format!("Claude's {method} failed: {e}"));
+    }
+    result.into()
+}
+
+/// The diagnostic report as plain text.
+pub fn diagnostic_report<H: Host>(host: &H) -> Result<String, String> {
+    let info = host.diagnostic_info();
+    let session = host.session()?;
+    Ok(crate::diagnostics::report(&info, session.project()))
 }
 
 fn handle_inner<H: Host>(host: &H, request: Request) -> Result<Value, String> {
@@ -190,6 +214,7 @@ fn handle_inner<H: Host>(host: &H, request: Request) -> Result<Value, String> {
             engine(host)?.set_metronome(on);
             Ok(json!({ "metronome": on }))
         }
+        Request::DiagnosticReport => Ok(json!({ "report": diagnostic_report(host)? })),
         Request::SetCountIn { bars } => {
             let bars = host.set_count_in_bars(bars)?;
             host.project_changed("Claude set the count-in");
@@ -476,6 +501,9 @@ pub fn begin_take<H: Host>(
         .start(file, path, engine.status_handle(), fallback)
         .map_err(|e| e.to_string())?;
     engine.play_with_count_in(count_in_beats);
+    crate::diagnostics::log(&format!(
+        "Recording audio on track {track_id} from beat {fallback:.2}, count-in {count_in_beats} beats"
+    ));
     Ok(())
 }
 
@@ -499,14 +527,31 @@ pub fn end_take<H: Host>(
             end_beats: l.end_beats,
         });
     }
-    let take = result.map_err(|e| e.to_string())?;
-    let Some((start_beats, offset_seconds)) = place_take(
+    let take = result.map_err(|e| {
+        crate::diagnostics::log_error(&format!("recording failed: {e}"));
+        e.to_string()
+    })?;
+    let late_ms = host.recording_offset_ms();
+    let placed = place_take(
         take.start_beats,
         take.seconds,
         session.project().tempo_bpm,
-        host.recording_offset_ms(),
+        late_ms,
         take.requested_beats,
-    ) else {
+    );
+    crate::diagnostics::log(&format!(
+        "Take: {:.2} s, clock says beat {:.3}, asked for beat {:.3}, delay {late_ms:.0} ms, dropped samples {}{}",
+        take.seconds,
+        take.start_beats,
+        take.requested_beats,
+        take.dropped_samples,
+        if placed.is_none() {
+            ", too short to keep"
+        } else {
+            ""
+        }
+    ));
+    let Some((start_beats, offset_seconds)) = placed else {
         let _ = std::fs::remove_file(&take.path);
         return Ok(None);
     };

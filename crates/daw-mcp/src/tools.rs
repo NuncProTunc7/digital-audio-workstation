@@ -215,6 +215,12 @@ fn extra_tools() -> Vec<ToolDef> {
             false,
         ),
         tool(
+            "diagnostic_report",
+            "Plain-text report for troubleshooting: app and Windows version, audio output and input devices, sample rate, buffer and latency, recording delay, CPU load and peak, overloads (each one is likely an audible crackle), MIDI keyboards, sample packs, the song's size, recent errors, and the last 50 log lines. Use it when the user reports a problem (crackles, silence, late recordings, a failed action) before guessing at causes. It contains no folder paths.",
+            object_schema(json!({}), &[]),
+            true,
+        ),
+        tool(
             "set_count_in",
             "Set how many bars of metronome clicks play before recording starts (0 = none, 1 or 2 bars), so the performer can come in on the first beat. Applies to recording audio and notes, by the user or with record_audio. The song stays silent during the count-in. Saved on this computer, not in the song.",
             object_schema(
@@ -436,6 +442,7 @@ pub fn to_request(name: &str, args: Map<String, Value>) -> Result<Request, Strin
         "set_metronome" => Request::SetMetronome {
             on: get_bool("on").ok_or("on is required")?,
         },
+        "diagnostic_report" => Request::DiagnosticReport,
         "set_count_in" => Request::SetCountIn {
             bars: args
                 .get("bars")

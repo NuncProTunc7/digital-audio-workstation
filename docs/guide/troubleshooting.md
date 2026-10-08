@@ -15,3 +15,5 @@
 | Windows warns about the installer | It's unsigned: **More info → Run anyway**. |
 
 When reporting a problem, say what you did, what you heard, and what you expected ("it crackles when I add reverb to the drums"). Claude turns that into a test and a fix.
+
+Then click **Report** in the status bar (or **Copy diagnostic report** in the Claude panel) and paste it into the same message. It lists your sound card, buffer, CPU load, how many crackles the app noticed, your microphone and its delay, and the last errors and events. It contains no folder paths. If Claude is connected to the app, it can fetch the same report itself.

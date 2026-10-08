@@ -97,9 +97,11 @@ export default function App({ backend }: AppProps) {
       return result;
     } catch (e) {
       setError(String(e));
+      // Kept for the diagnostic report.
+      backend.logError(String(e)).catch(() => {});
       return undefined;
     }
-  }, []);
+  }, [backend]);
 
   useEffect(() => {
     Promise.all([backend.getProject(), backend.catalog(), backend.audioStatus(), backend.appInfo()])
@@ -642,6 +644,21 @@ export default function App({ backend }: AppProps) {
   const signature = `${project.time_signature.numerator}/${project.time_signature.denominator}`;
   const beatsPerBar = project.time_signature.numerator;
   const pianoLow = Math.max(24, Math.min(60, baseNote - 12));
+  const copyReport = async () => {
+    const report = await run(() => backend.diagnosticReport());
+    if (report === undefined) return;
+    const copied = await navigator.clipboard?.writeText(report).then(
+      () => true,
+      () => false,
+    );
+    setToast(
+      copied
+        ? "Diagnostic report copied. Paste it into your message to Claude."
+        : "Couldn't reach the clipboard; ask Claude to run diagnostic_report instead.",
+    );
+    window.setTimeout(() => setToast(null), TOAST_MS * 2);
+  };
+
   const position = transport?.position_beats ?? 0;
   const countInBeats = transport?.count_in_beats ?? 0;
 
@@ -1047,6 +1064,7 @@ export default function App({ backend }: AppProps) {
         filePath={view.file_path}
         onDevice={(name) => void run(() => backend.setOutputDevice(name)).then((a) => a && setAudio(a))}
         onBufferSize={(frames) => void run(() => backend.setBufferSize(frames)).then((a) => a && setAudio(a))}
+        onCopyReport={() => void copyReport()}
         onRefreshMidi={() => void run(() => backend.refreshMidi()).then((a) => a && setAudio(a))}
         claude={claude}
         onToggleClaude={() => setClaudeOpen((o) => !o)}
@@ -1064,6 +1082,7 @@ export default function App({ backend }: AppProps) {
           status={claude}
           onInstallDesktop={() => void run(() => backend.claudeInstallDesktop()).then((s) => s && setClaude(s))}
           onClose={() => setClaudeOpen(false)}
+          onCopyReport={() => void copyReport()}
         />
       )}
       {toast && (

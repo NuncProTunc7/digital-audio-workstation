@@ -239,7 +239,7 @@ Check each source file's own header before porting; projects sometimes mix licen
 
 ## 13. Next work, in order (agreed Oct 2026)
 
-A design review found gaps that matter more than plugin hosting. Do these **before** CLAP/VST3 and ASIO, in this order. Items 1–3 are done; **next is item 4**. Each item lists what to build and how to know it's done. Items 1–4 were promised by this plan (§3 rule 1, §11 risks) but not built.
+A design review found gaps that matter more than plugin hosting. Do these **before** CLAP/VST3 and ASIO, in this order. Items 1–4 are done; the working order now continues in E below. Each item lists what to build and how to know it's done. Items 1–4 were promised by this plan (§3 rule 1, §11 risks) but not built.
 
 ### A. Protect the work (do first)
 
@@ -259,7 +259,9 @@ A design review found gaps that matter more than plugin hosting. Do these **befo
 - Status-bar **Buffer** menu: Default or 128/256/512/1024/2048 frames, each with its delay in ms (`cpal::BufferSize::Fixed`, fitted into the device's supported range, falling back to the default if refused), saved in app settings (`buffer_frames`). Changing it restarts the stream on the same device and puts the playhead back; refused while recording.
 - WASAPI doesn't report underruns, so the engine counts **overloads**: callbacks that took longer than the sound they produced (`EngineStatus::overloads`, plus `cpu_peak`). The status bar offers the next size up when CPU passes 80% or an overload happened in the last 15 s.
 
-**4. Diagnostic report** (§11 "owner can't debug").
+**4. Diagnostic report** ✅ (built Oct 2026; §11 "owner can't debug"). `daw_control::diagnostics`: an in-memory log (50 lines, 10 errors; never written from the audio thread) that the app fills with device, recording, file, Claude-request and UI errors; `report()` renders it with devices, buffer/latency, recording delay, CPU now/peak, overloads, MIDI, count-in, Claude's connection, the song's size and sample packs. Paths are cut to their last part. **Report** in the status bar, **Copy diagnostic report** in the Claude panel, and Claude's `diagnostic_report` tool.
+
+Original spec:
 - A **Copy diagnostic report** button (Claude panel and status bar) and a `diagnostic_report` control tool: app version, Windows version, output/input devices, sample rate, buffer, measured latency/offset, CPU peak, underrun count, MIDI devices, loaded sample packs, last 50 log lines (from a ring buffer filled off the audio thread), and recent errors. No file paths beyond the project name.
 - Done when the report pastes as plain text and Claude can fetch it.
 
