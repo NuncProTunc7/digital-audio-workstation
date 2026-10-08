@@ -68,20 +68,48 @@ impl EffectProcessor for Compressor {
 
     fn process(&mut self, left: &mut [f32], right: &mut [f32]) {
         for (l, r) in left.iter_mut().zip(right.iter_mut()) {
-            let peak = l.abs().max(r.abs()).max(1e-9);
-            let target = self.gain_reduction_db(20.0 * peak.log10());
-            // Reducing gain uses attack; recovering uses release.
-            let coef = if target < self.gr_db {
-                self.attack_coef
-            } else {
-                self.release_coef
-            };
-            self.gr_db = target + (self.gr_db - target) * coef;
-            let g = db_to_gain(self.gr_db) * self.makeup_gain;
-            let wet = self.mix;
-            *l *= 1.0 - wet + wet * g;
-            *r *= 1.0 - wet + wet * g;
+            let peak = l.abs().max(r.abs());
+            let g = self.next_gain(peak);
+            *l *= g;
+            *r *= g;
         }
+    }
+
+    // Sidechain: the key's level decides the gain reduction, so the track
+    // ducks under, say, the kick.
+    fn process_keyed(
+        &mut self,
+        left: &mut [f32],
+        right: &mut [f32],
+        key_left: &[f32],
+        key_right: &[f32],
+    ) {
+        for ((l, r), (kl, kr)) in left
+            .iter_mut()
+            .zip(right.iter_mut())
+            .zip(key_left.iter().zip(key_right.iter()))
+        {
+            let g = self.next_gain(kl.abs().max(kr.abs()));
+            *l *= g;
+            *r *= g;
+        }
+    }
+}
+
+impl Compressor {
+    /// The gain for the next sample, given the detector's peak level.
+    // RT-SAFE
+    fn next_gain(&mut self, peak: f32) -> f32 {
+        let target = self.gain_reduction_db(20.0 * peak.max(1e-9).log10());
+        // Reducing gain uses attack; recovering uses release.
+        let coef = if target < self.gr_db {
+            self.attack_coef
+        } else {
+            self.release_coef
+        };
+        self.gr_db = target + (self.gr_db - target) * coef;
+        let g = db_to_gain(self.gr_db) * self.makeup_gain;
+        1.0 - self.mix + self.mix * g
     }
 }
 
@@ -108,5 +136,29 @@ mod tests {
         let quiet = sine(200.0, 0.01, 1.0);
         let (l, _) = run(fx.as_mut(), &quiet);
         assert!((peak(&l[24_000..]) - 0.01).abs() < 0.0005);
+    }
+
+    #[test]
+    fn a_sidechain_key_ducks_a_quiet_signal() {
+        let mut fx = with(
+            EffectKind::Compressor,
+            &[("threshold_db", -20.0), ("ratio", 10.0), ("knee_db", 0.0)],
+        );
+        let pad = sine(200.0, 0.1, 1.0);
+        let (mut l, mut r) = (pad.clone(), pad.clone());
+        // The key is loud for the first half and silent for the second.
+        let n = l.len();
+        let key: Vec<f32> = (0..n).map(|i| if i < n / 2 { 0.9 } else { 0.0 }).collect();
+        fx.process_keyed(&mut l, &mut r, &key, &key);
+        assert!(
+            peak(&l[n / 4..n / 2]) < 0.03,
+            "ducked {}",
+            peak(&l[n / 4..n / 2])
+        );
+        assert!(
+            peak(&l[n - 4_800..]) > 0.09,
+            "recovered {}",
+            peak(&l[n - 4_800..])
+        );
     }
 }

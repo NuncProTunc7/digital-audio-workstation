@@ -62,12 +62,17 @@ pub struct Effect {
     pub enabled: bool,
     /// Parameter values keyed by parameter id (see `describe_effects`).
     pub params: BTreeMap<String, f64>,
+    /// Compressors only: the track whose sound drives the compressor
+    /// (sidechain), e.g. the kick ducking a bass. None = its own input.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sidechain: Option<crate::project::TrackId>,
 }
 
 impl Effect {
     /// A new effect with default settings.
     pub fn new(id: Id, kind: EffectKind) -> Self {
         Self {
+            sidechain: None,
             id,
             kind,
             enabled: true,

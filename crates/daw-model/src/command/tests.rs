@@ -797,6 +797,53 @@ fn buses_take_tracks_sends_and_effects_and_undo_cleanly() {
 }
 
 #[test]
+fn compressors_can_listen_to_another_track() {
+    let mut s = Session::new(fixture());
+    s.execute(Command::AddEffect {
+        track_id: Some(2),
+        kind: EffectKind::Compressor,
+        index: None,
+    })
+    .expect("comp");
+    let comp = s.project().tracks[1].mixer.effects[0].id;
+    let command = Command::SetEffectSidechain {
+        track_id: Some(2),
+        effect_id: comp,
+        source: Some(3),
+    };
+    let json = serde_json::to_string(&command).expect("json");
+    assert_eq!(
+        serde_json::from_str::<Command>(&json).expect("back"),
+        command
+    );
+    s.execute(command).expect("sidechain");
+    assert_eq!(s.project().tracks[1].mixer.effects[0].sidechain, Some(3));
+    let file = crate::file::project_to_json(s.project());
+    assert_eq!(
+        &crate::file::project_from_json(&file).expect("load"),
+        s.project()
+    );
+    s.undo();
+    assert_eq!(s.project().tracks[1].mixer.effects[0].sidechain, None);
+    // Only compressors, only real tracks.
+    let reverb = s.project().tracks[0].mixer.effects[0].id;
+    for bad in [
+        Command::SetEffectSidechain {
+            track_id: Some(1),
+            effect_id: reverb,
+            source: Some(3),
+        },
+        Command::SetEffectSidechain {
+            track_id: Some(2),
+            effect_id: comp,
+            source: Some(999),
+        },
+    ] {
+        assert!(s.execute(bad).is_err());
+    }
+}
+
+#[test]
 fn swing_slider_drag_is_one_undo_step() {
     let mut s = Session::new(fixture());
     let clip = clip_id(s.project());

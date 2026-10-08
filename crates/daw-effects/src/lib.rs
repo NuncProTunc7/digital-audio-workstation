@@ -27,6 +27,19 @@ pub trait EffectProcessor: Send {
     fn reset(&mut self);
     // RT-SAFE
     fn process(&mut self, left: &mut [f32], right: &mut [f32]);
+    /// Like `process`, but listening to another signal (the "key", e.g. a
+    /// kick drum) to decide what to do. Effects without a sidechain ignore
+    /// the key. The key is at least as long as `left`.
+    // RT-SAFE
+    fn process_keyed(
+        &mut self,
+        left: &mut [f32],
+        right: &mut [f32],
+        _key_left: &[f32],
+        _key_right: &[f32],
+    ) {
+        self.process(left, right);
+    }
 }
 
 /// Builds the processor for an effect's settings. Allocates; call off the

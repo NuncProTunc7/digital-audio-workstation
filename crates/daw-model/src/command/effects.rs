@@ -134,6 +134,33 @@ pub(super) fn set_param(
     })
 }
 
+pub(super) fn set_sidechain(
+    project: &mut Project,
+    track_id: Option<TrackId>,
+    effect_id: EffectId,
+    source: Option<TrackId>,
+) -> Result<Command, CommandError> {
+    if let Some(s) = source
+        && project.track(s).is_none()
+    {
+        return Err(CommandError::UnknownTrack(s));
+    }
+    let chain = chain_mut(project, track_id)?;
+    let index = find(chain, effect_id)?;
+    if chain[index].kind != crate::effect::EffectKind::Compressor {
+        return Err(super::invalid(
+            "sidechain",
+            "only compressors can listen to another track",
+        ));
+    }
+    let old = std::mem::replace(&mut chain[index].sidechain, source);
+    Ok(Command::SetEffectSidechain {
+        track_id,
+        effect_id,
+        source: old,
+    })
+}
+
 pub(super) fn set_enabled(
     project: &mut Project,
     track_id: Option<TrackId>,

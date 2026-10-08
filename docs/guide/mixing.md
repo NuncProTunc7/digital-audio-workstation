@@ -32,6 +32,13 @@ Details:
 - Buses have a fader, pan, mute (**M**), effects, and a meter; double-click a bus's name to rename it; **✕** deletes it (its tracks go back to the master).
 - Godot export can make one stem per bus (see [Godot](godot.md)).
 
+## Sidechain: make room for the kick
+
+A compressor can listen to a *different* track. Put one on the bass (or a pad), open it, and set **Listens to** to your drum track: every kick now pushes the bass down for a moment, so the kick punches through and the music "pumps" in time.
+
+- Good starting point: **Threshold** -30 dB, **Ratio** 6, **Attack** 0.005 s, **Release** 0.15 s. Longer release = slower, more obvious pumping.
+- It listens to the drum track's own sound, before its fader. To duck to a kick you don't want to hear, make a kick-only drum track, mute it, and point the compressor at it.
+
 ## Automation (settings that change over time)
 
 1. Click **A** on a track to show its automation row.

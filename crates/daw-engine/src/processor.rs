@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use daw_model::TrackId;
+use daw_model::{MAX_TRACKS, TrackId};
 
 use crate::message::{
     AudioRegionPlay, AutoTarget, BusSlot, EffectChain, EngineMessage, Garbage, PendingJump,
@@ -41,6 +41,10 @@ pub struct AudioProcessor {
     master_gain: daw_dsp::Smoother,
     left: Box<[f32]>,
     right: Box<[f32]>,
+    /// Each track's sound before its effects, for sidechains: track `i`
+    /// at `i * MAX_BLOCK_FRAMES`, covering the whole block.
+    keys_left: Box<[f32]>,
+    keys_right: Box<[f32]>,
     playing: bool,
     position_beats: f64,
     /// Where the song starts after a count-in; until the playhead gets
@@ -94,6 +98,8 @@ impl AudioProcessor {
             buses: init.buses,
             master_effects: init.master_effects,
             master_gain: daw_dsp::Smoother::new(init.master_gain, 0.01, sample_rate_hz),
+            keys_left: vec![0.0; MAX_TRACKS * MAX_BLOCK_FRAMES].into_boxed_slice(),
+            keys_right: vec![0.0; MAX_TRACKS * MAX_BLOCK_FRAMES].into_boxed_slice(),
             left: vec![0.0; MAX_BLOCK_FRAMES].into_boxed_slice(),
             right: vec![0.0; MAX_BLOCK_FRAMES].into_boxed_slice(),
             playing: false,
@@ -569,9 +575,13 @@ impl AudioProcessor {
         }
 
         let (left, right) = (&mut self.left[..frames], &mut self.right[..frames]);
-        for e in self.master_effects.effects.iter_mut().filter(|e| e.enabled) {
-            e.processor.process(left, right);
-        }
+        run_chain(
+            &mut self.master_effects,
+            left,
+            right,
+            (&self.keys_left, &self.keys_right),
+            0,
+        );
         let mut peak_l = 0.0f32;
         let mut peak_r = 0.0f32;
         for (l, r) in left.iter_mut().zip(right.iter_mut()) {
@@ -651,10 +661,28 @@ impl AudioProcessor {
                     declick,
                 );
             }
-
-            for e in t.effects.effects.iter_mut().filter(|e| e.enabled) {
-                e.processor.process(bl, br);
+            // Kept for compressors elsewhere that listen to this track.
+            let at = index * MAX_BLOCK_FRAMES + start;
+            if let (Some(kl), Some(kr)) = (
+                self.keys_left.get_mut(at..at + n),
+                self.keys_right.get_mut(at..at + n),
+            ) {
+                kl.copy_from_slice(bl);
+                kr.copy_from_slice(br);
             }
+        }
+
+        // Second pass: effects (which may listen to any track), faders,
+        // routing.
+        for (index, t) in self.tracks.iter_mut().enumerate() {
+            let (bl, br) = (&mut t.buf_left[..n], &mut t.buf_right[..n]);
+            run_chain(
+                &mut t.effects,
+                bl,
+                br,
+                (&self.keys_left, &self.keys_right),
+                start,
+            );
 
             let audible = !t.strip.mute && (!any_solo || t.strip.solo);
             let (pan_l, pan_r) = t.strip.pan_gains();
@@ -712,9 +740,13 @@ impl AudioProcessor {
         // Buses: their effects and fader, then into the master.
         for (index, b) in self.buses.iter_mut().enumerate() {
             let (bl, br) = (&mut b.buf_left[..n], &mut b.buf_right[..n]);
-            for e in b.effects.effects.iter_mut().filter(|e| e.enabled) {
-                e.processor.process(bl, br);
-            }
+            run_chain(
+                &mut b.effects,
+                bl,
+                br,
+                (&self.keys_left, &self.keys_right),
+                start,
+            );
             let (pan_l, pan_r) = b.strip.pan_gains();
             let level = if b.strip.mute { 0.0 } else { b.strip.gain };
             b.gain_left.set_target(level * pan_l);
@@ -775,6 +807,26 @@ fn chance_plays(chance: u8, track: TrackId, beat: f64, note: u8, pass: u32) -> b
     z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
     z ^= z >> 31;
     z % 100 < u64::from(chance)
+}
+
+/// Runs a chain's enabled effects over `left`/`right`. Sidechained effects
+/// listen to their key track's sound, from frame `offset` of the block.
+// RT-SAFE
+fn run_chain(
+    chain: &mut EffectChain,
+    left: &mut [f32],
+    right: &mut [f32],
+    keys: (&[f32], &[f32]),
+    offset: usize,
+) {
+    let n = left.len().min(right.len());
+    for e in chain.effects.iter_mut().filter(|e| e.enabled) {
+        let at = e.key.map(|k| k * MAX_BLOCK_FRAMES + offset);
+        match at.and_then(|a| Some((keys.0.get(a..a + n)?, keys.1.get(a..a + n)?))) {
+            Some((kl, kr)) => e.processor.process_keyed(left, right, kl, kr),
+            None => e.processor.process(left, right),
+        }
+    }
 }
 
 /// Makes automation re-apply its values on the next block, after a manual

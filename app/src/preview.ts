@@ -195,6 +195,13 @@ export function applyCommand(project: Project, command: Command): Project {
     case "set_effect_enabled":
       effect(command.track_id, command.effect_id).enabled = command.enabled;
       break;
+    case "set_effect_sidechain": {
+      const e = effect(command.track_id, command.effect_id);
+      if (e.kind !== "compressor") throw new Error("only compressors can listen to another track");
+      if (command.source !== null) track(command.source);
+      e.sidechain = command.source;
+      break;
+    }
     case "create_clip": {
       const t = track(command.track_id);
       if (t.instrument.kind === "audio") throw new Error(`"${t.name}" is an audio track`);

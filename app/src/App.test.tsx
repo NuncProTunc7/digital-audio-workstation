@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { createPreviewBackend } from "./backend";
@@ -601,6 +601,25 @@ describe("Buses", () => {
     p = (await backend.getProject()).project;
     expect(p.buses).toEqual([]);
     expect(p.tracks[2].output).toBeNull();
+  });
+});
+
+describe("Sidechain", () => {
+  it("makes the bass compressor listen to the drums", async () => {
+    const backend = createPreviewBackend();
+    await renderApp(backend);
+    fireEvent.click(screen.getByRole("tab", { name: /Mixer/ }));
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText("Add effect to Bass"), { target: { value: "compressor" } });
+    });
+    const bass = screen.getByRole("region", { name: "Bass channel" });
+    fireEvent.click(within(bass).getByRole("button", { name: /▸ Compressor/ }));
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText("Compressor listens to"), { target: { value: "3" } });
+    });
+    const comp = (await backend.getProject()).project.tracks[1].mixer.effects[0];
+    expect(comp.sidechain).toBe(3);
+    expect((screen.getByLabelText("Compressor listens to") as HTMLSelectElement).value).toBe("3");
   });
 });
 

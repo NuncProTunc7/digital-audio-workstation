@@ -100,6 +100,8 @@ pub struct EffectSlot {
     pub id: EffectId,
     pub enabled: bool,
     pub processor: Box<dyn EffectProcessor>,
+    /// Sidechain: index of the track whose sound drives this effect.
+    pub key: Option<usize>,
 }
 
 /// An ordered effect chain. Boxed so a whole chain can be swapped in one

@@ -321,7 +321,7 @@ The owner proposed these. Their priorities: finish items 3–4 first, then the d
 | E6 | **Track freeze**: render a heavy track to audio, unfreeze to edit | Medium–large | |
 | E7 | **Loop and export inspector**: audition the loop seam; flag missing audio, clipping, silence, mismatched stem lengths | Medium | After 5. |
 | E8 | **Take lanes and comping** | Large | |
-| E9 | **Sidechain compression** | Medium–large | After buses (8). |
+| E9 ✅ | **Sidechain compression** | Medium–large | Built Oct 2026. `Effect.sidechain` (compressors; `SetEffectSidechain`). The engine renders every track's instrument first and keeps it as a key (`keys_left/right`, preallocated per track), then runs effects, so any track, bus, or master compressor can listen to any track (pre-effects, pre-fader). `EffectProcessor::process_keyed`. Mixer: **Listens to** on compressor cards. |
 | E10 | **Searchable sound browser** with tags and favorites | Medium | After user presets (10). |
 | E11 | **Auditionable AI edits**: Claude offers variations, you audition each in context and keep one | Needs design | Could build on snapshots (E5). |
 

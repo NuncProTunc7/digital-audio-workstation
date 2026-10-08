@@ -236,6 +236,18 @@ pub enum Command {
         effect_id: EffectId,
         enabled: bool,
     },
+    /// Sidechain a compressor: it reacts to another track's sound instead of
+    /// its own, so this track ducks under it (classic: a compressor on the
+    /// bass or pad keyed by the kick track, threshold around -30 dB, ratio
+    /// 4-8, release 0.1-0.2 s). `source: null` turns the sidechain off.
+    /// `track_id` is the track or bus holding the compressor (omit for the
+    /// master). Only compressors can be sidechained.
+    SetEffectSidechain {
+        track_id: Option<TrackId>,
+        effect_id: EffectId,
+        /// The track to listen to.
+        source: Option<TrackId>,
+    },
 
     // ---- Clips ----
     /// Create a MIDI clip on a track, optionally filled with notes.
@@ -603,6 +615,11 @@ impl Command {
                 effect_id,
                 enabled,
             } => effects::set_enabled(project, track_id, effect_id, enabled),
+            C::SetEffectSidechain {
+                track_id,
+                effect_id,
+                source,
+            } => effects::set_sidechain(project, track_id, effect_id, source),
 
             C::CreateClip {
                 track_id,

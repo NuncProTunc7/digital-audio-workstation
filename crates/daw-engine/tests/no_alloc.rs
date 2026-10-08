@@ -155,6 +155,22 @@ fn audio_thread_never_allocates() {
             bus_id: Some(bus),
         })
         .expect("route");
+    // The bass compressor listens to the drums (sidechain).
+    session
+        .execute(Command::AddEffect {
+            track_id: Some(2),
+            kind: daw_model::EffectKind::Compressor,
+            index: None,
+        })
+        .expect("comp");
+    let comp = session.project().tracks[1].mixer.effects[0].id;
+    session
+        .execute(Command::SetEffectSidechain {
+            track_id: Some(2),
+            effect_id: comp,
+            source: Some(3),
+        })
+        .expect("sidechain");
     for pre_fader in [false, true] {
         session
             .execute(Command::SetSend {

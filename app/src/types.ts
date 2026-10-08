@@ -33,6 +33,8 @@ export interface Effect {
   kind: EffectKind;
   enabled: boolean;
   params: Record<string, number>;
+  /** Compressors: the track whose sound drives it (sidechain). */
+  sidechain?: number | null;
 }
 
 export interface Mixer {
@@ -270,6 +272,7 @@ export type Command =
   | { command: "resize_clip"; clip_id: number; length_beats: number }
   | { command: "rename_clip"; clip_id: number; name: string }
   | { command: "set_clip_swing"; clip_id: number; swing: Swing | null }
+  | { command: "set_effect_sidechain"; track_id: number | null; effect_id: number; source: number | null }
   | { command: "add_bus"; name: string }
   | { command: "remove_bus"; bus_id: number }
   | { command: "rename_bus"; bus_id: number; name: string }

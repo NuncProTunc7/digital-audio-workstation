@@ -67,6 +67,7 @@ impl Engine {
                 tracks: build_tracks(project, sample_rate, &audio),
                 buses: build_buses(project, sample_rate),
                 master_effects: build_chain(
+                    &project.tracks,
                     &project.master.effects,
                     project.tempo_bpm,
                     sample_rate,
@@ -276,6 +277,7 @@ impl Engine {
             )));
         }
         self.sync_chain(
+            &project.tracks,
             None,
             &synced.master.effects,
             &project.master.effects,
@@ -309,7 +311,7 @@ impl Engine {
         if same_layout {
             let tempo_changed = synced.tempo_bpm != project.tempo_bpm;
             for (old, new) in synced.tracks.iter().zip(&project.tracks) {
-                self.sync_track(old, new, project.tempo_bpm, tempo_changed);
+                self.sync_track(&project.tracks, old, new, project.tempo_bpm, tempo_changed);
                 for (index, (a, b)) in old.sends.iter().zip(&new.sends).enumerate() {
                     if a.level_db != b.level_db {
                         self.send(EngineMessage::SetSendGain {
@@ -328,12 +330,31 @@ impl Engine {
                         strip: strip_settings(n),
                     });
                 }
-                self.sync_chain(Some(new.id), &o.effects, &n.effects, project.tempo_bpm);
+                self.sync_chain(
+                    &project.tracks,
+                    Some(new.id),
+                    &o.effects,
+                    &n.effects,
+                    project.tempo_bpm,
+                );
             }
         } else {
             // Buses first: the new tracks' routing points into them.
-            if !same_buses {
+            // Sidechains point at track positions, which may have moved.
+            let keyed = |effects: &[Effect]| effects.iter().any(|e| e.sidechain.is_some());
+            if !same_buses || project.buses.iter().any(|b| keyed(&b.mixer.effects)) {
                 self.send(EngineMessage::ReplaceBuses(build_buses(project, sr)));
+            }
+            if keyed(&project.master.effects) {
+                self.send(EngineMessage::ReplaceEffects {
+                    track_id: None,
+                    chain: build_chain(
+                        &project.tracks,
+                        &project.master.effects,
+                        project.tempo_bpm,
+                        sr,
+                    ),
+                });
             }
             self.send(EngineMessage::ReplaceTracks(build_tracks(
                 project,
@@ -344,7 +365,14 @@ impl Engine {
         *synced = project.clone();
     }
 
-    fn sync_track(&self, old: &Track, new: &Track, tempo_bpm: f64, tempo_changed: bool) {
+    fn sync_track(
+        &self,
+        tracks: &[Track],
+        old: &Track,
+        new: &Track,
+        tempo_bpm: f64,
+        tempo_changed: bool,
+    ) {
         for (index, spec) in param_specs(new.instrument.kind).iter().enumerate() {
             let value = new.instrument.value(spec.id);
             if old.instrument.value(spec.id) != value {
@@ -362,7 +390,7 @@ impl Engine {
                 strip: strip_settings(ns),
             });
         }
-        self.sync_chain(Some(new.id), &os.effects, &ns.effects, tempo_bpm);
+        self.sync_chain(tracks, Some(new.id), &os.effects, &ns.effects, tempo_bpm);
         let automation_changed = old.automation != new.automation;
         // Clips that follow the tempo need re-stretching when it changes.
         let restretch = tempo_changed
@@ -414,16 +442,23 @@ impl Engine {
         }
     }
 
-    fn sync_chain(&self, track_id: Option<TrackId>, old: &[Effect], new: &[Effect], tempo: f64) {
+    fn sync_chain(
+        &self,
+        tracks: &[Track],
+        track_id: Option<TrackId>,
+        old: &[Effect],
+        new: &[Effect],
+        tempo: f64,
+    ) {
         let same_shape = old.len() == new.len()
             && old
                 .iter()
                 .zip(new)
-                .all(|(a, b)| a.id == b.id && a.kind == b.kind);
+                .all(|(a, b)| a.id == b.id && a.kind == b.kind && a.sidechain == b.sidechain);
         if !same_shape {
             self.send(EngineMessage::ReplaceEffects {
                 track_id,
-                chain: build_chain(new, tempo, self.sample_rate_hz),
+                chain: build_chain(tracks, new, tempo, self.sample_rate_hz),
             });
             return;
         }
@@ -457,7 +492,14 @@ impl Engine {
     }
 }
 
-fn build_chain(effects: &[Effect], tempo_bpm: f64, sample_rate_hz: f32) -> Box<EffectChain> {
+/// Builds an effect chain; sidechains point at the source track's index in
+/// `tracks` (the order the audio thread keeps them in).
+fn build_chain(
+    tracks: &[Track],
+    effects: &[Effect],
+    tempo_bpm: f64,
+    sample_rate_hz: f32,
+) -> Box<EffectChain> {
     Box::new(EffectChain {
         effects: effects
             .iter()
@@ -468,6 +510,9 @@ fn build_chain(effects: &[Effect], tempo_bpm: f64, sample_rate_hz: f32) -> Box<E
                     id: e.id,
                     enabled: e.enabled,
                     processor,
+                    key: e
+                        .sidechain
+                        .and_then(|s| tracks.iter().position(|t| t.id == s)),
                 }
             })
             .collect(),
@@ -481,7 +526,12 @@ fn build_buses(project: &Project, sample_rate_hz: f32) -> Box<[BusSlot]> {
         .map(|b| {
             BusSlot::new(
                 b.id,
-                build_chain(&b.mixer.effects, project.tempo_bpm, sample_rate_hz),
+                build_chain(
+                    &project.tracks,
+                    &b.mixer.effects,
+                    project.tempo_bpm,
+                    sample_rate_hz,
+                ),
                 strip_settings(&b.mixer),
                 sample_rate_hz,
             )
@@ -510,7 +560,12 @@ fn build_tracks(project: &Project, sample_rate_hz: f32, audio: &AudioPool) -> Bo
             TrackSlot::new(
                 t.id,
                 daw_instruments::create(&t.instrument, sample_rate_hz),
-                build_chain(&t.mixer.effects, project.tempo_bpm, sample_rate_hz),
+                build_chain(
+                    &project.tracks,
+                    &t.mixer.effects,
+                    project.tempo_bpm,
+                    sample_rate_hz,
+                ),
                 Box::new(build_sequence(
                     t,
                     audio,
@@ -951,6 +1006,87 @@ mod tests {
         // About half of the 64 kicks play, and not the same in every lap.
         assert!((16..=48).contains(&total), "{per_lap:?}");
         assert!(per_lap.iter().any(|&n| n != per_lap[0]), "{per_lap:?}");
+    }
+
+    #[test]
+    fn a_sidechained_compressor_ducks_the_bass_on_each_kick() {
+        let mut s = kick_session();
+        // A held bass note under the kicks, and the kicks themselves muted:
+        // only the bass is heard, but it still ducks to them.
+        s.execute(Command::CreateClip {
+            track_id: 2,
+            start_beats: 0.0,
+            length_beats: 4.0,
+            name: None,
+            notes: vec![NoteInput {
+                chance: 100,
+                pitch: 45,
+                start_beats: 0.0,
+                length_beats: 4.0,
+                velocity: 110,
+                id: None,
+            }],
+        })
+        .expect("bass");
+        s.execute(Command::SetTrackMixer {
+            track_id: 3,
+            volume_db: None,
+            pan: None,
+            mute: Some(true),
+            solo: None,
+        })
+        .expect("mute kick");
+        s.execute(Command::AddEffect {
+            track_id: Some(2),
+            kind: EffectKind::Compressor,
+            index: None,
+        })
+        .expect("comp");
+        let comp = s.project().tracks[1].mixer.effects[0].id;
+        for (param, value) in [
+            ("threshold_db", -40.0),
+            ("ratio", 20.0),
+            ("attack_s", 0.001),
+            ("release_s", 0.08),
+            ("knee_db", 0.0),
+        ] {
+            s.execute(Command::SetEffectParam {
+                track_id: Some(2),
+                effect_id: comp,
+                param: param.into(),
+                value,
+            })
+            .expect("param");
+        }
+        let rms = |x: &[f32]| (x.iter().map(|v| v * v).sum::<f32>() / x.len() as f32).sqrt();
+        // Window right after the beat-1 kick vs just before beat 2.
+        let windows = |out: &[f32]| {
+            let l = left(out);
+            (
+                rms(&l[24_000 + 1_200..24_000 + 3_600]),
+                rms(&l[44_000..47_000]),
+            )
+        };
+        let (engine, mut p) = Engine::new(s.project(), SR);
+        engine.set_metronome(false);
+        engine.play();
+        let (after, before) = windows(&render(&mut p, 1.0));
+        // Without a sidechain the compressor only hears the steady bass.
+        assert!(
+            (after - before).abs() < 0.3 * before,
+            "plain {after} vs {before}"
+        );
+
+        s.execute(Command::SetEffectSidechain {
+            track_id: Some(2),
+            effect_id: comp,
+            source: Some(3),
+        })
+        .expect("sidechain");
+        engine.sync(s.project());
+        engine.locate(0.0);
+        let (after, before) = windows(&render(&mut p, 1.0));
+        assert!(after < 0.5 * before, "ducked {after} vs {before}");
     }
 
     #[test]

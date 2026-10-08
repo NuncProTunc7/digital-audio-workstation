@@ -105,6 +105,7 @@ export default function Mixer(props: MixerProps) {
     <div className="mixer">
       {project.tracks.map((t, i) => (
         <Strip
+        tracks={project.tracks}
           key={t.id}
           name={t.name}
           selected={t.id === props.selectedTrackId}
@@ -175,6 +176,7 @@ export default function Mixer(props: MixerProps) {
       ))}
       {buses.map((b, i) => (
         <Strip
+        tracks={project.tracks}
           key={b.id}
           name={b.name}
           bus
@@ -251,6 +253,7 @@ export default function Mixer(props: MixerProps) {
         + Bus
       </button>
       <Strip
+        tracks={project.tracks}
         name="Master"
         master
         selected={false}
@@ -269,6 +272,8 @@ export default function Mixer(props: MixerProps) {
 }
 
 interface StripProps {
+  /** Every track, for compressors that listen to one (sidechain). */
+  tracks: Track[];
   name: string;
   master?: boolean;
   bus?: boolean;
@@ -328,6 +333,7 @@ function Strip(props: StripProps) {
         {props.effects.map((e) => (
           <EffectCard
             key={e.id}
+            tracks={props.tracks}
             effect={e}
             trackId={props.trackId}
             catalog={props.catalog}
@@ -379,6 +385,7 @@ function Strip(props: StripProps) {
 }
 
 interface EffectCardProps {
+  tracks: Track[];
   effect: Effect;
   trackId: number | null;
   catalog: Catalog;
@@ -388,7 +395,7 @@ interface EffectCardProps {
   onEndGesture: () => void;
 }
 
-function EffectCard({ effect, trackId, catalog, open, onToggleOpen, onCommand, onEndGesture }: EffectCardProps) {
+function EffectCard({ tracks, effect, trackId, catalog, open, onToggleOpen, onCommand, onEndGesture }: EffectCardProps) {
   const description = catalog.effects.find((d) => d.kind === effect.kind);
   return (
     <div className={`effect${effect.enabled ? "" : " bypassed"}`}>
@@ -421,6 +428,33 @@ function EffectCard({ effect, trackId, catalog, open, onToggleOpen, onCommand, o
           ✕
         </button>
       </div>
+      {open && effect.kind === "compressor" && (
+        <label className="sidechain" title="Duck this track whenever another one plays, e.g. the bass under the kick">
+          <span>Listens to</span>
+          <select
+            aria-label={`${description?.name ?? effect.kind} listens to`}
+            value={effect.sidechain ?? ""}
+            onChange={(e) => {
+              void onCommand({
+                command: "set_effect_sidechain",
+                track_id: trackId,
+                effect_id: effect.id,
+                source: e.target.value === "" ? null : Number(e.target.value),
+              }).then(onEndGesture);
+              e.currentTarget.blur();
+            }}
+          >
+            <option value="">Its own sound</option>
+            {tracks
+              .filter((t) => t.id !== trackId)
+              .map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name} (sidechain)
+                </option>
+              ))}
+          </select>
+        </label>
+      )}
       {open && description && (
         <div className="effect-params">
           {description.params.map((spec) => (
