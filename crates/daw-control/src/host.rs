@@ -737,21 +737,29 @@ pub fn end_take<H: Host>(
         let _ = std::fs::remove_file(&take.path);
         return Ok(None);
     };
+    // A new take over an old one: the new one plays, the old one is kept
+    // muted (one undo step). The clip's id is the next one handed out.
+    let new_clip = session.project().next_id.max(1);
     session
-        .execute(Command::AddAudioClip {
-            track_id,
-            start_beats,
-            audio: AudioRegion {
-                file: take.file,
-                file_seconds: take.seconds,
-                offset_seconds,
-                gain_db: 0.0,
-                fade_in_seconds: 0.0,
-                fade_out_seconds: 0.0,
-                source_bpm: None,
-            },
-            length_beats: None,
-            name: None,
+        .execute(Command::Batch {
+            commands: vec![
+                Command::AddAudioClip {
+                    track_id,
+                    start_beats,
+                    audio: AudioRegion {
+                        file: take.file,
+                        file_seconds: take.seconds,
+                        offset_seconds,
+                        gain_db: 0.0,
+                        fade_in_seconds: 0.0,
+                        fade_out_seconds: 0.0,
+                        source_bpm: None,
+                    },
+                    length_beats: None,
+                    name: None,
+                },
+                Command::CompTake { clip_id: new_clip },
+            ],
         })
         .map_err(|e| e.to_string())?;
     session.end_gesture();

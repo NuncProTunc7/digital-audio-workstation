@@ -171,6 +171,7 @@ pub(super) fn add(
     };
     let id = project.allocate_id();
     let clip = Clip {
+        muted: false,
         swing: None,
         id,
         name,

@@ -1798,6 +1798,19 @@ button.tiny.power.on {
   border-style: dashed;
 }
 
+.clip.muted-clip {
+  opacity: 0.35;
+}
+
+.take-use {
+  position: absolute;
+  right: 10px;
+  top: 2px;
+  padding: 0 6px;
+  font-size: 10px;
+  background: var(--panel-raised);
+}
+
 .findings {
   margin: 8px 0;
   padding: 0;

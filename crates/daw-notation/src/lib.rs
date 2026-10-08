@@ -64,7 +64,7 @@ pub(crate) fn whole_bars(beats: f64, beats_per_bar: f64) -> f64 {
 /// `(start_beats, end_beats, pitch, velocity)` from the song start.
 pub(crate) fn played_notes(track: &Track, swung: bool) -> Vec<(f64, f64, u8, u8)> {
     let mut out = Vec::new();
-    for clip in &track.clips {
+    for clip in track.clips.iter().filter(|c| !c.muted) {
         for n in &clip.notes {
             if n.start_beats >= clip.length_beats {
                 continue;

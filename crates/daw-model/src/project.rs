@@ -599,6 +599,13 @@ pub struct Clip {
     /// Shuffle applied to the clip's notes when they play (None = straight).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub swing: Option<Swing>,
+    /// Kept but silent (an unused take, or a part switched off).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub muted: bool,
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
 }
 
 impl Clip {

@@ -357,6 +357,14 @@ pub enum Command {
     SetSongState {
         song: Box<crate::project::SongState>,
     },
+    /// Silence a clip without deleting it (or bring it back).
+    SetClipMuted { clip_id: ClipId, muted: bool },
+    /// Comping: make this clip the one heard over its stretch of time. Other
+    /// clips on the same track that overlap it are muted (kept as takes),
+    /// this one is unmuted, and audio clips get short fades at their edges
+    /// so the joins between takes are smooth. Split takes at the same points
+    /// first (split_clip) to choose the best part of each.
+    CompTake { clip_id: ClipId },
     /// Swing (shuffle) a note clip: every second step plays late. Notes
     /// keep their written positions; playback, exports and MIDI files hear
     /// the swing. `swing: null` makes the clip straight again. Errors on
@@ -774,6 +782,20 @@ impl Command {
             C::RestoreSnapshot { snapshot, index } => snapshots::restore(project, snapshot, index),
             C::SetSongState { song } => snapshots::set_state(project, *song),
             C::SetClipSwing { clip_id, swing } => clips::set_swing(project, clip_id, swing),
+            C::SetClipMuted { clip_id, muted } => {
+                let clip = project
+                    .clip_mut(clip_id)
+                    .ok_or(CommandError::UnknownClip(clip_id))?;
+                let old = std::mem::replace(&mut clip.muted, muted);
+                Ok(C::SetClipMuted {
+                    clip_id,
+                    muted: old,
+                })
+            }
+            C::CompTake { clip_id } => {
+                let commands = comp_take(project, clip_id)?;
+                batch(project, commands)
+            }
             C::DuplicateClip {
                 clip_id,
                 start_beats,
@@ -1005,6 +1027,53 @@ impl Command {
             _ => false,
         }
     }
+}
+
+/// Shortest fade at a join between takes, in seconds.
+const TAKE_JOIN_FADE_SECONDS: f64 = 0.01;
+
+/// The edits that make `clip_id` the heard take over its span.
+fn comp_take(project: &Project, clip_id: ClipId) -> Result<Vec<Command>, CommandError> {
+    let (track_id, clip) = project
+        .clip(clip_id)
+        .ok_or(CommandError::UnknownClip(clip_id))?;
+    let (start, end) = (clip.start_beats, clip.start_beats + clip.length_beats);
+    let track = project
+        .track(track_id)
+        .ok_or(CommandError::UnknownTrack(track_id))?;
+    let mut commands: Vec<Command> = track
+        .clips
+        .iter()
+        .filter(|c| {
+            c.id != clip_id
+                && !c.muted
+                && c.start_beats < end - 1e-9
+                && c.start_beats + c.length_beats > start + 1e-9
+        })
+        .map(|c| Command::SetClipMuted {
+            clip_id: c.id,
+            muted: true,
+        })
+        .collect();
+    if clip.muted {
+        commands.push(Command::SetClipMuted {
+            clip_id,
+            muted: false,
+        });
+    }
+    if let Some(a) = &clip.audio {
+        let fade = |f: f64| (f < TAKE_JOIN_FADE_SECONDS).then_some(TAKE_JOIN_FADE_SECONDS);
+        let (fade_in, fade_out) = (fade(a.fade_in_seconds), fade(a.fade_out_seconds));
+        if fade_in.is_some() || fade_out.is_some() {
+            commands.push(Command::SetAudioClip {
+                clip_id,
+                gain_db: None,
+                fade_in_seconds: fade_in,
+                fade_out_seconds: fade_out,
+            });
+        }
+    }
+    Ok(commands)
 }
 
 /// Applies commands in order; on failure, rolls back the ones already applied.

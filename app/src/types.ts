@@ -85,6 +85,8 @@ export interface Clip {
   audio?: AudioRegion | null;
   /** Shuffle on note clips (missing = straight). */
   swing?: Swing | null;
+  /** Kept but silent (an unused take). */
+  muted?: boolean;
 }
 
 export type AutomationTarget =
@@ -316,6 +318,8 @@ export type Command =
   | { command: "resize_clip"; clip_id: number; length_beats: number }
   | { command: "rename_clip"; clip_id: number; name: string }
   | { command: "set_clip_swing"; clip_id: number; swing: Swing | null }
+  | { command: "set_clip_muted"; clip_id: number; muted: boolean }
+  | { command: "comp_take"; clip_id: number }
   | { command: "set_effect_sidechain"; track_id: number | null; effect_id: number; source: number | null }
   | {
       command: "humanize_notes";

@@ -680,6 +680,55 @@ describe("Sidechain", () => {
   });
 });
 
+describe("Takes", () => {
+  it("shows takes on lanes, splits them, and picks the heard one", async () => {
+    const backend = createPreviewBackend();
+    await backend.execute({ command: "add_track", name: "Vox", instrument: "audio", preset: null, index: null });
+    const vox = (await backend.getProject()).project.tracks[3].id;
+    const take = (n: number) => ({
+      command: "add_audio_clip" as const,
+      track_id: vox,
+      start_beats: 0,
+      audio: {
+        file: `take${n}.wav`,
+        file_seconds: 4,
+        offset_seconds: 0,
+        gain_db: 0,
+        fade_in_seconds: 0,
+        fade_out_seconds: 0,
+      },
+      length_beats: null,
+      name: `Take ${n}`,
+    });
+    await backend.execute(take(1));
+    await backend.execute(take(2));
+    const second = (await backend.getProject()).project.tracks[3].clips[1].id;
+    await backend.execute({ command: "comp_take", clip_id: second });
+    await renderApp(backend);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Takes on Vox" }));
+    });
+    // Take 1 is muted: it offers to be used.
+    await act(async () => {
+      backend.locate(4);
+      await new Promise((r) => setTimeout(r, 120));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Split takes on Vox at the playhead" }));
+    });
+    let clips = (await backend.getProject()).project.tracks[3].clips;
+    expect(clips.length).toBe(4);
+    const useButtons = screen.getAllByRole("button", { name: "Use take Take 1" });
+    expect(useButtons.length).toBe(2);
+    await act(async () => {
+      fireEvent.click(useButtons[0]);
+    });
+    clips = (await backend.getProject()).project.tracks[3].clips;
+    const heard = clips.filter((c) => !c.muted).map((c) => `${c.name}@${c.start_beats}`).sort();
+    expect(heard).toEqual(["Take 1@0", "Take 2@4"]);
+  });
+});
+
 describe("Track freeze", () => {
   it("freezes a track and unfreezes it", async () => {
     const backend = createPreviewBackend();

@@ -1121,6 +1121,26 @@ mod tests {
     }
 
     #[test]
+    fn muted_clips_are_silent() {
+        let mut s = kick_session();
+        let clip = s.project().tracks[2].clips[0].id;
+        let (engine, mut p) = Engine::new(s.project(), SR);
+        engine.set_metronome(false);
+        engine.play();
+        assert!(peak(&render(&mut p, 0.5)) > 0.1);
+        s.execute(Command::SetClipMuted {
+            clip_id: clip,
+            muted: true,
+        })
+        .expect("mute");
+        engine.sync(s.project());
+        engine.locate(0.0);
+        // Let the last kick before muting ring out.
+        render(&mut p, 0.6);
+        assert!(peak(&render(&mut p, 1.0)) < 1e-3);
+    }
+
+    #[test]
     fn tracks_play_through_their_bus() {
         let mut s = kick_session();
         s.execute(Command::AddBus {

@@ -15,6 +15,15 @@
 5. Press **R**. First you hear a bar of clicks (the **count-in**; the position box counts down 4, 3, 2, 1 in red). Then the song plays from the playhead: come in right after the last click. Press **R** again to stop. The take lines up with the beat you heard, and anything the mic picked up during the count-in is left out.
 6. Want more time, or none? Set **Count-in** in the top bar to 2 bars or Off.
 
+## Several takes: keep the best parts (comping)
+
+Record the same part again over your first take: the new take plays and the old one is kept, muted (faded out on the timeline). Do it as often as you like.
+
+1. Click **T2** (or T3...) on the audio track's header to show the takes, one per lane.
+2. Move the playhead to where you want to switch takes and click **✂**: every take is cut there.
+3. On each part, click **▶ Use** on the take you like best. That part plays; the others are kept, muted. Joins get short fades so they don't click.
+4. Click **T…** again to fold the lanes away. **Ctrl+Z** undoes any step.
+
 ## Calibrate the recording delay (Bluetooth headsets)
 
 Bluetooth delays both what you hear and what the mic records, typically by 100–250 ms. The app can't see that delay, so it measures it:

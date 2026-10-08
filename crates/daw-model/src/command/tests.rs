@@ -1001,6 +1001,59 @@ fn key_and_chord_track_round_trip_and_undo() {
 }
 
 #[test]
+fn comping_picks_the_heard_take_and_undoes() {
+    let mut s = Session::new(fixture());
+    // Two more takes over the fixture's 4-second recording (clip 11).
+    for _ in 0..2 {
+        let id = s.project().next_id.max(1);
+        s.execute(Command::Batch {
+            commands: vec![
+                Command::AddAudioClip {
+                    track_id: 10,
+                    start_beats: 0.0,
+                    audio: region("vox-0123abcd.wav", 4.0),
+                    length_beats: None,
+                    name: None,
+                },
+                Command::CompTake { clip_id: id },
+            ],
+        })
+        .expect("take");
+    }
+    let clips = &s.project().tracks[3].clips;
+    let muted: Vec<bool> = clips.iter().map(|c| c.muted).collect();
+    // The newest take plays; the older ones are kept, muted.
+    assert_eq!(muted, [true, true, false]);
+    let first = clips[0].id;
+    let before = s.project().clone();
+    s.execute(Command::CompTake { clip_id: first })
+        .expect("comp");
+    let clips = &s.project().tracks[3].clips;
+    assert_eq!(
+        clips.iter().map(|c| c.muted).collect::<Vec<_>>(),
+        [false, true, true]
+    );
+    let a = clips[0].audio.as_ref().expect("audio");
+    assert!(a.fade_in_seconds >= 0.01 && a.fade_out_seconds >= 0.01);
+    s.undo();
+    assert_eq!(s.project(), &before);
+    // Muting is its own command too, and round-trips.
+    let mute = Command::SetClipMuted {
+        clip_id: first,
+        muted: false,
+    };
+    let json = serde_json::to_string(&mute).expect("json");
+    assert_eq!(serde_json::from_str::<Command>(&json).expect("back"), mute);
+    s.execute(mute).expect("unmute");
+    assert!(!s.project().tracks[3].clips[0].muted);
+    let file = crate::file::project_to_json(s.project());
+    assert_eq!(
+        &crate::file::project_from_json(&file).expect("load"),
+        s.project()
+    );
+}
+
+#[test]
 fn swing_slider_drag_is_one_undo_step() {
     let mut s = Session::new(fixture());
     let clip = clip_id(s.project());

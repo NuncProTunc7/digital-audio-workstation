@@ -400,6 +400,22 @@ export function applyCommand(project: Project, command: Command): Project {
       p.snapshots = list;
       break;
     }
+    case "set_clip_muted":
+      clipOf(command.clip_id)[1].muted = command.muted;
+      break;
+    case "comp_take": {
+      const [t, c] = clipOf(command.clip_id);
+      const [start, end] = [c.start_beats, c.start_beats + c.length_beats];
+      for (const o of t.clips) {
+        if (o.id !== c.id && o.start_beats < end - 1e-9 && o.start_beats + o.length_beats > start + 1e-9) o.muted = true;
+      }
+      c.muted = false;
+      if (c.audio) {
+        c.audio.fade_in_seconds = Math.max(c.audio.fade_in_seconds, 0.01);
+        c.audio.fade_out_seconds = Math.max(c.audio.fade_out_seconds, 0.01);
+      }
+      break;
+    }
     case "set_clip_swing": {
       const [, c] = clipOf(command.clip_id);
       if (c.audio) throw new Error("only note clips swing");

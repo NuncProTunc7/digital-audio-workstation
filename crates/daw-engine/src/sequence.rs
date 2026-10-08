@@ -92,7 +92,8 @@ pub fn build_sequence(
     let mut events = Vec::new();
     let sr = f64::from(sample_rate_hz);
     let mut regions = Vec::new();
-    for clip in &track.clips {
+    // Muted clips (unused takes) are kept but not heard.
+    for clip in track.clips.iter().filter(|c| !c.muted) {
         if let Some(a) = &clip.audio {
             // Following the tempo: slower songs stretch the audio longer.
             let ratio = a.source_bpm.map_or(1.0, |src| src / tempo_bpm);
@@ -174,6 +175,7 @@ mod tests {
     #[test]
     fn offsets_by_clip_start_and_cuts_at_clip_end() {
         let t = track_with(vec![Clip {
+            muted: false,
             swing: None,
             id: 10,
             name: "c".into(),
@@ -206,6 +208,7 @@ mod tests {
     #[test]
     fn note_off_sorts_before_note_on_at_the_same_beat() {
         let t = track_with(vec![Clip {
+            muted: false,
             swing: None,
             id: 10,
             name: "c".into(),

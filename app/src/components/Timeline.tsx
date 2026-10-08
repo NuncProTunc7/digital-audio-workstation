@@ -8,6 +8,24 @@ import AutomationLaneEditor from "./AutomationLane";
 import Waveform from "./Waveform";
 
 export const TRACK_HEIGHT = 60;
+/** Height of one take lane when an audio track shows its takes. */
+const TAKE_LANE_HEIGHT = 40;
+
+/** Puts overlapping clips on separate lanes (first free lane, by start). */
+function takeLanes(clips: Clip[]): { lane: Map<number, number>; count: number } {
+  const ends: number[] = [];
+  const lane = new Map<number, number>();
+  for (const c of [...clips].sort((a, b) => a.start_beats - b.start_beats || a.id - b.id)) {
+    let i = ends.findIndex((end) => end <= c.start_beats + 1e-9);
+    if (i < 0) {
+      i = ends.length;
+      ends.push(0);
+    }
+    ends[i] = c.start_beats + c.length_beats;
+    lane.set(c.id, i);
+  }
+  return { lane, count: Math.max(1, ends.length) };
+}
 const MIN_BARS = 32;
 
 interface TimelineProps {
@@ -78,7 +96,19 @@ export default function Timeline(props: TimelineProps) {
   // Tracks showing their automation row, and the lane each row shows.
   const [openAutomation, setOpenAutomation] = useState<ReadonlySet<number>>(new Set());
   const [shownLane, setShownLane] = useState<Record<number, number>>({});
-  const rowHeight = (t: Track) => TRACK_HEIGHT + (openAutomation.has(t.id) ? AUTOMATION_HEIGHT : 0);
+  // Audio tracks showing their takes on separate lanes.
+  const [openTakes, setOpenTakes] = useState<ReadonlySet<number>>(new Set());
+  const lanesOf = (t: Track) => takeLanes(t.clips);
+  const laneHeight = (t: Track) =>
+    isAudio(t) && openTakes.has(t.id) ? Math.max(TRACK_HEIGHT, lanesOf(t).count * TAKE_LANE_HEIGHT) : TRACK_HEIGHT;
+  const rowHeight = (t: Track) => laneHeight(t) + (openAutomation.has(t.id) ? AUTOMATION_HEIGHT : 0);
+  /** Splits every clip under the playhead on a track (to comp takes). */
+  const splitTakesAt = (t: Track, beats: number) => {
+    const commands: Command[] = t.clips
+      .filter((c) => c.start_beats < beats - 1e-6 && c.start_beats + c.length_beats > beats + 1e-6)
+      .map((c) => ({ command: "split_clip", clip_id: c.id, at_beats: beats }));
+    if (commands.length > 0) void props.onCommand({ command: "batch", commands }).then(props.onEndGesture);
+  };
 
   const songEnd = Math.max(
     0,
@@ -503,7 +533,7 @@ export default function Timeline(props: TimelineProps) {
               <Fragment key={t.id}>
               <div
                 className={t.id === props.selectedTrackId ? "track-header selected" : "track-header"}
-                style={{ height: TRACK_HEIGHT }}
+                style={{ height: laneHeight(t) }}
                 onClick={() => props.onSelectTrack(t.id)}
               >
                 <span className="track-icon" aria-hidden>
@@ -575,6 +605,38 @@ export default function Timeline(props: TimelineProps) {
                     <div className="track-meter" aria-hidden>
                       <div style={{ width: `${meterPercent(props.trackPeaks[i] ?? 0)}%` }} />
                     </div>
+                    {isAudio(t) && lanesOf(t).count > 1 && (
+                      <button
+                        className={openTakes.has(t.id) ? "tiny on" : "tiny"}
+                        aria-pressed={openTakes.has(t.id)}
+                        aria-label={`Takes on ${t.name}`}
+                        title="Show the takes recorded over each other, one per lane, to pick the best parts"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOpenTakes((open) => {
+                            const next = new Set(open);
+                            if (next.has(t.id)) next.delete(t.id);
+                            else next.add(t.id);
+                            return next;
+                          });
+                        }}
+                      >
+                        T{lanesOf(t).count}
+                      </button>
+                    )}
+                    {isAudio(t) && openTakes.has(t.id) && (
+                      <button
+                        className="tiny"
+                        aria-label={`Split takes on ${t.name} at the playhead`}
+                        title="Cut every take at the playhead, so you can pick a different take before and after"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          splitTakesAt(t, props.playheadBeats);
+                        }}
+                      >
+                        ✂
+                      </button>
+                    )}
                     {!isAudio(t) && (
                       <button
                         className={
@@ -696,7 +758,7 @@ export default function Timeline(props: TimelineProps) {
               <Fragment key={t.id}>
               <div
                 className={t.id === props.selectedTrackId ? "lane selected" : "lane"}
-                style={{ height: TRACK_HEIGHT }}
+                style={{ height: laneHeight(t) }}
                 data-track={t.id}
                 onPointerDown={() => {
                   props.onSelectTrack(t.id);
@@ -709,7 +771,8 @@ export default function Timeline(props: TimelineProps) {
                 }
                 title={isAudio(t) ? "Double-click to import audio here, or select the track and press R to record" : "Double-click to add a clip"}
               >
-                {t.clips.map((c) =>
+                {/* Muted takes first, so the ones heard are drawn on top. */}
+                {[...t.clips].sort((a, b) => Number(Boolean(b.muted)) - Number(Boolean(a.muted))).map((c) =>
                   c.audio ? (
                     <AudioClipBox
                       key={c.id}
@@ -719,6 +782,16 @@ export default function Timeline(props: TimelineProps) {
                       peaks={props.peaks[c.audio.file]}
                       missing={props.missingAudio.has(c.audio.file)}
                       selected={c.id === props.selectedClipId}
+                      lane={
+                        openTakes.has(t.id)
+                          ? { top: (lanesOf(t).lane.get(c.id) ?? 0) * TAKE_LANE_HEIGHT, height: TAKE_LANE_HEIGHT }
+                          : undefined
+                      }
+                      onUse={
+                        openTakes.has(t.id) && c.muted
+                          ? () => void props.onCommand({ command: "comp_take", clip_id: c.id }).then(props.onEndGesture)
+                          : undefined
+                      }
                       onPointerDown={(e, edge) => startClipDrag(e, c, i, edge)}
                     />
                   ) : (
@@ -804,7 +877,7 @@ function ClipBox({ clip, ppb, selected, drums, onPointerDown, onDoubleClick }: C
   const inner = TRACK_HEIGHT - 20;
   return (
     <div
-      className={`clip${selected ? " selected" : ""}${drums ? " drums" : ""}`}
+      className={`clip${selected ? " selected" : ""}${drums ? " drums" : ""}${clip.muted ? " muted-clip" : ""}`}
       style={{ left: clip.start_beats * ppb, width: Math.max(4, clip.length_beats * ppb) }}
       onPointerDown={(e) => onPointerDown(e, "move")}
       onDoubleClick={(e) => {
@@ -848,11 +921,15 @@ interface AudioClipBoxProps {
   peaks: Peaks | undefined;
   missing: boolean;
   selected: boolean;
+  /** Where it sits when the track shows its takes on lanes. */
+  lane?: { top: number; height: number };
+  /** For an unused take in the lanes view: make it the one heard. */
+  onUse?: () => void;
   onPointerDown: (e: ReactPointerEvent, edge: "move" | "end" | "start") => void;
 }
 
 /** An audio clip: waveform, fades, and handles to trim either end. */
-function AudioClipBox({ clip, ppb, tempoBpm, peaks, missing, selected, onPointerDown }: AudioClipBoxProps) {
+function AudioClipBox({ clip, ppb, tempoBpm, peaks, missing, selected, lane, onUse, onPointerDown }: AudioClipBoxProps) {
   const audio = clip.audio;
   if (!audio) return null;
   const width = Math.max(4, clip.length_beats * ppb);
@@ -863,8 +940,12 @@ function AudioClipBox({ clip, ppb, tempoBpm, peaks, missing, selected, onPointer
   const seconds = (clip.length_beats * 60) / (audio.source_bpm ?? tempoBpm);
   return (
     <div
-      className={`clip audio${selected ? " selected" : ""}${missing ? " missing" : ""}`}
-      style={{ left: clip.start_beats * ppb, width }}
+      className={`clip audio${selected ? " selected" : ""}${missing ? " missing" : ""}${clip.muted ? " muted-clip" : ""}`}
+      style={
+        lane
+          ? { left: clip.start_beats * ppb, width, top: lane.top + 2, height: lane.height - 4, bottom: "auto" }
+          : { left: clip.start_beats * ppb, width }
+      }
       onPointerDown={(e) => onPointerDown(e, "move")}
       title={
         missing
@@ -885,7 +966,7 @@ function AudioClipBox({ clip, ppb, tempoBpm, peaks, missing, selected, onPointer
           seconds={seconds}
           gain={gain}
           width={width}
-          height={TRACK_HEIGHT - 18}
+          height={(lane ? lane.height : TRACK_HEIGHT) - 18}
         />
       )}
       {audio.fade_in_seconds > 0 && (
@@ -893,6 +974,20 @@ function AudioClipBox({ clip, ppb, tempoBpm, peaks, missing, selected, onPointer
       )}
       {audio.fade_out_seconds > 0 && (
         <div className="clip-fade out" style={{ width: Math.min(width, secondsToPx(audio.fade_out_seconds)) }} aria-hidden />
+      )}
+      {onUse && (
+        <button
+          className="tiny take-use"
+          aria-label={`Use take ${clip.name}`}
+          title="Make this take the one heard here (the others are kept, muted)"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            onUse();
+          }}
+        >
+          ▶ Use
+        </button>
       )}
       <div className="clip-trim" onPointerDown={(e) => onPointerDown(e, "start")} title="Drag to trim the start" />
       <div className="clip-resize" onPointerDown={(e) => onPointerDown(e, "end")} title="Drag to trim the end" />
