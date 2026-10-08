@@ -148,6 +148,7 @@ mod tests {
     #[test]
     fn audio_clips_show_their_audio_instead_of_notes() {
         let c = Clip {
+            link: None,
             muted: false,
             swing: None,
             id: 9,

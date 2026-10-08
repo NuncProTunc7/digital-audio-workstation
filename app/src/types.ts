@@ -87,6 +87,8 @@ export interface Clip {
   swing?: Swing | null;
   /** Kept but silent (an unused take). */
   muted?: boolean;
+  /** Linked clips share this id and keep the same notes. */
+  link?: number | null;
 }
 
 export type AutomationTarget =
@@ -355,7 +357,9 @@ export type Command =
   | { command: "delete_snapshot"; snapshot_id: number }
   | { command: "restore_snapshot"; snapshot: Snapshot; index: number }
   | { command: "set_song_state"; song: SongState }
-  | { command: "duplicate_clip"; clip_id: number; start_beats: Opt<number> }
+  | { command: "duplicate_clip"; clip_id: number; start_beats: Opt<number>; linked?: boolean }
+  | { command: "link_clips"; clip_ids: number[] }
+  | { command: "unlink_clip"; clip_id: number }
   | { command: "add_notes"; clip_id: number; notes: NoteInput[] }
   | { command: "remove_notes"; clip_id: number; note_ids: number[] }
   | { command: "edit_notes"; clip_id: number; edits: NoteEdit[] }

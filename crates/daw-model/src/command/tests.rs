@@ -199,6 +199,7 @@ fn sample_commands(p: &Project) -> Vec<Command> {
             name: "Chorus".into(),
         },
         Command::DuplicateClip {
+            linked: false,
             clip_id: clip,
             start_beats: None,
         },
@@ -263,6 +264,7 @@ fn sample_commands(p: &Project) -> Vec<Command> {
             start_beats: 1.0,
         },
         Command::DuplicateClip {
+            linked: false,
             clip_id: AUDIO_CLIP,
             start_beats: None,
         },
@@ -1054,6 +1056,143 @@ fn comping_picks_the_heard_take_and_undoes() {
 }
 
 #[test]
+fn linked_clips_keep_the_same_notes_and_undo_exactly() {
+    let mut s = Session::new(fixture());
+    let original = clip_id(s.project());
+    s.execute(Command::DuplicateClip {
+        clip_id: original,
+        start_beats: Some(16.0),
+        linked: true,
+    })
+    .expect("duplicate linked");
+    let clips = &s.project().tracks[0].clips;
+    let copy = clips[1].id;
+    assert!(clips[0].link.is_some() && clips[0].link == clips[1].link);
+    let pitches = |p: &Project, i: usize| {
+        p.tracks[0].clips[i]
+            .notes
+            .iter()
+            .map(|n| n.pitch)
+            .collect::<Vec<_>>()
+    };
+    // Editing the copy changes the original too.
+    let before = s.project().clone();
+    let copy_note = s.project().tracks[0].clips[1].notes[0].id;
+    s.execute(Command::EditNotes {
+        clip_id: copy,
+        edits: vec![NoteEdit {
+            id: copy_note,
+            pitch: Some(72),
+            start_beats: None,
+            length_beats: None,
+            velocity: None,
+            chance: None,
+        }],
+    })
+    .expect("edit copy");
+    assert_eq!(pitches(s.project(), 0), pitches(s.project(), 1));
+    assert_eq!(pitches(s.project(), 0)[0], 72);
+    // ...and adding to the original adds to the copy.
+    s.execute(Command::AddNotes {
+        clip_id: original,
+        notes: vec![note(48, 4.0, 1.0)],
+    })
+    .expect("add");
+    assert_eq!(s.project().tracks[0].clips[1].notes.len(), 4);
+    s.execute(Command::TransposeNotes {
+        clip_id: original,
+        semitones: -12,
+        note_ids: None,
+    })
+    .expect("transpose");
+    assert_eq!(pitches(s.project(), 0), pitches(s.project(), 1));
+    // Undo puts both back exactly.
+    s.undo();
+    s.undo();
+    s.undo();
+    let mut restored = s.project().clone();
+    restored.next_id = before.next_id;
+    assert_eq!(restored, before);
+    // Redo brings the linked edits back to both clips.
+    for _ in 0..3 {
+        assert!(s.redo());
+    }
+    assert_eq!(pitches(s.project(), 0), [60, 52, 55, 36]);
+    assert_eq!(pitches(s.project(), 0), pitches(s.project(), 1));
+    for _ in 0..3 {
+        s.undo();
+    }
+
+    // Splitting a linked clip makes the pieces their own parts.
+    s.execute(Command::SplitClip {
+        clip_id: copy,
+        at_beats: 18.0,
+    })
+    .expect("split");
+    let p = s.project();
+    assert!(
+        p.tracks[0]
+            .clips
+            .iter()
+            .filter(|c| c.start_beats >= 16.0)
+            .all(|c| c.link.is_none())
+    );
+    s.undo();
+    assert_eq!(
+        s.project().tracks[0]
+            .clips
+            .iter()
+            .filter(|c| c.link.is_some())
+            .count(),
+        2
+    );
+
+    // Unlink, and link again (the second takes the first one's notes).
+    s.execute(Command::UnlinkClip { clip_id: copy })
+        .expect("unlink");
+    s.execute(Command::AddNotes {
+        clip_id: copy,
+        notes: vec![note(30, 0.0, 1.0)],
+    })
+    .expect("independent edit");
+    assert_ne!(pitches(s.project(), 0), pitches(s.project(), 1));
+    s.execute(Command::LinkClips {
+        clip_ids: vec![original, copy],
+    })
+    .expect("link");
+    assert_eq!(pitches(s.project(), 0), pitches(s.project(), 1));
+    for command in [
+        Command::LinkClips {
+            clip_ids: vec![original, copy],
+        },
+        Command::UnlinkClip { clip_id: copy },
+        Command::DuplicateClip {
+            clip_id: original,
+            start_beats: None,
+            linked: true,
+        },
+    ] {
+        let json = serde_json::to_string(&command).expect("json");
+        assert_eq!(
+            serde_json::from_str::<Command>(&json).expect("back"),
+            command
+        );
+    }
+    let file = crate::file::project_to_json(s.project());
+    assert_eq!(
+        &crate::file::project_from_json(&file).expect("load"),
+        s.project()
+    );
+    // Audio clips can't be linked.
+    assert!(
+        s.execute(Command::LinkClips {
+            clip_ids: vec![original, AUDIO_CLIP],
+        })
+        .is_err()
+    );
+}
+
+#[test]
 fn swing_slider_drag_is_one_undo_step() {
     let mut s = Session::new(fixture());
     let clip = clip_id(s.project());
@@ -1337,6 +1476,7 @@ fn duplicate_places_copy_after_original_with_new_ids() {
     let mut p = fixture();
     let clip = clip_id(&p);
     Command::DuplicateClip {
+        linked: false,
         clip_id: clip,
         start_beats: None,
     }

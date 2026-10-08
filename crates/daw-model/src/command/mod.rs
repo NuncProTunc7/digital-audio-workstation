@@ -8,6 +8,7 @@ mod chords;
 mod clips;
 mod effects;
 mod instruments;
+mod links;
 pub use buses::MAX_BUSES;
 mod markers;
 mod notes;
@@ -378,6 +379,25 @@ pub enum Command {
         clip_id: ClipId,
         /// Where the copy starts; defaults to the original's end.
         start_beats: Option<f64>,
+        /// Note clips: keep the copy linked to the original, so editing the
+        /// notes of either changes both (default false: an independent copy).
+        #[serde(default)]
+        linked: bool,
+    },
+    /// Link note clips so they keep the same notes and swing: they all take
+    /// the first clip's notes now, and editing any of them later changes all
+    /// (e.g. one melody used in the quiet, normal and boss sections).
+    LinkClips { clip_ids: Vec<ClipId> },
+    /// Make a linked clip independent again (its notes stay as they are).
+    UnlinkClip { clip_id: ClipId },
+    /// Set a clip's link group directly (used by undo).
+    SetClipLink { clip_id: ClipId, link: Option<Id> },
+    /// Replace a clip's notes and swing wholesale (used by undo of linked
+    /// edits).
+    SetClipNotes {
+        clip_id: ClipId,
+        notes: Vec<crate::project::Note>,
+        swing: Option<crate::project::Swing>,
     },
 
     /// Split a clip in two at a point on the timeline. Works for note and
@@ -584,6 +604,42 @@ pub(crate) fn invalid(what: &str, reason: impl Into<String>) -> CommandError {
 impl Command {
     /// Applies the edit and returns the Command that reverses it.
     pub fn apply(self, project: &mut Project) -> Result<Command, CommandError> {
+        let edited = links::note_target(&self);
+        let cut = links::cut_target(&self)
+            .filter(|id| project.clip(*id).is_some_and(|(_, c)| c.link.is_some()));
+        let first_new_id = project.next_id;
+        let inverse = self.apply_one(project)?;
+        // Linked clips follow the one that was edited. Undo puts the
+        // edited clip back first (which re-copies), then the partners
+        // exactly as they were.
+        if let Some(clip_id) = edited {
+            let mut undo = links::propagate(project, clip_id);
+            if !undo.is_empty() {
+                undo.insert(0, inverse);
+                return Ok(Command::Batch { commands: undo });
+            }
+        }
+        // A linked clip that is split or trimmed becomes its own part (both
+        // halves, after a split).
+        if let Some(clip_id) = cut {
+            // The cut clip, and the new half a split made.
+            let pieces: Vec<ClipId> = project
+                .tracks
+                .iter()
+                .flat_map(|t| &t.clips)
+                .filter(|c| c.link.is_some() && (c.id == clip_id || c.id >= first_new_id))
+                .map(|c| c.id)
+                .collect();
+            let mut undo = vec![inverse];
+            for id in pieces {
+                undo.insert(0, links::set_link(project, id, None)?);
+            }
+            return Ok(Command::Batch { commands: undo });
+        }
+        Ok(inverse)
+    }
+
+    fn apply_one(self, project: &mut Project) -> Result<Command, CommandError> {
         use Command as C;
         match self {
             C::RenameProject { name } => song::rename(project, name),
@@ -799,7 +855,50 @@ impl Command {
             C::DuplicateClip {
                 clip_id,
                 start_beats,
-            } => clips::duplicate(project, clip_id, start_beats),
+                linked,
+            } => {
+                let before = project.next_id;
+                let inverse = clips::duplicate(project, clip_id, start_beats)?;
+                if !linked || project.clip(clip_id).is_some_and(|(_, c)| c.is_audio()) {
+                    return Ok(inverse);
+                }
+                // The copy is the newest clip; link the two.
+                let copy = project
+                    .tracks
+                    .iter()
+                    .flat_map(|t| &t.clips)
+                    .filter(|c| c.id >= before)
+                    .map(|c| c.id)
+                    .max()
+                    .ok_or(CommandError::UnknownClip(clip_id))?;
+                match links::link(project, vec![clip_id, copy]) {
+                    Ok(Command::Batch { commands }) => {
+                        let mut undo = commands;
+                        undo.push(inverse);
+                        Ok(C::Batch { commands: undo })
+                    }
+                    Ok(other) => Ok(C::Batch {
+                        commands: vec![other, inverse],
+                    }),
+                    Err(e) => {
+                        let _ = inverse.apply(project);
+                        Err(e)
+                    }
+                }
+            }
+            C::LinkClips { clip_ids } => links::link(project, clip_ids),
+            C::UnlinkClip { clip_id } => {
+                if project.clip(clip_id).is_some_and(|(_, c)| c.link.is_none()) {
+                    return Err(invalid("clip", "isn't linked"));
+                }
+                links::set_link(project, clip_id, None)
+            }
+            C::SetClipLink { clip_id, link } => links::set_link(project, clip_id, link),
+            C::SetClipNotes {
+                clip_id,
+                notes,
+                swing,
+            } => links::set_notes(project, clip_id, notes, swing),
 
             C::SplitClip { clip_id, at_beats } => audio::split(project, clip_id, at_beats),
             C::TrimClipStart {

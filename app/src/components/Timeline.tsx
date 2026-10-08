@@ -887,7 +887,10 @@ function ClipBox({ clip, ppb, selected, drums, onPointerDown, onDoubleClick }: C
       title={`${clip.name} — double-click to edit notes`}
       data-clip={clip.id}
     >
-      <span className="clip-name">{clip.name}</span>
+      <span className="clip-name">
+        {clip.link ? "🔗 " : ""}
+        {clip.name}
+      </span>
       <div className="clip-notes">
         {clip.notes.slice(0, 600).map((n) =>
           n.start_beats < clip.length_beats ? (

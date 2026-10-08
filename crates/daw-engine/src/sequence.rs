@@ -175,6 +175,7 @@ mod tests {
     #[test]
     fn offsets_by_clip_start_and_cuts_at_clip_end() {
         let t = track_with(vec![Clip {
+            link: None,
             muted: false,
             swing: None,
             id: 10,
@@ -208,6 +209,7 @@ mod tests {
     #[test]
     fn note_off_sorts_before_note_on_at_the_same_beat() {
         let t = track_with(vec![Clip {
+            link: None,
             muted: false,
             swing: None,
             id: 10,

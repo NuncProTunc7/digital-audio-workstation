@@ -42,6 +42,7 @@ pub(super) fn create(
     sort_notes(&mut notes);
     let id = project.allocate_id();
     let clip = Clip {
+        link: None,
         muted: false,
         id,
         name,

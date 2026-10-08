@@ -272,6 +272,20 @@ export default function PianoRoll(props: PianoRollProps) {
           />
           <span className="param-value">{selectedNotes.length > 0 ? velocity : "–"}</span>
         </label>
+        {clip.link && (
+          <span className="linked-note" title="Editing these notes changes every linked copy too">
+            🔗 Linked
+            <button
+              className="small"
+              onClick={() =>
+                void props.onCommand({ command: "unlink_clip", clip_id: clip.id }).then(props.onEndGesture)
+              }
+              title="Make this clip independent: later edits only change it"
+            >
+              Unlink
+            </button>
+          </span>
+        )}
         {scale && props.songKey && (
           <span className="muted" title="Rows in the key are lighter; notes of the chord playing at that moment are marked">
             In {keyName(props.songKey)}

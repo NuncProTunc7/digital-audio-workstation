@@ -589,8 +589,14 @@ export default function App({ backend }: AppProps) {
           e.preventDefault();
           void newFile();
         } else if (key === "d" && selectedClip) {
+          // Ctrl+Shift+D: a linked copy that keeps the same notes.
           e.preventDefault();
-          void execute({ command: "duplicate_clip", clip_id: selectedClip.id, start_beats: null }).then(endGesture);
+          void execute({
+            command: "duplicate_clip",
+            clip_id: selectedClip.id,
+            start_beats: null,
+            linked: e.shiftKey && !selectedClip.audio,
+          }).then(endGesture);
         } else if (key === "e" && selectedClip) {
           // Split the selected clip at the playhead.
           e.preventDefault();

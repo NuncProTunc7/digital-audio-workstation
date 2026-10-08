@@ -680,6 +680,51 @@ describe("Sidechain", () => {
   });
 });
 
+describe("Linked clips", () => {
+  it("duplicates a clip linked, edits both at once, and unlinks", async () => {
+    const backend = createPreviewBackend();
+    await backend.execute({
+      command: "create_clip",
+      track_id: 1,
+      start_beats: 0,
+      length_beats: 4,
+      name: "Theme",
+      notes: [{ pitch: 60, start_beats: 0, length_beats: 1, velocity: 100 }],
+    });
+    await renderApp(backend);
+    // Select the clip, then Ctrl+Shift+D.
+    fireEvent.pointerDown(screen.getByTitle(/^Theme/), { button: 0, clientX: 5 });
+    fireEvent.pointerUp(document.querySelector(".timeline") as HTMLElement);
+    await act(async () => {
+      fireEvent.keyDown(window, { key: "d", code: "KeyD", ctrlKey: true, shiftKey: true });
+    });
+    let clips = (await backend.getProject()).project.tracks[0].clips;
+    expect(clips.length).toBe(2);
+    expect(clips[0].link).toBeTruthy();
+    expect(clips[1].link).toBe(clips[0].link);
+    // A note added to the copy appears in the original.
+    await act(async () => {
+      await backend.execute({
+        command: "add_notes",
+        clip_id: clips[1].id,
+        notes: [{ pitch: 67, start_beats: 2, length_beats: 1, velocity: 100 }],
+      });
+    });
+    clips = (await backend.getProject()).project.tracks[0].clips;
+    expect(clips[0].notes.map((n) => n.pitch)).toEqual([60, 67]);
+    // Open the copy: it says it's linked, and can be unlinked.
+    await act(async () => {
+      fireEvent.doubleClick(screen.getAllByTitle(/^Theme/)[1]);
+    });
+    expect(screen.getByText(/🔗 Linked/)).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Unlink" }));
+    });
+    clips = (await backend.getProject()).project.tracks[0].clips;
+    expect(clips[1].link).toBeNull();
+  });
+});
+
 describe("Takes", () => {
   it("shows takes on lanes, splits them, and picks the heard one", async () => {
     const backend = createPreviewBackend();

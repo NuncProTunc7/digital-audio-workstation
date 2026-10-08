@@ -17,6 +17,8 @@ const HIDDEN_COMMANDS: &[&str] = &[
     "restore_bus",
     "restore_chord",
     "set_song_state",
+    "set_clip_link",
+    "set_clip_notes",
 ];
 
 /// Commands whose tool does more than the Command (freeze_track renders

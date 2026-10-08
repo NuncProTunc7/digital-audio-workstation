@@ -426,14 +426,31 @@ export function applyCommand(project: Project, command: Command): Project {
     }
     case "duplicate_clip": {
       const [t, c] = clipOf(command.clip_id);
+      const linked = Boolean(command.linked) && !c.audio;
+      if (linked && !c.link) c.link = id();
       t.clips.push({
         ...structuredClone(c),
         id: id(),
         start_beats: command.start_beats ?? c.start_beats + c.length_beats,
         notes: c.notes.map((n) => ({ ...n, id: id() })),
+        link: linked ? c.link : null,
       });
       break;
     }
+    case "link_clips": {
+      const [, first] = clipOf(command.clip_ids[0]);
+      const group = first.link ?? id();
+      for (const cid of command.clip_ids) {
+        const [, c] = clipOf(cid);
+        if (c.audio) throw new Error("only note clips can be linked");
+        c.link = group;
+        if (c !== first) c.notes = first.notes.map((n) => ({ ...n, id: id() }));
+      }
+      break;
+    }
+    case "unlink_clip":
+      clipOf(command.clip_id)[1].link = null;
+      break;
     case "add_notes": {
       const [, c] = clipOf(command.clip_id);
       c.notes.push(...toNotes(command.notes));
@@ -585,6 +602,29 @@ export function applyCommand(project: Project, command: Command): Project {
       let next = p;
       for (const c of command.commands) next = applyCommand(next, c);
       return next;
+    }
+  }
+  // Linked clips follow the one whose notes changed.
+  const noteCommands = [
+    "add_notes",
+    "remove_notes",
+    "edit_notes",
+    "quantize_notes",
+    "transpose_notes",
+    "humanize_notes",
+    "set_clip_swing",
+  ];
+  if (noteCommands.includes(command.command) && "clip_id" in command) {
+    const [, src] = clipOf(command.clip_id);
+    if (src.link) {
+      for (const t of p.tracks) {
+        for (const c of t.clips) {
+          if (c.id !== src.id && c.link === src.link) {
+            c.notes = src.notes.map((n) => ({ ...n, id: id() }));
+            c.swing = src.swing;
+          }
+        }
+      }
     }
   }
   return p;

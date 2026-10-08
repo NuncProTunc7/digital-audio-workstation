@@ -56,6 +56,7 @@ Everything, including what Claude does, can be undone: **Ctrl+Z** undo, **Ctrl+Y
 | Ctrl+Z / Ctrl+Y | Undo / redo |
 | Ctrl+S, Ctrl+Shift+S, Ctrl+O, Ctrl+N | Save, save as, open, new |
 | Ctrl+D | Duplicate the selected clip |
+| Ctrl+Shift+D | Duplicate it *linked*: both copies keep the same notes |
 | Ctrl+E | Split the selected clip at the playhead |
 | Ctrl+A | Select all notes (in the piano roll) |
 | A W S E D F T G Y H U J K O L P ; ' | Play notes, like a piano (A = C, W = C#, S = D...) |

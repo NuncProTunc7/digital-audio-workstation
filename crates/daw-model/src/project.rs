@@ -602,6 +602,10 @@ pub struct Clip {
     /// Kept but silent (an unused take, or a part switched off).
     #[serde(default, skip_serializing_if = "is_false")]
     pub muted: bool,
+    /// Linked clips share this group id and keep the same notes: editing
+    /// one edits them all.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub link: Option<Id>,
 }
 
 fn is_false(b: &bool) -> bool {
