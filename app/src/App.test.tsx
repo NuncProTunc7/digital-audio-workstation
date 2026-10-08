@@ -680,6 +680,40 @@ describe("Sidechain", () => {
   });
 });
 
+describe("Sound browser", () => {
+  it("searches, tries, favorites, and adds a track with a sound", async () => {
+    const backend = spyBackend();
+    await renderApp(backend);
+    fireEvent.click(screen.getByRole("tab", { name: "Sounds" }));
+    fireEvent.change(screen.getByLabelText("Search sounds"), { target: { value: "bass" } });
+    const names = () => [...document.querySelectorAll(".sound strong")].map((n) => n.textContent);
+    expect(names()).toEqual(["Sub Bass", "Fat Bass", "Acid Bass"]);
+    // Keys (a synth) is selected: synth sounds can be tried on it.
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole("button", { name: "Try on Keys" })[2]);
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    expect(backend.execute).toHaveBeenCalledWith({ command: "load_preset", track_id: 1, preset: "Acid Bass" });
+    expect(backend.noteOn).toHaveBeenCalled();
+    // Favorites, then only favorites.
+    fireEvent.change(screen.getByLabelText("Search sounds"), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "epic" }));
+    expect(names()).toEqual(["Brass Stab", "Boomy Kit"]);
+    fireEvent.click(screen.getByRole("button", { name: "Favorite Boomy Kit" }));
+    fireEvent.click(screen.getByRole("button", { name: "epic" }));
+    fireEvent.click(screen.getByRole("button", { name: "★ Favorites" }));
+    expect(names()).toEqual(["Boomy Kit"]);
+    // A drum kit on a synth track: offered as a new track.
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "+ New track" }));
+    });
+    expect(backend.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ command: "add_track", instrument: "drums", preset: "Boomy Kit" }),
+    );
+    expect((await backend.getProject()).project.tracks.length).toBe(4);
+  });
+});
+
 describe("Your presets", () => {
   it("saves a sound and loads it on another track", async () => {
     const backend = await renderApp();

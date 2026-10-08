@@ -13,6 +13,7 @@ import PianoRoll from "./components/PianoRoll";
 import StepSequencer from "./components/StepSequencer";
 import Versions from "./components/Versions";
 import GamePreview from "./components/GamePreview";
+import SoundBrowser from "./components/SoundBrowser";
 import SheetMusic from "./components/SheetMusic";
 import StatusBar from "./components/StatusBar";
 import Timeline from "./components/Timeline";
@@ -34,6 +35,7 @@ import type {
   ClaudeStatus,
   Command,
   Comparison,
+  InstrumentKind,
   Mode,
   PreviewPlan,
   UserPreset,
@@ -50,7 +52,15 @@ const STATUS_POLL_MS = 60;
 const CLAUDE_POLL_MS = 2000;
 const INPUT_POLL_MS = 70;
 const TOAST_MS = 4000;
-type Tab = "instrument" | "pianoroll" | "sheet" | "mixer";
+type Tab = "instrument" | "pianoroll" | "sheet" | "mixer" | "sounds";
+
+/** A short phrase that shows off a sound: (note, start s, length s). */
+function phraseFor(kind: InstrumentKind, name: string): [number, number, number][] {
+  if (kind === "drums") return [[36, 0, 0.2], [42, 0.25, 0.1], [38, 0.5, 0.2], [42, 0.75, 0.1], [36, 1, 0.2]];
+  if (/bass/i.test(name)) return [[36, 0, 0.35], [43, 0.4, 0.35], [36, 0.8, 0.6]];
+  if (/pad|keys|sample/i.test(name)) return [[60, 0, 1.4], [64, 0, 1.4], [67, 0, 1.4]];
+  return [[60, 0, 0.2], [64, 0.22, 0.2], [67, 0.44, 0.2], [72, 0.66, 0.5]];
+}
 const SHEET_REFRESH_MS = 300;
 
 interface AppProps {
@@ -417,6 +427,17 @@ export default function App({ backend }: AppProps) {
       markNote(note, false);
     },
     [backend, selectedTrack, markNote],
+  );
+
+  /** Plays a short phrase on a track, to hear its sound. */
+  const playPhrase = useCallback(
+    (trackId: number, kind: InstrumentKind, name: string) => {
+      for (const [note, at, length] of phraseFor(kind, name)) {
+        window.setTimeout(() => void backend.noteOn(trackId, note, 0.8), at * 1000);
+        window.setTimeout(() => void backend.noteOff(trackId, note), (at + length) * 1000);
+      }
+    },
+    [backend],
   );
 
   const audition = useCallback(
@@ -997,6 +1018,7 @@ export default function App({ backend }: AppProps) {
               ["pianoroll", selectedClip && !selectedClip.audio ? `Piano roll · ${selectedClip.name}` : "Piano roll"],
               ["sheet", "Sheet music"],
               ["mixer", "Mixer"],
+              ["sounds", "Sounds"],
             ] as [Tab, string][]
           ).map(([id, label]) => (
             <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? "tab active" : "tab"} onClick={() => setTab(id)}>
@@ -1173,6 +1195,45 @@ export default function App({ backend }: AppProps) {
                 <SheetMusic xml={sheetXml} zoom={sheetZoom} />
               )}
             </div>
+          )}
+
+          {tab === "sounds" && (
+            <SoundBrowser
+              catalog={catalog}
+              userPresets={userPresets}
+              track={selectedTrack}
+              onTry={(s) => {
+                const trackId = selectedTrack.id;
+                const loaded = s.mine
+                  ? run(() => backend.loadUserPreset(trackId, s.name)).then((v) => {
+                      applyView(v);
+                      return v;
+                    })
+                  : execute({ command: "load_preset", track_id: trackId, preset: s.name });
+                void loaded.then((done) => {
+                  endGesture();
+                  if (done) playPhrase(trackId, s.kind, s.name);
+                });
+              }}
+              onNewTrack={(s) => {
+                const before = new Set(project.tracks.map((t) => t.id));
+                void execute({
+                  command: "add_track",
+                  name: s.name,
+                  instrument: s.kind,
+                  preset: s.mine ? null : s.name,
+                  index: null,
+                }).then(async (p) => {
+                  const created = p?.tracks.find((t) => !before.has(t.id));
+                  if (created && s.mine) applyView(await run(() => backend.loadUserPreset(created.id, s.name)));
+                  endGesture();
+                  if (created) {
+                    void selectTrack(created.id);
+                    playPhrase(created.id, s.kind, s.name);
+                  }
+                });
+              }}
+            />
           )}
 
           {tab === "mixer" && (

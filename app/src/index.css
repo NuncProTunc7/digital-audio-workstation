@@ -1741,6 +1741,53 @@ button.tiny.power.on {
   background: rgba(94, 214, 196, 0.06);
 }
 
+.sound-browser {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.sound-browser input[type="search"] {
+  min-width: 240px;
+}
+
+.sound-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.sound-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px 10px;
+  list-style: none;
+}
+
+.sound {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.sound-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.sound-description {
+  font-size: 12px;
+}
+
+.favorite.on {
+  color: var(--accent);
+}
+
 .findings {
   margin: 8px 0;
   padding: 0;
