@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import type { SamplePackStatus, Track } from "../types";
+import { useCallback, useEffect, useState } from "react";
+import type { LibraryPack, SamplePackStatus, Track } from "../types";
 
 const POLL_MS = 500;
 
@@ -7,6 +7,95 @@ interface SamplePackProps {
   track: Track;
   onChoose: () => void;
   status: (path: string) => Promise<SamplePackStatus>;
+  /** The free instrument library; omitted where downloads aren't possible. */
+  library?: () => Promise<LibraryPack[]>;
+  onDownload?: (id: string) => Promise<void>;
+  /** Load a library instrument's program (.sfz path) on this track. */
+  onUse?: (path: string) => void;
+}
+
+function jobText(pack: LibraryPack): string | null {
+  const job = pack.job;
+  if (!job) return null;
+  if (job.state === "unpacking") return "Unpacking…";
+  if (job.state === "failed") return null;
+  const total = job.total ?? pack.megabytes * 1_000_000;
+  return `Downloading… ${Math.min(99, Math.round((job.bytes / total) * 100))}%`;
+}
+
+/** Free instruments to download and use, from their publishers. */
+function Library({
+  library,
+  onDownload,
+  onUse,
+}: {
+  library: () => Promise<LibraryPack[]>;
+  onDownload: (id: string) => Promise<void>;
+  onUse: (path: string) => void;
+}) {
+  const [packs, setPacks] = useState<LibraryPack[] | null>(null);
+  const refresh = useCallback(() => {
+    void library()
+      .then(setPacks)
+      .catch(() => {});
+  }, [library]);
+  useEffect(refresh, [refresh]);
+  // Watch downloads (Claude may have started one too).
+  const busy = packs?.some((p) => p.job && p.job.state !== "failed") ?? false;
+  useEffect(() => {
+    if (!busy) return;
+    const timer = window.setInterval(refresh, 1000);
+    return () => window.clearInterval(timer);
+  }, [busy, refresh]);
+
+  if (!packs) return null;
+  return (
+    <details className="library">
+      <summary>Free instruments: pianos, strings, brass, woodwinds</summary>
+      <ul>
+        {packs.map((p) => {
+          const progress = jobText(p);
+          return (
+            <li key={p.id}>
+              <div>
+                <strong>{p.name}</strong> <span className="muted">{p.description}</span>
+              </div>
+              {p.installed ? (
+                <div className="library-programs">
+                  {p.installed.map(([name, path]) => (
+                    <button key={path} onClick={() => onUse(path)} title={`Play ${name} on this track`}>
+                      Use {name}
+                    </button>
+                  ))}
+                </div>
+              ) : progress ? (
+                <div className="muted" role="status">
+                  {progress}
+                </div>
+              ) : (
+                <div className="library-programs">
+                  <button
+                    onClick={() => void onDownload(p.id).then(refresh)}
+                    title="Download it from its publisher (it stays on this computer for every song)"
+                  >
+                    {p.job?.state === "failed" ? "Try again" : "Download"} ({p.megabytes} MB)
+                  </button>
+                  {p.job?.state === "failed" && (
+                    <span className="error" role="alert">
+                      {p.job.error}
+                    </span>
+                  )}
+                </div>
+              )}
+              <div className="muted hint">
+                {p.license.startsWith("CC0") ? "Free to use, no credit needed." : `Credit in your game: ${p.credit}`}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </details>
+  );
 }
 
 function fileName(path: string): string {
@@ -14,7 +103,7 @@ function fileName(path: string): string {
 }
 
 /** Which sample pack a sampler track plays, and whether it has loaded. */
-export default function SamplePack({ track, onChoose, status }: SamplePackProps) {
+export default function SamplePack({ track, onChoose, status, library, onDownload, onUse }: SamplePackProps) {
   const path = track.instrument.sample_pack ?? null;
   const [state, setState] = useState<SamplePackStatus | null>(null);
 
@@ -63,11 +152,9 @@ export default function SamplePack({ track, onChoose, status }: SamplePackProps)
       ) : (
         <p className="muted">No sample pack loaded yet: this track is silent.</p>
       )}
-      <button onClick={onChoose}>{path ? "Choose another…" : "Load sample pack…"}</button>
-      <p className="muted hint">
-        Use any SFZ pack. For a free concert grand, download the Salamander Grand Piano (SFZ + FLAC) from
-        freepats.zenvoid.org, unzip it, and choose its .sfz file.
-      </p>
+      {library && onDownload && onUse && <Library library={library} onDownload={onDownload} onUse={onUse} />}
+      <button onClick={onChoose}>{path ? "Choose another file…" : "Load sample pack file…"}</button>
+      <p className="muted hint">Or use any SFZ pack you have: unzip it and choose its .sfz file.</p>
     </fieldset>
   );
 }

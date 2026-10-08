@@ -25,6 +25,7 @@ import type {
   RecordingDelay,
   Recoverable,
   SamplePackStatus,
+  LibraryPack,
   TransportStatus,
 } from "./types";
 
@@ -155,6 +156,10 @@ export interface Backend {
   /** Shows an open dialog for an .sfz sample pack; null if cancelled. */
   pickSamplePack(): Promise<string | null>;
   samplePackStatus(path: string): Promise<SamplePackStatus>;
+  /** Free instruments the app can download, and which are installed. */
+  sampleLibrary(): Promise<LibraryPack[]>;
+  /** Starts downloading a library instrument in the background. */
+  downloadSamplePack(id: string): Promise<void>;
   /** Shows a folder picker; null if cancelled. */
   pickFolder(title: string): Promise<string | null>;
   exportGodot(options: GodotOptions): Promise<ExportReport>;
@@ -284,6 +289,8 @@ export const tauriBackend: Backend = {
     return typeof picked === "string" ? picked : null;
   },
   samplePackStatus: (path) => invoke("sample_pack_status", { path }),
+  sampleLibrary: () => invoke("sample_library"),
+  downloadSamplePack: (id) => invoke("download_sample_pack", { id }),
   pickFolder: async (title) => {
     const picked = await open({ directory: true, multiple: false, title });
     return typeof picked === "string" ? picked : null;

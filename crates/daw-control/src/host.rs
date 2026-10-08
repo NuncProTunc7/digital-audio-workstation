@@ -58,6 +58,10 @@ pub trait Host: Send + Sync {
     fn presets_path(&self) -> PathBuf {
         crate::presets::presets_path()
     }
+    /// Where downloaded library instruments are kept.
+    fn library_dir(&self) -> PathBuf {
+        crate::library::library_dir()
+    }
     /// Bars of clicks before recording starts (0 = none).
     fn count_in_bars(&self) -> u32 {
         0
@@ -354,6 +358,20 @@ fn handle_inner<H: Host>(host: &H, request: Request) -> Result<Value, String> {
             load_user_preset(host, track_id, &name)?;
             host.project_changed(&format!("Claude: load preset {name}"));
             Ok(json!({ "track_id": track_id, "preset": name }))
+        }
+        Request::SampleLibrary => {
+            let dir = host.library_dir();
+            let session = host.session()?;
+            Ok(json!({
+                "instruments": crate::library::list(&dir),
+                "credits_this_song_needs": crate::library::credits_for(session.project(), &dir),
+            }))
+        }
+        Request::DownloadSamplePack { id } => {
+            crate::library::start_download(&host.library_dir(), &id)?;
+            Ok(
+                json!({ "downloading": id, "check": "call sample_library until it shows installed programs" }),
+            )
         }
         Request::SetCountIn { bars } => {
             let bars = host.set_count_in_bars(bars)?;
@@ -1063,6 +1081,9 @@ pub(crate) mod tests {
         fn presets_path(&self) -> PathBuf {
             self.presets.clone()
         }
+        fn library_dir(&self) -> PathBuf {
+            self.presets.with_file_name("library")
+        }
         fn note_claude_edit(&self) -> Option<Option<std::time::Instant>> {
             if !self.keep_versions {
                 return None;
@@ -1168,6 +1189,20 @@ pub(crate) mod tests {
                 .into_result()
                 .is_err()
         );
+    }
+
+    #[test]
+    fn claude_sees_the_sample_library() {
+        let host = TestHost::default();
+        let listed = ok(handle(&host, Request::SampleLibrary));
+        let instruments = listed["instruments"].as_array().expect("list");
+        assert!(
+            instruments
+                .iter()
+                .any(|i| i["id"] == "cello" && i["installed"].is_null())
+        );
+        assert_eq!(listed["credits_this_song_needs"], json!([]));
+        assert!(!handle(&host, Request::DownloadSamplePack { id: "kazoo".into() }).ok);
     }
 
     #[test]

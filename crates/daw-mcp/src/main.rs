@@ -55,9 +55,10 @@ to turn a photo or PDF of a score into tracks, read it yourself, write MusicXML,
 it to import_musicxml as text. MIDI files: import_midi / export_midi.
 - Automation: add_automation_lane moves volume, pan, or any instrument/effect setting \
 over time (fade-ins, filter sweeps, swelling reverb); points are (beats, value).
-- Sampler tracks (instrument \"sampler\") play an SFZ sample pack the user downloaded \
-(e.g. the Salamander Grand Piano); load one with load_sample_pack and check \
-sample_pack_status in get_track. Audio clips can follow tempo changes with set_clip_tempo.
+- Sampler tracks (instrument \"sampler\") play an SFZ sample pack: real pianos, \
+strings, brass, woodwinds. sample_library lists free ones the app can download \
+(download_sample_pack); load one with load_sample_pack and check sample_pack_status \
+in get_track. Audio clips can follow tempo changes with set_clip_tempo.
 - Games: export_godot writes seamless loops (plus optional stems and adaptive-music \
 resources) straight into the user's Godot project, already set to loop.
 - Recording timing: if the user's takes land late (common with Bluetooth headsets), run \

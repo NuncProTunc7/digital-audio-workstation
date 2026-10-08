@@ -231,6 +231,26 @@ export interface Snapshot {
 export type CompareSide = "current" | "version";
 
 /** A sound the user saved under a name. */
+/** A download in progress, or the last one's failure. */
+export type LibraryJob =
+  | { state: "downloading"; bytes: number; total: number | null }
+  | { state: "unpacking" }
+  | { state: "failed"; error: string };
+
+/** A free instrument the app can download (crates/daw-control/src/library.rs). */
+export interface LibraryPack {
+  id: string;
+  name: string;
+  description: string;
+  license: string;
+  credit: string;
+  /** (name, .sfz path) once downloaded. */
+  programs: [string, string][];
+  megabytes: number;
+  installed: [string, string][] | null;
+  job: LibraryJob | null;
+}
+
 export interface UserPreset {
   name: string;
   kind: InstrumentKind;

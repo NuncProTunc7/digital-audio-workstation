@@ -34,6 +34,10 @@ How Claude writes music in Nunc Pro Tune. The user can read it too: it explains 
 | Boss | 150–180 | Harmonic minor | Brass Stab, Bright Lead, Fat Bass, Boomy Kit | Stabs on off-beats, toms, Distortion on bass |
 | Menu / title | 70–100 | Major or Dorian | Soft Pad, Pluck, Sampler piano | Calm, loops cleanly, little low end |
 | Victory jingle | 120–140 | Major | Bright Lead, Brass Stab | 2–4 bars, ends on the tonic, not looped |
+| Orchestral exploration | 80–110 | Major or Lydian | Library cello (bowed), double bass (pizzicato), flute, Soft Pad | Cello melody, flute answering it, plucked bass on roots, pad for air; Reverb bus |
+| Epic boss (orchestral) | 140–170 | Harmonic minor | Library war tuba, cello (bowed), double bass (arco), Boomy Kit | Tuba and bass in octaves on driving 8ths, cello ostinato, toms; Compressor + Reverb |
+
+Library instruments (sample_library) must be downloaded first: call `download_sample_pack`, tell the user how big it is, poll `sample_library` until `installed` lists its programs, then `add_track` a sampler and `load_sample_pack` with a program's path. Keep them in their natural ranges (cello C2–A5, double bass E1–G3, flute C4–C7, tuba D1–F4). Mention the credit line for CC-BY packs.
 
 Progressions that work: I–V–vi–IV (C G Am F), vi–IV–I–V (Am F C G), i–VI–III–VII (Am F C G), i–iv–v (Am Dm Em), i–♭VII–♭VI–♭VII (Am G F G).
 

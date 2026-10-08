@@ -815,6 +815,18 @@ fn audition_seam(
     Ok(())
 }
 
+/// Free instruments the app can download, and which are installed.
+#[tauri::command]
+fn sample_library() -> Vec<daw_control::library::PackState> {
+    daw_control::library::list(&daw_control::library::library_dir())
+}
+
+/// Starts downloading a library instrument (watch it with sample_library).
+#[tauri::command]
+fn download_sample_pack(id: String) -> Result<(), String> {
+    daw_control::library::start_download(&daw_control::library::library_dir(), &id)
+}
+
 /// The user's own presets.
 #[tauri::command]
 fn user_presets(state: State<'_, AppState>) -> Vec<daw_control::presets::UserPreset> {
@@ -1519,6 +1531,8 @@ pub fn run() {
             audition_seam,
             freeze_track,
             user_presets,
+            sample_library,
+            download_sample_pack,
             save_preset,
             delete_preset,
             load_user_preset,

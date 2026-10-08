@@ -262,6 +262,21 @@ fn extra_tools() -> Vec<ToolDef> {
             false,
         ),
         tool(
+            "sample_library",
+            "Free sampled instruments the app can download for sampler tracks: Salamander and Headroom grand pianos, cello, double bass, flute, war tuba. Each entry has id, name, description, license, credit, megabytes, installed (the playable programs as [name, .sfz path] once downloaded, else null) and job (download progress, unpacking, or a failure). Also lists the credit lines this song needs (CC-BY packs must be credited in the game). To use one: download_sample_pack, wait until installed, then add a sampler track and load_sample_pack with a program's path.",
+            object_schema(json!({}), &[]),
+            true,
+        ),
+        tool(
+            "download_sample_pack",
+            "Start downloading a library instrument (id from sample_library) from its publisher's GitHub, in the background. Big packs take minutes (the Salamander piano is about 750 MB): tell the user, then check sample_library for progress. Does nothing if it is already installed or downloading.",
+            object_schema(
+                json!({ "id": { "type": "string", "description": "e.g. \"cello\"" } }),
+                &["id"],
+            ),
+            false,
+        ),
+        tool(
             "set_count_in",
             "Set how many bars of metronome clicks play before recording starts (0 = none, 1 or 2 bars), so the performer can come in on the first beat. Applies to recording audio and notes, by the user or with record_audio. The song stays silent during the count-in. Saved on this computer, not in the song.",
             object_schema(
@@ -488,6 +503,10 @@ pub fn to_request(name: &str, args: Map<String, Value>) -> Result<Request, Strin
         "load_user_preset" => Request::LoadUserPreset {
             track_id: get_id("track_id")?,
             name: get_str("name").ok_or("name is required")?,
+        },
+        "sample_library" => Request::SampleLibrary,
+        "download_sample_pack" => Request::DownloadSamplePack {
+            id: get_str("id").ok_or("id is required")?,
         },
         "set_count_in" => Request::SetCountIn {
             bars: args

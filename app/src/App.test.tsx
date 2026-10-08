@@ -1222,11 +1222,32 @@ describe("Sampler", () => {
     fireEvent.click(trackHeader("Piano"));
     expect(await screen.findByText("No sample pack loaded yet: this track is silent.")).toBeTruthy();
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Load sample pack…" }));
+      fireEvent.click(screen.getByRole("button", { name: "Load sample pack file…" }));
     });
     const piano = (await backend.getProject()).project.tracks[3];
     expect(piano.instrument.sample_pack).toBe("D:\\Samples\\Salamander\\SalamanderGrandPiano.sfz");
     expect(await screen.findByText("SalamanderGrandPiano.sfz")).toBeTruthy();
+  });
+
+  it("downloads a free instrument and plays it", async () => {
+    const backend = createPreviewBackend();
+    await renderApp(backend);
+    await act(async () => {
+      fireEvent.click(screen.getByText("+ Sampler track"));
+    });
+    fireEvent.click(trackHeader("Piano"));
+    fireEvent.click(await screen.findByText(/Free instruments/));
+    expect(screen.getByText(/Credit in your game: Flute by/)).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Download (130 MB)" }));
+    });
+    // Progress shows while it downloads, then the cello's programs appear.
+    const use = await screen.findByRole("button", { name: "Use Bowed" }, { timeout: 5000 });
+    await act(async () => {
+      fireEvent.click(use);
+    });
+    const track = (await backend.getProject()).project.tracks[3];
+    expect(track.instrument.sample_pack).toBe("C:/Library/cello/Programs/01- Bowed (velocity layer).sfz");
   });
 });
 

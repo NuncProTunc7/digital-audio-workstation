@@ -59,6 +59,12 @@ pub enum Request {
         track_id: TrackId,
         name: String,
     },
+    /// Free instruments the app can download, and which are installed.
+    SampleLibrary,
+    /// Start downloading a library instrument in the background.
+    DownloadSamplePack {
+        id: String,
+    },
     /// Transport position and levels.
     Status,
     Save {

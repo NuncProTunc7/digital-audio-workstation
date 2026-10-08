@@ -1128,6 +1128,13 @@ export default function App({ backend }: AppProps) {
                   })
                 }
                 samplePackStatus={backend.samplePackStatus}
+                sampleLibrary={backend.sampleLibrary}
+                onDownloadSamplePack={async (id) => {
+                  await run(() => backend.downloadSamplePack(id));
+                }}
+                onUseSamplePack={(path) =>
+                  void execute({ command: "load_sample_pack", track_id: selectedTrack.id, path }).then(endGesture)
+                }
               />
               <div className="keyboard-dock">
                 <div className="keyboard-help">

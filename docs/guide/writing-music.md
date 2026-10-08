@@ -19,15 +19,18 @@
 |---|---|---|
 | Synth | Warm Keys, Soft Pad, Bright Lead, Pluck, Chip Square, Brass Stab, Sub Bass, Fat Bass, Acid Bass (Init = blank) | Chords, leads, pads, basses, chiptune |
 | Drums | Classic Kit, Tight Kit, Boomy Kit | Beats: 16 pads (kick, snare, hats, toms, crash, ride...) |
-| Sampler | Your SFZ pack | Realistic piano, bass, orchestral |
+| Sampler | Free instruments (pianos, cello, double bass, flute, tuba) or any SFZ pack | Realistic piano, strings, brass, woodwinds |
 
 Synth knobs, in plain terms: **Wave** is the basic tone (Sine soft, Saw bright and buzzy, Square hollow and 8-bit, Triangle mellow). **Cutoff** is brightness. **Resonance** adds a whistle at the cutoff. **Attack** is how slowly a note fades in. **Release** is how long it rings after you let go. **LFO** makes things wobble.
 
 ### Sampler (real instruments)
 
-1. Download a free SFZ pack. For piano: *Salamander Grand Piano* (SFZ + FLAC) from freepats.zenvoid.org. Unzip it.
-2. **+ Sampler track**, then in its panel **Load sample pack…** and choose the `.sfz` file.
-3. Big packs load in the background (the panel shows *loading…*). To save memory the app may keep only some of the pack's soft-to-loud layers; the panel tells you how many.
+1. **+ Sampler track**, then in its panel open **Free instruments**. You'll find two grand pianos (Salamander, Headroom), a cello, a double bass, a flute and a war tuba.
+2. Click **Download** next to one. It comes straight from its publisher and stays on this computer for every song. Small ones take seconds; the Salamander piano (750 MB) can take several minutes. You can keep working while it downloads.
+3. When it's done, click **Use …** (e.g. **Use Bowed** or **Use Plucked** for the cello) to play it on this track. Claude can do all of this too: "add a cello playing the melody".
+4. Some instruments ask for a **credit** in your game (the panel shows the line to copy, e.g. "Flute by Xavier Hosxe / Ixox (CC BY 4.0)"). The ones marked "no credit needed" are free for anything.
+5. Already have an SFZ pack? **Load sample pack file…** and choose its `.sfz` file.
+6. Big packs load in the background (the panel shows *loading…*). To save memory the app may keep only some of the pack's soft-to-loud layers; the panel tells you how many.
 
 ## Key and chords
 

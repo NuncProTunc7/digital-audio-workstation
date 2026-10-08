@@ -9,6 +9,7 @@ import type {
   Catalog,
   ClaudeStatus,
   CompareSide,
+  LibraryPack,
   UserPreset,
   InputStatus,
   Peaks,
@@ -651,6 +652,35 @@ export function createPreviewBackend(): PreviewBackend {
   let comparing: { snapshot_id: number; side: CompareSide } | null = null;
   const uiErrors: string[] = [];
   let userPresets: UserPreset[] = [];
+  // A tiny stand-in for the free instrument library: a download finishes
+  // after a couple of looks.
+  const library: LibraryPack[] = [
+    {
+      id: "cello",
+      name: "Cello",
+      description: "Solo cello, bowed and plucked.",
+      license: "CC0-1.0",
+      credit: "Cello by Karoryfer Samples and Bigcat Instruments (CC0)",
+      programs: [
+        ["Bowed", "Programs/01- Bowed (velocity layer).sfz"],
+        ["Plucked", "Programs/03- Plucked.sfz"],
+      ],
+      megabytes: 130,
+      installed: null,
+      job: null,
+    },
+    {
+      id: "flute",
+      name: "Flute",
+      description: "Concert flute.",
+      license: "CC-BY-4.0",
+      credit: "Flute by Xavier Hosxe / Ixox (CC BY 4.0)",
+      programs: [["Flute", "Ixox Flute.sfz"]],
+      megabytes: 10,
+      installed: null,
+      job: null,
+    },
+  ];
   let startedAt = 0;
   let startBeats = 0;
 
@@ -956,6 +986,24 @@ export function createPreviewBackend(): PreviewBackend {
     pickFolder: async () => null,
     pickSamplePack: async () => null,
     samplePackStatus: async () => ({ state: "ready", name: "Preview", zones: 0, megabytes: 0 }),
+    sampleLibrary: async () => {
+      for (const p of library) {
+        if (p.job?.state === "downloading") {
+          const mb = p.megabytes * 1_000_000;
+          const bytes = Math.min(mb, p.job.bytes + mb / 2);
+          p.job = bytes >= mb ? { state: "unpacking" } : { state: "downloading", bytes, total: mb };
+        } else if (p.job?.state === "unpacking") {
+          p.job = null;
+          p.installed = p.programs.map(([name, sfz]) => [name, `C:/Library/${p.id}/${sfz}`]);
+        }
+      }
+      return structuredClone(library);
+    },
+    downloadSamplePack: async (id) => {
+      const p = library.find((x) => x.id === id);
+      if (!p) throw new Error(`there is no instrument "${id}" in the library`);
+      if (!p.installed && !p.job) p.job = { state: "downloading", bytes: 0, total: null };
+    },
     exportGodot: async (options) => {
       const name = (options.name ?? project.name).toLowerCase().replace(/[^a-z0-9]+/g, "_");
       const folder = options.folder ?? "music";

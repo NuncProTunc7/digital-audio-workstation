@@ -281,8 +281,8 @@ Original spec: adaptive "explore/combat" export was Claude-only.
 - UI: a marker strip under the ruler (double-click to add, drag, double-click name to rename). Godot dialog: "Sections from markers" builds an `AudioStreamInteractive`.
 - Done when the dialog exports sections the user marked by hand.
 
-**7. Orchestral and acoustic sounds.**
-- Guide page and Sampler panel link to free packs: *VSCO 2 Community Edition* (strings, brass, woodwinds, percussion; CC0, verify before bundling), Salamander Grand Piano (CC-BY 3.0), and Sonatina Symphonic Orchestra (check license). Prefer an in-app downloader that fetches from the publisher (no redistribution) once one is confirmed reachable.
+**7. Orchestral and acoustic sounds.** ✅ (built Oct 2026)
+- Built: `daw_control::library`, an in-app downloader that fetches SFZ instruments from their publishers on GitHub (sfzinstruments; nothing redistributed) into `<app data>/sample-library`: Salamander Grand Piano (CC-BY 3.0), Headroom Piano (CC-BY 4.0), Karoryfer/Bigcat cello (CC0), Smolken double bass (CC0), Ixox flute (CC-BY 4.0), Karoryfer war tuba (CC0). Sampler panel **Free instruments** list (Download / Use, credit lines) and Claude's `sample_library` / `download_sample_pack` tools. *VSCO 2 CE* was left out: its CE release has raw WAVs but no SFZ mapping. Sonatina's license is unclear, so it is also left out.
 - Add composing-playbook recipes that use them (orchestral exploration, epic boss).
 
 **8. Group tracks and shared effects (sends/buses)** ✅ (built Oct 2026).

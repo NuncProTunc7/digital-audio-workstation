@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Catalog, SamplePackStatus, Track, UserPreset } from "../types";
+import type { Catalog, LibraryPack, SamplePackStatus, Track, UserPreset } from "../types";
 import DrumPads from "./DrumPads";
 import ParamControl from "./ParamControl";
 import SamplePack from "./SamplePack";
@@ -20,6 +20,9 @@ interface InstrumentPanelProps {
   onPadRelease: (note: number) => void;
   onChooseSamplePack: () => void;
   samplePackStatus: (path: string) => Promise<SamplePackStatus>;
+  sampleLibrary?: () => Promise<LibraryPack[]>;
+  onDownloadSamplePack?: (id: string) => Promise<void>;
+  onUseSamplePack?: (path: string) => void;
 }
 
 /** Preset picker plus every parameter of the selected track's instrument. */
@@ -38,6 +41,9 @@ export default function InstrumentPanel({
   onPadRelease,
   onChooseSamplePack,
   samplePackStatus,
+  sampleLibrary,
+  onDownloadSamplePack,
+  onUseSamplePack,
 }: InstrumentPanelProps) {
   const [saving, setSaving] = useState(false);
   const description = catalog.instruments.find((i) => i.kind === track.instrument.kind);
@@ -149,7 +155,14 @@ export default function InstrumentPanel({
         )}
         <div className="param-groups">
           {track.instrument.kind === "sampler" && (
-            <SamplePack track={track} onChoose={onChooseSamplePack} status={samplePackStatus} />
+            <SamplePack
+              track={track}
+              onChoose={onChooseSamplePack}
+              status={samplePackStatus}
+              library={sampleLibrary}
+              onDownload={onDownloadSamplePack}
+              onUse={onUseSamplePack}
+            />
           )}
           {[...groups.entries()].map(([group, specs]) => (
             <fieldset key={group} className="param-group">
