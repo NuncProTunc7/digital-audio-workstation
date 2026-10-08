@@ -62,21 +62,24 @@ pub(crate) fn whole_bars(beats: f64, beats_per_bar: f64) -> f64 {
 
 /// Every note a track plays, cut at clip ends (as the engine plays them):
 /// `(start_beats, end_beats, pitch, velocity)` from the song start.
-pub(crate) fn played_notes(track: &Track) -> Vec<(f64, f64, u8, u8)> {
+pub(crate) fn played_notes(track: &Track, swung: bool) -> Vec<(f64, f64, u8, u8)> {
     let mut out = Vec::new();
     for clip in &track.clips {
-        let end = clip.start_beats + clip.length_beats;
         for n in &clip.notes {
             if n.start_beats >= clip.length_beats {
                 continue;
             }
-            let start = clip.start_beats + n.start_beats;
-            out.push((
-                start,
-                (start + n.length_beats).min(end),
-                n.pitch,
-                n.velocity,
-            ));
+            let written = |beats: f64| clip.start_beats + beats;
+            let at = |beats: f64| {
+                if swung {
+                    clip.played_song_beats(beats)
+                } else {
+                    written(beats)
+                }
+            };
+            let start = at(n.start_beats);
+            let stop = at((n.start_beats + n.length_beats).min(clip.length_beats));
+            out.push((start, stop, n.pitch, n.velocity));
         }
     }
     out

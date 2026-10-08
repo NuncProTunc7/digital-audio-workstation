@@ -204,6 +204,8 @@ fn audio_thread_never_allocates() {
             name: None,
             notes: (0..8)
                 .map(|i| NoteInput {
+                    // Some notes roll a chance each lap.
+                    chance: if i % 2 == 0 { 50 } else { 100 },
                     pitch: 36 + (i % 4) * 2,
                     start_beats: f64::from(i) * 0.25,
                     length_beats: 0.2,

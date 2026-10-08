@@ -90,6 +90,7 @@ export function applyCommand(project: Project, command: Command): Project {
       start_beats: n.start_beats,
       length_beats: n.length_beats,
       velocity: n.velocity ?? 100,
+      ...(n.chance !== undefined && n.chance < 100 ? { chance: n.chance } : {}),
     }));
   const sortNotes = (c: Clip) => c.notes.sort((a, b) => a.start_beats - b.start_beats || a.pitch - b.pitch);
 
@@ -216,6 +217,14 @@ export function applyCommand(project: Project, command: Command): Project {
     case "rename_clip":
       clipOf(command.clip_id)[1].name = command.name;
       break;
+    case "set_clip_swing": {
+      const [, c] = clipOf(command.clip_id);
+      if (c.audio) throw new Error("only note clips swing");
+      const s = command.swing;
+      if (s && (s.amount_percent < 0 || s.amount_percent > 100)) throw new Error("swing amount must be 0–100 %");
+      c.swing = s && s.amount_percent > 0 ? s : null;
+      break;
+    }
     case "duplicate_clip": {
       const [t, c] = clipOf(command.clip_id);
       t.clips.push({
@@ -246,6 +255,7 @@ export function applyCommand(project: Project, command: Command): Project {
         if (e.start_beats != null) n.start_beats = e.start_beats;
         if (e.length_beats != null) n.length_beats = e.length_beats;
         if (e.velocity != null) n.velocity = e.velocity;
+        if (e.chance != null) n.chance = e.chance;
       }
       sortNotes(c);
       break;

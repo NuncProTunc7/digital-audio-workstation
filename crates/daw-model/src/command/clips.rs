@@ -48,6 +48,7 @@ pub(super) fn create(
         length_beats,
         notes,
         audio: None,
+        swing: None,
     };
     if let Some(t) = project.track_mut(track_id) {
         insert_sorted(&mut t.clips, clip);
@@ -91,6 +92,7 @@ pub(super) fn restore(
     let inputs = std::mem::take(&mut clip.notes)
         .into_iter()
         .map(|n| NoteInput {
+            chance: n.chance,
             pitch: n.pitch,
             start_beats: n.start_beats,
             length_beats: n.length_beats,
@@ -180,6 +182,49 @@ pub(super) fn rename(
     Ok(Command::RenameClip { clip_id, name: old })
 }
 
+/// Largest swing step, in beats.
+const MAX_SWING_GRID_BEATS: f64 = 2.0;
+
+pub(super) fn set_swing(
+    project: &mut Project,
+    clip_id: ClipId,
+    swing: Option<crate::project::Swing>,
+) -> Result<Command, CommandError> {
+    if let Some(s) = swing {
+        if !(0.0..=100.0).contains(&s.amount_percent) {
+            return Err(super::invalid(
+                "swing amount",
+                format!("must be 0–100 %, got {}", s.amount_percent),
+            ));
+        }
+        if !(s.grid_beats > 0.0 && s.grid_beats <= MAX_SWING_GRID_BEATS) {
+            return Err(super::invalid(
+                "swing grid",
+                format!(
+                    "must be more than 0 and at most {MAX_SWING_GRID_BEATS} beats (0.25 = sixteenths, 0.5 = eighths), got {}",
+                    s.grid_beats
+                ),
+            ));
+        }
+    }
+    let clip = project
+        .clip_mut(clip_id)
+        .ok_or(CommandError::UnknownClip(clip_id))?;
+    if clip.is_audio() {
+        return Err(super::invalid(
+            "clip",
+            "is an audio clip; only note clips swing",
+        ));
+    }
+    // No swing and 0 % swing sound the same; store the simpler one.
+    let swing = swing.filter(|s| s.amount_percent > 0.0);
+    let old = std::mem::replace(&mut clip.swing, swing);
+    Ok(Command::SetClipSwing {
+        clip_id,
+        swing: old,
+    })
+}
+
 pub(super) fn duplicate(
     project: &mut Project,
     clip_id: ClipId,
@@ -197,6 +242,7 @@ pub(super) fn duplicate(
         .notes
         .iter()
         .map(|n| NoteInput {
+            chance: n.chance,
             pitch: n.pitch,
             start_beats: n.start_beats,
             length_beats: n.length_beats,

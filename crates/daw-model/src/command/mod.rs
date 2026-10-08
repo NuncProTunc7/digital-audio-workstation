@@ -39,6 +39,7 @@ pub(crate) fn check_clip_fits_pub(kind: InstrumentKind, clip: &Clip) -> Result<(
 /// Note validation shared with file loading.
 pub(crate) fn validate_note_pub(n: &crate::project::Note) -> Result<(), CommandError> {
     notes::validate_input(&NoteInput {
+        chance: n.chance,
         pitch: n.pitch,
         start_beats: n.start_beats,
         length_beats: n.length_beats,
@@ -215,6 +216,14 @@ pub enum Command {
     ResizeClip { clip_id: ClipId, length_beats: f64 },
     /// Rename a clip.
     RenameClip { clip_id: ClipId, name: String },
+    /// Swing (shuffle) a note clip: every second step plays late. Notes
+    /// keep their written positions; playback, exports and MIDI files hear
+    /// the swing. `swing: null` makes the clip straight again. Errors on
+    /// audio clips.
+    SetClipSwing {
+        clip_id: ClipId,
+        swing: Option<crate::project::Swing>,
+    },
     /// Copy a clip, by default placing the copy right after the original.
     DuplicateClip {
         clip_id: ClipId,
@@ -502,6 +511,7 @@ impl Command {
                 length_beats,
             } => clips::resize(project, clip_id, length_beats),
             C::RenameClip { clip_id, name } => clips::rename(project, clip_id, name),
+            C::SetClipSwing { clip_id, swing } => clips::set_swing(project, clip_id, swing),
             C::DuplicateClip {
                 clip_id,
                 start_beats,
@@ -651,6 +661,7 @@ impl Command {
                 },
             ) => a == b && sa.is_some() == sb.is_some() && ta.is_some() == tb.is_some(),
             (C::ResizeClip { clip_id: a, .. }, C::ResizeClip { clip_id: b, .. }) => a == b,
+            (C::SetClipSwing { clip_id: a, .. }, C::SetClipSwing { clip_id: b, .. }) => a == b,
             (C::TrimClipStart { clip_id: a, .. }, C::TrimClipStart { clip_id: b, .. }) => a == b,
             (
                 C::SetAutomationPoints { lane_id: a, .. },

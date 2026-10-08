@@ -21,6 +21,6 @@ pub use instrument::{Instrument, InstrumentKind};
 pub use project::{
     AudioRegion, AutomationLane, AutomationPoint, AutomationTarget, Clip, ClipId, EffectId,
     FORMAT_VERSION, Id, LaneId, LoopRegion, MAX_BEATS, MAX_TRACKS, MAX_VOLUME_DB, MIN_LENGTH_BEATS,
-    MIN_VOLUME_DB, MasterBus, Mixer, Note, NoteId, Project, TimeSignature, Track, TrackId,
+    MIN_VOLUME_DB, MasterBus, Mixer, Note, NoteId, Project, Swing, TimeSignature, Track, TrackId,
 };
 pub use session::Session;

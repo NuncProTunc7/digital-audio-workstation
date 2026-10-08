@@ -104,7 +104,8 @@ pub fn export_midi(project: &Project) -> Vec<u8> {
             c
         };
         let mut timed: Vec<Timed> = Vec::new();
-        for (start, end, key, velocity) in played_notes(track) {
+        // MIDI files carry the swing, so they sound as the song does.
+        for (start, end, key, velocity) in played_notes(track, true) {
             let (on, off) = (to_tick(start), to_tick(end));
             let key = key.min(127);
             timed.push(Timed {
@@ -294,6 +295,7 @@ pub fn import_midi(bytes: &[u8]) -> Result<ImportedSong, NotationError> {
             .notes
             .iter()
             .map(|&(s, e, key, vel)| NoteInput {
+                chance: 100,
                 pitch: key.min(127),
                 start_beats: s as f64 * beats_per_tick,
                 length_beats: ((e.saturating_sub(s)) as f64 * beats_per_tick).max(MIN_LENGTH_BEATS),
@@ -342,6 +344,7 @@ mod tests {
             ..Project::default()
         };
         let n = |pitch, start, len| NoteInput {
+            chance: 100,
             pitch,
             start_beats: start,
             length_beats: len,
@@ -372,6 +375,40 @@ mod tests {
         .apply(&mut p)
         .expect("drums");
         p
+    }
+
+    #[test]
+    fn exported_midi_carries_swing() {
+        let mut s = daw_model::Session::default();
+        s.execute(daw_model::Command::CreateClip {
+            track_id: 1,
+            start_beats: 0.0,
+            length_beats: 4.0,
+            name: None,
+            notes: vec![NoteInput {
+                chance: 100,
+                pitch: 60,
+                start_beats: 0.5,
+                length_beats: 0.5,
+                velocity: 100,
+                id: None,
+            }],
+        })
+        .expect("clip");
+        let clip = s.project().tracks[0].clips[0].id;
+        s.execute(daw_model::Command::SetClipSwing {
+            clip_id: clip,
+            swing: Some(daw_model::Swing {
+                amount_percent: 100.0,
+                grid_beats: 0.5,
+            }),
+        })
+        .expect("swing");
+        let song = import_midi(&export_midi(s.project())).expect("import");
+        let n = &song.parts[0].notes[0];
+        // The off-eighth plays a quarter of a beat late; its end follows.
+        assert!((n.start_beats - 0.75).abs() < 0.01, "{}", n.start_beats);
+        assert!((n.start_beats + n.length_beats - 1.0).abs() < 0.01);
     }
 
     #[test]

@@ -425,6 +425,90 @@ describe("Note clips", () => {
   });
 });
 
+describe("Drum step sequencer", () => {
+  /** Makes a one-bar drum clip and opens it; returns the backend. */
+  async function openDrumClip() {
+    const backend = await renderApp(spyBackend());
+    await act(async () => {
+      fireEvent.doubleClick(document.querySelectorAll(".lane")[2], { clientX: 10, clientY: 10 });
+    });
+    await screen.findByRole("row", { name: "Kick" });
+    return backend;
+  }
+  const cell = (name: string, step: number) => screen.getByRole("gridcell", { name: `${name} step ${step}` });
+  const drumNotes = async (backend: Backend) => (await backend.getProject()).project.tracks[2].clips[0].notes;
+
+  it("opens drum clips as a grid and adds a hit with a click", async () => {
+    const backend = await openDrumClip();
+    expect(screen.getAllByRole("gridcell", { name: /^Kick step/ }).length).toBe(16);
+    await act(async () => {
+      fireEvent.pointerDown(cell("Kick", 1), { button: 0 });
+      fireEvent.pointerUp(cell("Kick", 1));
+    });
+    expect(await drumNotes(backend)).toMatchObject([{ pitch: 36, start_beats: 0, length_beats: 0.25 }]);
+    expect(cell("Kick", 1).getAttribute("aria-pressed")).toBe("true");
+    // Clicking it again clears it.
+    await act(async () => {
+      fireEvent.pointerDown(cell("Kick", 1), { button: 0 });
+      fireEvent.pointerUp(cell("Kick", 1));
+    });
+    expect(await drumNotes(backend)).toEqual([]);
+  });
+
+  it("paints a row of hats with one drag, as one undo step", async () => {
+    const backend = await openDrumClip();
+    vi.mocked(backend.execute).mockClear();
+    await act(async () => {
+      fireEvent.pointerDown(cell("Closed Hat", 1), { button: 0 });
+      for (const s of [2, 3, 4]) fireEvent.pointerMove(cell("Closed Hat", s));
+      fireEvent.pointerUp(cell("Closed Hat", 4));
+    });
+    expect(backend.execute).toHaveBeenCalledTimes(1);
+    expect((await drumNotes(backend)).map((n) => n.start_beats)).toEqual([0, 0.25, 0.5, 0.75]);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    });
+    expect(await drumNotes(backend)).toEqual([]);
+  });
+
+  it("sets accents, rolls and chance from a step's menu", async () => {
+    const backend = await openDrumClip();
+    fireEvent.contextMenu(cell("Snare", 5), { clientX: 50, clientY: 50 });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("menuitem", { name: "Roll 3" }));
+    });
+    let notes = await drumNotes(backend);
+    expect(notes.map((n) => n.start_beats)).toEqual([1, 1 + 0.25 / 3, 1 + 0.5 / 3]);
+    fireEvent.contextMenu(cell("Snare", 5), { clientX: 50, clientY: 50 });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("menuitem", { name: "Accent" }));
+    });
+    fireEvent.contextMenu(cell("Snare", 5), { clientX: 50, clientY: 50 });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("menuitem", { name: "Chance 50%" }));
+    });
+    notes = await drumNotes(backend);
+    // Still a roll of three, now accented and played half the time.
+    expect(notes.length).toBe(3);
+    expect(notes.every((n) => n.velocity === 127 && n.chance === 50)).toBe(true);
+  });
+
+  it("swings the clip and switches to the piano roll and back", async () => {
+    const backend = await openDrumClip();
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText("Swing amount"), { target: { value: "60" } });
+    });
+    expect((await backend.getProject()).project.tracks[2].clips[0].swing).toEqual({
+      amount_percent: 60,
+      grid_beats: 0.25,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Piano roll" }));
+    expect(document.querySelector(".roll-grid")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Steps" }));
+    expect(screen.getByRole("row", { name: "Kick" })).toBeTruthy();
+  });
+});
+
 describe("Sound card buffer", () => {
   it("changes the buffer size from the status bar", async () => {
     const backend = createPreviewBackend();

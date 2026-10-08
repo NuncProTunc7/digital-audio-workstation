@@ -74,22 +74,26 @@ pub fn build_sequence(
             }
             continue;
         }
-        let clip_end = clip.start_beats + clip.length_beats;
         for n in &clip.notes {
             if n.start_beats >= clip.length_beats {
                 continue;
             }
-            let on = clip.start_beats + n.start_beats;
-            let off = (on + n.length_beats).min(clip_end);
+            // Swing moves notes as they play; it never moves one past the
+            // clip's (swung) end.
+            let on = clip.played_song_beats(n.start_beats);
+            let off =
+                clip.played_song_beats((n.start_beats + n.length_beats).min(clip.length_beats));
             events.push(SeqEvent {
                 beat: on,
                 note: n.pitch.min(127),
                 velocity: (f32::from(n.velocity) / 127.0).clamp(1.0 / 127.0, 1.0),
+                chance: n.chance.min(100),
             });
             events.push(SeqEvent {
                 beat: off,
                 note: n.pitch.min(127),
                 velocity: 0.0,
+                chance: 100,
             });
         }
     }
@@ -119,6 +123,7 @@ mod tests {
 
     fn note(id: u32, pitch: u8, start: f64, len: f64) -> Note {
         Note {
+            chance: 100,
             id,
             pitch,
             start_beats: start,
@@ -130,6 +135,7 @@ mod tests {
     #[test]
     fn offsets_by_clip_start_and_cuts_at_clip_end() {
         let t = track_with(vec![Clip {
+            swing: None,
             id: 10,
             name: "c".into(),
             start_beats: 4.0,
@@ -161,6 +167,7 @@ mod tests {
     #[test]
     fn note_off_sorts_before_note_on_at_the_same_beat() {
         let t = track_with(vec![Clip {
+            swing: None,
             id: 10,
             name: "c".into(),
             start_beats: 0.0,

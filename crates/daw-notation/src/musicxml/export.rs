@@ -67,7 +67,8 @@ fn voice(track: &Track, ts: TimeSignature, end: i64) -> Vec<Event> {
     let to_div = |beats: f64| (beats * quarters_per_beat(ts) * DIVISIONS as f64).round() as i64;
     // Onset -> (pitches, shortest end).
     let mut chords: BTreeMap<i64, (Vec<u8>, i64)> = BTreeMap::new();
-    for (s, e, pitch, _) in played_notes(track) {
+    // Sheet music shows notes as written; swing is a playing style.
+    for (s, e, pitch, _) in played_notes(track, false) {
         let start = to_div(s).max(0);
         if start >= end {
             continue;
@@ -341,6 +342,7 @@ mod tests {
 
     fn note(pitch: u8, start: f64, len: f64) -> NoteInput {
         NoteInput {
+            chance: 100,
             pitch,
             start_beats: start,
             length_beats: len,

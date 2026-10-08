@@ -49,6 +49,15 @@ export interface Note {
   start_beats: number;
   length_beats: number;
   velocity: number;
+  /** How often it plays, 1–100 % (missing = 100, every time). */
+  chance?: number;
+}
+
+/** Shuffle: every second `grid_beats` step plays late. */
+export interface Swing {
+  /** 0 = straight, ~67 = triplet feel, 100 = hardest. */
+  amount_percent: number;
+  grid_beats: number;
 }
 
 /** The part of an audio file an audio clip plays. */
@@ -72,6 +81,8 @@ export interface Clip {
   notes: Note[];
   /** Present on audio clips (audio tracks) only. */
   audio?: AudioRegion | null;
+  /** Shuffle on note clips (missing = straight). */
+  swing?: Swing | null;
 }
 
 export type AutomationTarget =
@@ -125,6 +136,8 @@ export interface NoteInput {
   start_beats: number;
   length_beats: number;
   velocity?: number;
+  /** 1–100 % (default 100). */
+  chance?: number;
   id?: number;
 }
 
@@ -134,6 +147,7 @@ export interface NoteEdit {
   start_beats?: number | null;
   length_beats?: number | null;
   velocity?: number | null;
+  chance?: number | null;
 }
 
 type Opt<T> = T | null;
@@ -175,6 +189,7 @@ export type Command =
   | { command: "move_clip"; clip_id: number; start_beats: Opt<number>; track_id: Opt<number> }
   | { command: "resize_clip"; clip_id: number; length_beats: number }
   | { command: "rename_clip"; clip_id: number; name: string }
+  | { command: "set_clip_swing"; clip_id: number; swing: Swing | null }
   | { command: "duplicate_clip"; clip_id: number; start_beats: Opt<number> }
   | { command: "add_notes"; clip_id: number; notes: NoteInput[] }
   | { command: "remove_notes"; clip_id: number; note_ids: number[] }

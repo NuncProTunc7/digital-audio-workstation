@@ -335,11 +335,58 @@ pub struct Clip {
     /// The audio this clip plays, on audio tracks.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub audio: Option<AudioRegion>,
+    /// Shuffle applied to the clip's notes when they play (None = straight).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub swing: Option<Swing>,
 }
 
 impl Clip {
     pub fn is_audio(&self) -> bool {
         self.audio.is_some()
+    }
+
+    /// Where on the song timeline a note time (beats from the clip start)
+    /// is heard, after swing.
+    pub fn played_song_beats(&self, beats: f64) -> f64 {
+        let song = self.start_beats + beats;
+        self.swing.map_or(song, |s| s.warp(song))
+    }
+}
+
+/// Shuffle: every second step of `grid_beats` is played late, giving a
+/// swung, bouncy feel. Steps are counted on the song's beat grid, so a
+/// clip swings the same wherever it is split or moved to. Notes keep their
+/// written positions; only playback (and rendering, analysis, MIDI export)
+/// hears the swing.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct Swing {
+    /// 0 = straight, about 67 = triplet shuffle, 100 = hardest (the late
+    /// step lands halfway into the next one).
+    pub amount_percent: f64,
+    /// The step that swings, in beats: 0.25 (sixteenths, usual for drums)
+    /// or 0.5 (eighths).
+    pub grid_beats: f64,
+}
+
+impl Swing {
+    /// Maps a straight time to its swung time. Each pair of steps is
+    /// stretched so the second step starts late; times between steps
+    /// move proportionally, so note order never changes.
+    pub fn warp(&self, beats: f64) -> f64 {
+        let g = self.grid_beats;
+        if g.is_nan() || g <= 0.0 || self.amount_percent <= 0.0 || !beats.is_finite() {
+            return beats;
+        }
+        let pair = 2.0 * g;
+        let off = g + self.amount_percent.clamp(0.0, 100.0) / 100.0 * g / 2.0;
+        let k = (beats / pair).floor();
+        let r = beats - k * pair;
+        let swung = if r <= g {
+            r * off / g
+        } else {
+            off + (r - g) * (pair - off) / g
+        };
+        k * pair + swung
     }
 }
 
@@ -400,6 +447,52 @@ pub struct Note {
     pub length_beats: f64,
     /// Loudness, 1–127.
     pub velocity: u8,
+    /// How often it plays, 1–100 % (100 = every time). Below 100 the note
+    /// is left out on some passes, the same way every time the song plays
+    /// or renders, so repeats vary without surprises.
+    #[serde(default = "full_chance", skip_serializing_if = "is_full_chance")]
+    pub chance: u8,
+}
+
+/// Notes play every time unless given a lower chance.
+pub fn full_chance() -> u8 {
+    100
+}
+
+fn is_full_chance(chance: &u8) -> bool {
+    *chance >= 100
+}
+
+#[cfg(test)]
+mod swing_tests {
+    use super::Swing;
+
+    #[test]
+    fn swing_delays_every_second_step() {
+        let s = Swing {
+            amount_percent: 100.0,
+            grid_beats: 0.25,
+        };
+        // Downbeats stay; the off sixteenth moves half a step late.
+        assert_eq!(s.warp(0.0), 0.0);
+        assert_eq!(s.warp(0.25), 0.375);
+        assert_eq!(s.warp(0.5), 0.5);
+        assert_eq!(s.warp(1.25), 1.375);
+        // Times between steps keep their order.
+        assert!(s.warp(0.3) > s.warp(0.25) && s.warp(0.3) < s.warp(0.5));
+        // Triplet feel at about 67 %.
+        let triplet = Swing {
+            amount_percent: 200.0 / 3.0,
+            grid_beats: 0.5,
+        };
+        assert!((triplet.warp(0.5) - 2.0 / 3.0).abs() < 1e-12);
+        // No swing changes nothing.
+        let straight = Swing {
+            amount_percent: 0.0,
+            grid_beats: 0.25,
+        };
+        assert_eq!(straight.warp(0.25), 0.25);
+    }
 }
 
 /// Musical meter: `numerator` beats per bar, each a 1/`denominator` note.

@@ -5,6 +5,7 @@ use crate::session::Session;
 
 fn note(pitch: u8, start: f64, len: f64) -> NoteInput {
     NoteInput {
+        chance: 100,
         pitch,
         start_beats: start,
         length_beats: len,
@@ -212,6 +213,7 @@ fn sample_commands(p: &Project) -> Vec<Command> {
         Command::EditNotes {
             clip_id: clip,
             edits: vec![NoteEdit {
+                chance: None,
                 id: first_note,
                 pitch: Some(61),
                 start_beats: None,
@@ -301,7 +303,103 @@ fn sample_commands(p: &Project) -> Vec<Command> {
             track_id: 1,
             lane_id: LANE,
         },
+        Command::SetClipSwing {
+            clip_id: clip,
+            swing: Some(crate::project::Swing {
+                amount_percent: 60.0,
+                grid_beats: 0.25,
+            }),
+        },
+        Command::AddNotes {
+            clip_id: clip,
+            notes: vec![NoteInput {
+                chance: 50,
+                ..note(42, 3.5, 0.25)
+            }],
+        },
+        Command::EditNotes {
+            clip_id: clip,
+            edits: vec![NoteEdit {
+                id: first_note,
+                pitch: None,
+                start_beats: None,
+                length_beats: None,
+                velocity: None,
+                chance: Some(25),
+            }],
+        },
     ]
+}
+
+#[test]
+fn chance_and_swing_survive_undo_of_deletes_and_saving() {
+    let mut p = fixture();
+    let clip = clip_id(&p);
+    let first = p.tracks[0].clips[0].notes[0].id;
+    Command::EditNotes {
+        clip_id: clip,
+        edits: vec![NoteEdit {
+            id: first,
+            pitch: None,
+            start_beats: None,
+            length_beats: None,
+            velocity: None,
+            chance: Some(40),
+        }],
+    }
+    .apply(&mut p)
+    .expect("chance");
+    let swing = crate::project::Swing {
+        amount_percent: 55.0,
+        grid_beats: 0.5,
+    };
+    Command::SetClipSwing {
+        clip_id: clip,
+        swing: Some(swing),
+    }
+    .apply(&mut p)
+    .expect("swing");
+    let before = p.clone();
+    // Removing notes and putting them back keeps their chance.
+    let undo = Command::RemoveNotes {
+        clip_id: clip,
+        note_ids: vec![first],
+    }
+    .apply(&mut p)
+    .expect("remove");
+    undo.apply(&mut p).expect("undo");
+    assert_eq!(p.tracks[0].clips[0].notes, before.tracks[0].clips[0].notes);
+    // Deleting the clip and undoing keeps both.
+    let undo = Command::DeleteClip { clip_id: clip }
+        .apply(&mut p)
+        .expect("delete");
+    undo.apply(&mut p).expect("undo");
+    assert_eq!(p.tracks[0].clips[0], before.tracks[0].clips[0]);
+    // JSON keeps them; full-chance notes and straight clips stay compact.
+    let json = serde_json::to_string(&p.tracks[0].clips[0]).expect("json");
+    assert!(json.contains("\"chance\":40") && json.contains("\"amount_percent\":55"));
+    assert_eq!(json.matches("chance").count(), 1, "{json}");
+    let back: crate::project::Clip = serde_json::from_str(&json).expect("back");
+    assert_eq!(back, p.tracks[0].clips[0]);
+}
+
+#[test]
+fn swing_slider_drag_is_one_undo_step() {
+    let mut s = Session::new(fixture());
+    let clip = clip_id(s.project());
+    for amount in [10.0, 30.0, 50.0] {
+        s.execute(Command::SetClipSwing {
+            clip_id: clip,
+            swing: Some(crate::project::Swing {
+                amount_percent: amount,
+                grid_beats: 0.25,
+            }),
+        })
+        .expect("swing");
+    }
+    s.end_gesture();
+    s.undo();
+    assert_eq!(s.project().tracks[0].clips[0].swing, None);
 }
 
 #[test]
@@ -386,6 +484,34 @@ fn invalid_commands_are_rejected_without_changes() {
     let base = fixture();
     let clip = clip_id(&base);
     let bad = [
+        Command::SetClipSwing {
+            clip_id: clip,
+            swing: Some(crate::project::Swing {
+                amount_percent: 150.0,
+                grid_beats: 0.25,
+            }),
+        },
+        Command::SetClipSwing {
+            clip_id: clip,
+            swing: Some(crate::project::Swing {
+                amount_percent: 50.0,
+                grid_beats: 0.0,
+            }),
+        },
+        Command::SetClipSwing {
+            clip_id: AUDIO_CLIP,
+            swing: Some(crate::project::Swing {
+                amount_percent: 50.0,
+                grid_beats: 0.25,
+            }),
+        },
+        Command::AddNotes {
+            clip_id: clip,
+            notes: vec![NoteInput {
+                chance: 0,
+                ..note(42, 0.0, 0.25)
+            }],
+        },
         Command::RenameProject { name: "  ".into() },
         Command::SetTempo { bpm: 5.0 },
         Command::SetTempo { bpm: f64::NAN },

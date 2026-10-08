@@ -472,6 +472,7 @@ mod tests {
             name: None,
             notes: (0..4)
                 .map(|b| NoteInput {
+                    chance: 100,
                     pitch: 36,
                     start_beats: f64::from(b),
                     length_beats: 0.25,
@@ -748,6 +749,7 @@ mod tests {
             name: None,
             notes: (0..8)
                 .map(|b| NoteInput {
+                    chance: 100,
                     pitch: 36,
                     start_beats: f64::from(b) + 0.5,
                     length_beats: 0.25,
@@ -772,6 +774,81 @@ mod tests {
         for (&onset, &want) in found.iter().zip(&expected) {
             assert!(onset.abs_diff(want) <= 2, "onset at {onset}, wanted {want}");
         }
+    }
+
+    /// One-bar clip on the drums with a kick at each of `starts`.
+    fn kicks_at(starts: &[f64], chance: u8) -> Session {
+        let mut s = Session::default();
+        s.execute(Command::CreateClip {
+            track_id: 3,
+            start_beats: 0.0,
+            length_beats: 4.0,
+            name: None,
+            notes: starts
+                .iter()
+                .map(|&b| NoteInput {
+                    chance,
+                    pitch: 36,
+                    start_beats: b,
+                    length_beats: 0.1,
+                    velocity: 127,
+                    id: None,
+                })
+                .collect(),
+        })
+        .expect("clip");
+        s
+    }
+
+    #[test]
+    fn swing_plays_off_steps_late() {
+        let mut s = kicks_at(&[0.25, 2.25], 100);
+        let clip = s.project().tracks[2].clips[0].id;
+        s.execute(Command::SetClipSwing {
+            clip_id: clip,
+            swing: Some(daw_model::Swing {
+                amount_percent: 100.0,
+                grid_beats: 0.25,
+            }),
+        })
+        .expect("swing");
+        let (engine, mut p) = Engine::new(s.project(), SR);
+        engine.set_metronome(false);
+        engine.play();
+        let found = onsets(&left(&render(&mut p, 2.0)), 0.05, 4_800);
+        // 0.25 and 2.25 beats are heard at 0.375 and 2.375 (24 000 samples a beat).
+        assert_eq!(found.len(), 2, "{found:?}");
+        assert!(found[0].abs_diff(9_000) <= 2, "{found:?}");
+        assert!(found[1].abs_diff(57_000) <= 2, "{found:?}");
+    }
+
+    #[test]
+    fn chance_notes_vary_by_lap_but_repeat_exactly() {
+        let starts: Vec<f64> = (0..4).map(f64::from).collect();
+        let mut s = kicks_at(&starts, 50);
+        s.execute(Command::SetLoop {
+            enabled: Some(true),
+            start_beats: Some(0.0),
+            end_beats: Some(4.0),
+        })
+        .expect("loop");
+        let laps = 16;
+        let play = |s: &Session| {
+            let (engine, mut p) = Engine::new(s.project(), SR);
+            engine.set_metronome(false);
+            engine.play();
+            left(&render(&mut p, 2.0 * laps as f32))
+        };
+        let first = play(&s);
+        assert_eq!(first, play(&s), "the same song must play the same way");
+        let per_lap: Vec<usize> = first
+            .chunks(96_000)
+            .map(|lap| onsets(lap, 0.05, 4_800).len())
+            .collect();
+        let total: usize = per_lap.iter().sum();
+        // About half of the 64 kicks play, and not the same in every lap.
+        assert!((16..=48).contains(&total), "{per_lap:?}");
+        assert!(per_lap.iter().any(|&n| n != per_lap[0]), "{per_lap:?}");
     }
 
     #[test]
@@ -827,6 +904,7 @@ mod tests {
             length_beats: 1.0,
             name: None,
             notes: vec![NoteInput {
+                chance: 100,
                 pitch: 36,
                 start_beats: 0.0,
                 length_beats: 0.25,

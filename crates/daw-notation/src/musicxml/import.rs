@@ -346,6 +346,7 @@ pub fn import_musicxml(xml: &str) -> Result<ImportedSong, NotationError> {
             .notes
             .iter()
             .map(|n| NoteInput {
+                chance: 100,
                 pitch: n.pitch,
                 start_beats: n.start_q / qpb,
                 length_beats: ((n.end_q - n.start_q) / qpb).max(MIN_LENGTH_BEATS),
@@ -399,6 +400,7 @@ mod tests {
 
     fn n(pitch: u8, start: f64, len: f64) -> NoteInput {
         NoteInput {
+            chance: 100,
             pitch,
             start_beats: start,
             length_beats: len,

@@ -21,6 +21,7 @@ fn song() -> Project {
     .expect("name");
     let hits = (0..8)
         .map(|i| NoteInput {
+            chance: 100,
             pitch: if i % 2 == 0 { 36 } else { 38 },
             start_beats: f64::from(i),
             length_beats: 0.25,
@@ -43,6 +44,7 @@ fn song() -> Project {
         length_beats: 8.0,
         name: None,
         notes: vec![NoteInput {
+            chance: 100,
             pitch: 36,
             start_beats: 0.0,
             length_beats: 7.5,

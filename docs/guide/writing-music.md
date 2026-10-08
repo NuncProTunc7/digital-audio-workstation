@@ -40,7 +40,19 @@ Synth knobs, in plain terms: **Wave** is the basic tone (Sine soft, Saw bright a
 - **Drag** a note to move it, drag its right end to change its length, **double-click** it to delete it.
 - **Shift+click** adds notes to the selection; **Ctrl+A** selects all.
 - **Grid** sets the snap (1/4, 1/8, 1/16...). **Quantize** snaps the selected notes (or all) onto the grid, tidying up a played-in part.
-- On drum tracks, each row is a drum pad instead of a pitch.
+- On drum tracks, each row is a drum pad instead of a pitch. Drum clips open in the step grid (below); click **Piano roll** to edit them here, **Steps** to go back.
+
+## The drum step grid
+
+Drum clips open as a grid: one row per drum, one column per step (a sixteenth note unless you change **Steps**). Brighter columns mark beats; a line marks each bar.
+
+- **Click** a step to add a hit, click it again to clear it. **Drag** along a row to paint (or erase) several at once; a drag is one undo step.
+- **Right-click** a step for:
+  - **Velocity**: Soft, Normal, Accent. Louder hits look brighter.
+  - **Roll**: ×2, ×3, ×4 quick hits inside the step, for snare rolls and hat flutters.
+  - **Chance**: 75 %, 50 %, 25 % plays the hit only sometimes, so a repeating beat varies. Striped steps have a chance. The pattern of skips is fixed, so the song sounds the same each time you play or export it, while each lap of a loop differs.
+- **Swing** pushes every second step late for a shuffle (try 30–60 %). Choose whether sixteenths or eighths swing. Swing is heard when playing, exporting and in MIDI files; sheet music shows the notes straight.
+- Click a drum's name to hear it.
 
 ## Playing and recording notes (no MIDI keyboard needed)
 

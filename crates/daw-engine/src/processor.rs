@@ -54,6 +54,9 @@ pub struct AudioProcessor {
     loop_start: f64,
     loop_end: f64,
     record_track: Option<TrackId>,
+    /// Laps of the loop since playback started; notes with a chance below
+    /// 100 % roll differently on each lap.
+    loop_pass: u32,
     /// When the next output buffer reaches the speakers (device clock, ns).
     output_time_ns: Option<u64>,
 }
@@ -100,6 +103,7 @@ impl AudioProcessor {
             loop_start: init.loop_start,
             loop_end: init.loop_end,
             record_track: None,
+            loop_pass: 0,
             output_time_ns: None,
         }
     }
@@ -308,12 +312,14 @@ impl AudioProcessor {
                 EngineMessage::Play => {
                     if !self.playing {
                         self.playing = true;
+                        self.loop_pass = 0;
                         self.seek(self.position_beats);
                     }
                 }
                 EngineMessage::CountIn(beats) => {
                     if !self.playing {
                         self.playing = true;
+                        self.loop_pass = 0;
                         let start = self.position_beats;
                         // Cursors wait at the start; nothing plays before it.
                         self.seek(start);
@@ -424,6 +430,7 @@ impl AudioProcessor {
                 self.count_in_end = f64::NEG_INFINITY;
             }
             if looping && self.position_beats >= self.loop_end - 1e-9 {
+                self.loop_pass = self.loop_pass.wrapping_add(1);
                 let over = self.position_beats - self.loop_end;
                 self.seek(self.loop_start + over);
                 // The wrap lands a sliver past the loop start (a beat is
@@ -464,6 +471,7 @@ impl AudioProcessor {
         let counting = self.playing && window_start < self.count_in_end;
         let playing = self.playing && !counting;
         let song_start = window_start.max(self.count_in_end);
+        let pass = self.loop_pass;
         let any_solo = self.tracks.iter().any(|t| t.strip.solo);
 
         for (index, t) in self.tracks.iter_mut().enumerate() {
@@ -486,6 +494,13 @@ impl AudioProcessor {
                         .process(&mut bl[done..offset], &mut br[done..offset]);
                     done = offset;
                     let bit = 1u128 << (ev.note & 0x7F);
+                    // A skipped note never sounds, so its note-off is
+                    // ignored below too.
+                    let plays = chance_plays(ev.chance, t.id, ev.beat, ev.note, pass);
+                    if ev.velocity > 0.0 && !plays {
+                        t.cursor += 1;
+                        continue;
+                    }
                     if ev.velocity > 0.0 {
                         t.instrument.note_on(ev.note, ev.velocity);
                         t.sounding |= bit;
@@ -554,6 +569,26 @@ impl AudioProcessor {
             *r += click;
         }
     }
+}
+
+/// Whether a note with `chance` percent plays this time. A pure function of
+/// the note's place and the loop lap, so a song plays and renders the same
+/// way every time while repeats of a pattern still vary.
+// RT-SAFE
+fn chance_plays(chance: u8, track: TrackId, beat: f64, note: u8, pass: u32) -> bool {
+    if chance >= 100 {
+        return true;
+    }
+    // splitmix64 over the note's identity.
+    let mut z = beat.to_bits()
+        ^ (u64::from(note) << 56)
+        ^ (u64::from(track) << 32)
+        ^ u64::from(pass).wrapping_mul(0x9E37_79B9_7F4A_7C15);
+    z = z.wrapping_add(0x9E37_79B9_7F4A_7C15);
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    z ^= z >> 31;
+    z % 100 < u64::from(chance)
 }
 
 /// Makes automation re-apply its values on the next block, after a manual

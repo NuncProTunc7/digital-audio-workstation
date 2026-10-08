@@ -151,6 +151,7 @@ mod tests {
             length_beats: 8.0,
             name: None,
             notes: vec![NoteInput {
+                chance: 100,
                 pitch: 60,
                 start_beats: 0.0,
                 length_beats: 1.0,

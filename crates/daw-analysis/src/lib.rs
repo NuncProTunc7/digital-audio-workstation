@@ -204,6 +204,7 @@ mod tests {
         let notes = |pitch: u8| -> Vec<NoteInput> {
             (0..8)
                 .map(|i| NoteInput {
+                    chance: 100,
                     pitch,
                     start_beats: f64::from(i) * 0.5,
                     length_beats: 0.45,

@@ -10,6 +10,7 @@ import InstrumentPanel from "./components/InstrumentPanel";
 import Mixer from "./components/Mixer";
 import Piano from "./components/Piano";
 import PianoRoll from "./components/PianoRoll";
+import StepSequencer from "./components/StepSequencer";
 import SheetMusic from "./components/SheetMusic";
 import StatusBar from "./components/StatusBar";
 import Timeline from "./components/Timeline";
@@ -75,6 +76,8 @@ export default function App({ backend }: AppProps) {
   const [claude, setClaude] = useState<ClaudeStatus | null>(null);
   const [claudeOpen, setClaudeOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  // Drum clips open in the step grid unless the user picked the piano roll.
+  const [drumView, setDrumView] = useState<"steps" | "roll">("steps");
   const [peaks, setPeaks] = useState<Record<string, Peaks>>({});
   const peaksRequested = useRef(new Set<string>());
   const [input, setInput] = useState<InputStatus | null>(null);
@@ -989,8 +992,20 @@ export default function App({ backend }: AppProps) {
                 This is an audio clip. Change its volume and fades in the Audio tab, and drag its edges on the timeline to
                 trim it.
               </p>
+            ) : selectedClip && clipTrack && clipTrack.instrument.kind === "drums" && drumView === "steps" ? (
+              <StepSequencer
+                clip={selectedClip}
+                drumPads={catalog.drum_pads}
+                beatsPerBar={beatsPerBar}
+                playheadBeats={position - selectedClip.start_beats}
+                onCommand={execute}
+                onEndGesture={endGesture}
+                onAudition={audition}
+                onShowPianoRoll={() => setDrumView("roll")}
+              />
             ) : selectedClip && clipTrack ? (
               <PianoRoll
+                onShowSteps={clipTrack.instrument.kind === "drums" ? () => setDrumView("steps") : undefined}
                 clip={selectedClip}
                 track={clipTrack}
                 drumPads={catalog.drum_pads}

@@ -927,6 +927,7 @@ pub(crate) mod tests {
                 length_beats: 4.0,
                 name: Some("Beat".into()),
                 notes: vec![daw_model::NoteInput {
+                    chance: 100,
                     pitch: 36,
                     start_beats: 0.0,
                     length_beats: 0.25,
@@ -964,6 +965,7 @@ pub(crate) mod tests {
                 length_beats: 4.0,
                 name: None,
                 notes: vec![daw_model::NoteInput {
+                    chance: 100,
                     pitch: 60,
                     start_beats: 0.0,
                     length_beats: 2.0,
@@ -1020,6 +1022,7 @@ pub(crate) mod tests {
                 length_beats: 4.0,
                 name: None,
                 notes: vec![daw_model::NoteInput {
+                    chance: 100,
                     pitch: 60,
                     start_beats: 0.0,
                     length_beats: 3.0,

@@ -9,6 +9,7 @@ const DRUMS: u32 = 3;
 
 fn n(pitch: u8, start: f64, len: f64, velocity: u8) -> NoteInput {
     NoteInput {
+        chance: 100,
         pitch,
         start_beats: start,
         length_beats: len,

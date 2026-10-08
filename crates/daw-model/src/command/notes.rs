@@ -2,7 +2,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::{Command, CommandError, check_length, check_position, invalid};
-use crate::project::{Clip, ClipId, Note, NoteId, Project};
+use crate::project::{Clip, ClipId, Note, NoteId, Project, full_chance};
 
 fn default_velocity() -> u8 {
     100
@@ -21,6 +21,11 @@ pub struct NoteInput {
     /// Loudness, 1–127 (default 100).
     #[serde(default = "default_velocity")]
     pub velocity: u8,
+    /// How often it plays, 1–100 % (default 100 = every time). Use for
+    /// occasional ghost notes and fills; the pattern of skips is fixed, so
+    /// playback and exports always match.
+    #[serde(default = "full_chance")]
+    pub chance: u8,
     /// Leave out; only used by undo to restore notes with their old ids.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<NoteId>,
@@ -34,6 +39,9 @@ pub struct NoteEdit {
     pub start_beats: Option<f64>,
     pub length_beats: Option<f64>,
     pub velocity: Option<u8>,
+    /// How often it plays, 1–100 %.
+    #[serde(default)]
+    pub chance: Option<u8>,
 }
 
 impl NoteEdit {
@@ -44,6 +52,7 @@ impl NoteEdit {
             && self.start_beats.is_some() == other.start_beats.is_some()
             && self.length_beats.is_some() == other.length_beats.is_some()
             && self.velocity.is_some() == other.velocity.is_some()
+            && self.chance.is_some() == other.chance.is_some()
     }
 }
 
@@ -66,9 +75,18 @@ fn check_velocity(velocity: u8) -> Result<(), CommandError> {
     }
 }
 
+fn check_chance(chance: u8) -> Result<(), CommandError> {
+    if (1..=100).contains(&chance) {
+        Ok(())
+    } else {
+        Err(invalid("chance", format!("must be 1–100 %, got {chance}")))
+    }
+}
+
 pub(crate) fn validate_input(n: &NoteInput) -> Result<(), CommandError> {
     check_pitch(n.pitch)?;
     check_velocity(n.velocity)?;
+    check_chance(n.chance)?;
     check_position("note start", n.start_beats)?;
     check_length("note length", n.length_beats)
 }
@@ -100,6 +118,7 @@ pub(crate) fn materialize(
             start_beats: n.start_beats,
             length_beats: n.length_beats,
             velocity: n.velocity,
+            chance: n.chance,
         })
         .collect())
 }
@@ -164,6 +183,7 @@ pub(super) fn remove(
                 start_beats: n.start_beats,
                 length_beats: n.length_beats,
                 velocity: n.velocity,
+                chance: n.chance,
                 id: Some(n.id),
             })
             .collect(),
@@ -193,6 +213,9 @@ pub(super) fn edit(
         if let Some(l) = e.length_beats {
             check_length("note length", l)?;
         }
+        if let Some(c) = e.chance {
+            check_chance(c)?;
+        }
     }
     let mut inverse = Vec::with_capacity(edits.len());
     for e in edits {
@@ -205,6 +228,7 @@ pub(super) fn edit(
             start_beats: e.start_beats.map(|_| n.start_beats),
             length_beats: e.length_beats.map(|_| n.length_beats),
             velocity: e.velocity.map(|_| n.velocity),
+            chance: e.chance.map(|_| n.chance),
         });
         if let Some(p) = e.pitch {
             n.pitch = p;
@@ -217,6 +241,9 @@ pub(super) fn edit(
         }
         if let Some(v) = e.velocity {
             n.velocity = v;
+        }
+        if let Some(c) = e.chance {
+            n.chance = c;
         }
     }
     sort_notes(&mut clip.notes);
@@ -275,6 +302,7 @@ pub(super) fn quantize(
                 start_beats: Some(start.max(0.0)),
                 length_beats: length,
                 velocity: None,
+                chance: None,
             }
         })
         .collect();
@@ -306,6 +334,7 @@ pub(super) fn transpose(
             start_beats: None,
             length_beats: None,
             velocity: None,
+            chance: None,
         });
     }
     edit(project, clip_id, edits)

@@ -68,6 +68,7 @@ pub fn clip_from_recording(
         notes: notes
             .into_iter()
             .map(|(pitch, start, len, velocity)| NoteInput {
+                chance: 100,
                 pitch,
                 start_beats: start - start_beats,
                 length_beats: len,

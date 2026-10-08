@@ -112,6 +112,7 @@ mod tests {
     #[test]
     fn audio_clips_show_their_audio_instead_of_notes() {
         let c = Clip {
+            swing: None,
             id: 9,
             name: "Vox".into(),
             start_beats: 0.0,

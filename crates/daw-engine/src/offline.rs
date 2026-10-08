@@ -198,6 +198,7 @@ mod tests {
             length_beats: 2.0,
             name: None,
             notes: vec![daw_model::NoteInput {
+                chance: 100,
                 pitch: 60,
                 start_beats: 0.0,
                 length_beats: 1.0,

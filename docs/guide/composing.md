@@ -18,6 +18,7 @@ How Claude writes music in Nunc Pro Tune. The user can read it too: it explains 
 - Write 4- or 8-bar loops; game loops are usually 8–32 bars.
 - Make a loop seamless: the last bar should lead back into the first (end on the V chord or a pickup), and don't let the melody stop dead on the last beat.
 - Drums (General MIDI): 36 kick, 38 snare, 39 clap, 42 closed hat, 46 open hat, 49 crash, 51 ride, toms 41–50. Velocity variety (hats 60–90, accents 110+) makes them feel human.
+- Groove: `set_clip_swing` (amount_percent 30–60, grid_beats 0.25) gives drums a shuffle; town and adventure themes often want it, combat usually doesn't. Notes with `chance` 25–75 (ghost snares, extra hats, an occasional crash) keep a looping beat from sounding copied; playback and exports stay identical run to run. Rolls are just several short notes inside one step.
 - Bass: roots on strong beats, approach notes into chord changes, an octave below the chord (MIDI 28–48).
 - Chords: voice them around middle C (MIDI 55–72), moving each note as little as possible between chords.
 - Melody: above the chords (MIDI 67–84), a repeated motif with variation, rests to breathe.

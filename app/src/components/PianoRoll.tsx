@@ -27,6 +27,8 @@ interface PianoRollProps {
   onCommand: (command: Command) => Promise<unknown>;
   onEndGesture: () => void;
   onAudition: (note: number) => void;
+  /** For drum clips: back to the step grid. */
+  onShowSteps?: () => void;
 }
 
 type Drag =
@@ -236,6 +238,11 @@ export default function PianoRoll(props: PianoRollProps) {
           <span className="param-value">{selectedNotes.length > 0 ? velocity : "–"}</span>
         </label>
         <span className="spacer" />
+        {props.onShowSteps && (
+          <button className="small" onClick={props.onShowSteps} title="Edit this drum clip as a grid of steps">
+            Steps
+          </button>
+        )}
         <button className="small" onClick={() => setPpb((p) => Math.max(16, p / 1.5))} title="Zoom out">
           −
         </button>

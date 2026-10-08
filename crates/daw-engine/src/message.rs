@@ -14,6 +14,8 @@ pub struct SeqEvent {
     pub note: u8,
     /// 0.0 means note-off; otherwise velocity 0.0–1.0.
     pub velocity: f32,
+    /// Percent chance a note-on plays (100 = always).
+    pub chance: u8,
 }
 
 /// One audio clip, as the audio thread plays it.
