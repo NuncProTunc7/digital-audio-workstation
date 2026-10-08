@@ -150,6 +150,23 @@ export default function Versions(props: VersionsProps) {
             B: {compared.name}
             {props.comparison ? quieter(props.comparison.version_gain_db) : ""}
           </button>
+          {snapshots.length > 1 && (
+            <select
+              aria-label="Compare with another version"
+              value={compared.id}
+              onChange={(e) => {
+                props.onCompare(Number(e.target.value));
+                e.currentTarget.blur();
+              }}
+              title="Switch B to another version (for comparing several options)"
+            >
+              {snapshots.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          )}
           <button
             className="small"
             onClick={() => {

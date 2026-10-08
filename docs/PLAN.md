@@ -323,7 +323,7 @@ The owner proposed these. Their priorities: finish items 3–4 first, then the d
 | E8 | **Take lanes and comping** | Large | |
 | E9 ✅ | **Sidechain compression** | Medium–large | Built Oct 2026. `Effect.sidechain` (compressors; `SetEffectSidechain`). The engine renders every track's instrument first and keeps it as a key (`keys_left/right`, preallocated per track), then runs effects, so any track, bus, or master compressor can listen to any track (pre-effects, pre-fader). `EffectProcessor::process_keyed`. Mixer: **Listens to** on compressor cards. |
 | E10 ✅ | **Searchable sound browser** with tags and favorites | Medium | Built Oct 2026. **Sounds** tab: built-in and user presets of every kind, search, mood chips (hand-tagged factory sounds; user presets tagged from their names), favorites (per computer, in the webview's storage), **Try on …** (load + a short demo phrase, undoable) or **+ New track** for other instrument kinds. |
-| E11 | **Auditionable AI edits**: Claude offers variations, you audition each in context and keep one | Needs design | Could build on snapshots (E5). |
+| E11 ✅ | **Auditionable AI edits**: Claude offers variations, you audition each in context and keep one | Needs design | Built Oct 2026 on versions (E5): the composing playbook tells Claude to save each option as a version and restore the original; the A/B bar has a menu to switch B between options; Keep B is one undoable load. |
 
 ### Then
 CLAP, then VST3 hosting, and ASIO, once the owner says which plugins or audio interface they'll use.

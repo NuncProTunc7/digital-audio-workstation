@@ -27,3 +27,4 @@ The **Claude** panel lists what Claude did this session. **Ctrl+Z** undoes any o
 - Claude can't hear the way you do. It measures loudness, balance and frequency content, but your ears decide. Say what you hear.
 - **Before Claude's changes**: when Claude starts editing your song, the app first saves a version with that name (see [Versions](basics.md)). Use **A/B** to compare Claude's take with yours, and **Load** to go back.
 - Ask Claude to save versions too: "save this as *Calm verse*, then try a darker version".
+- **Ask for options, then choose by ear**: "give me three different melodies for bars 9–16". Claude builds each one as a version (*Option 1 – rising*, *Option 2 – calmer*…) and puts your song back as it was. Open **Versions**, click **A/B** on one option, press play, and switch between **A** (your song) and **B**; the menu next to **B** switches to the other options. **Keep B** takes the one you like (Ctrl+Z undoes).

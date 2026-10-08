@@ -850,6 +850,28 @@ describe("Versions", () => {
     expect(backend.compareStop).toHaveBeenCalled();
     await waitFor(() => expect(screen.queryByRole("group", { name: "Compare versions" })).toBeNull());
   });
+
+  it("switches B between several options without leaving A/B", async () => {
+    const backend = createPreviewBackend();
+    vi.spyOn(backend, "compareStart");
+    await renderApp(backend);
+    await saveVersion("Option 1");
+    // The menu is still open: save another.
+    fireEvent.change(screen.getByLabelText("New version name"), { target: { value: "Option 2" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Save version" }));
+    });
+    const [first] = (await backend.getProject()).project.snapshots ?? [];
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole("button", { name: "A/B" })[1]);
+    });
+    await screen.findByRole("group", { name: "Compare versions" });
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText("Compare with another version"), { target: { value: String(first.id) } });
+    });
+    expect(backend.compareStart).toHaveBeenLastCalledWith(first.id);
+    await waitFor(() => expect(screen.getByRole("button", { name: /^B: Option 1/ })).toBeTruthy());
+  });
 });
 
 describe("Sound card buffer", () => {
