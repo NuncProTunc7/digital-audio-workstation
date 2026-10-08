@@ -38,6 +38,13 @@ pub trait Host: Send + Sync {
     fn metronome_on(&self) -> bool {
         false
     }
+    /// Records that Claude is changing the song and returns when it last
+    /// did in this run (`Some(None)`: not yet). Claude's first change after
+    /// a quiet spell saves a "Before Claude's changes" version first. Hosts
+    /// that return None never save versions automatically.
+    fn note_claude_edit(&self) -> Option<Option<std::time::Instant>> {
+        None
+    }
     /// Devices, load, and what happened recently, for
     /// [`diagnostics::report`](crate::diagnostics::report).
     fn diagnostic_info(&self) -> crate::diagnostics::DiagnosticInfo {
@@ -146,6 +153,7 @@ fn handle_inner<H: Host>(host: &H, request: Request) -> Result<Value, String> {
             let name = command.name();
             let description = describe(&command);
             let mut session = host.session()?;
+            let command = with_safety_version(host, session.project(), command);
             session.execute(command).map_err(|e| e.to_string())?;
             // Each remote edit is its own undo step.
             session.end_gesture();
@@ -445,6 +453,48 @@ fn newest_clip(project: &Project, track_id: TrackId) -> Result<ClipId, String> {
         .ok_or_else(|| format!("there is no clip on track {track_id}"))
 }
 
+/// Claude's first edit after this long without one saves a version first.
+pub const CLAUDE_QUIET: std::time::Duration = std::time::Duration::from_secs(10 * 60);
+/// Name of the versions saved before Claude starts changing things.
+pub const BEFORE_CLAUDE: &str = "Before Claude's changes";
+
+/// Puts "save a version" in front of Claude's first edit after a quiet
+/// spell, as one undo step, so the user can always get back to their own
+/// work. Only for songs with something in them, and never for edits that
+/// only touch versions.
+fn with_safety_version<H: Host>(host: &H, project: &Project, command: Command) -> Command {
+    let Some(previous) = host.note_claude_edit() else {
+        return command;
+    };
+    let quiet = previous.is_none_or(|t| t.elapsed() >= CLAUDE_QUIET);
+    let has_music = project.tracks.iter().any(|t| !t.clips.is_empty());
+    let about_versions = matches!(
+        command,
+        Command::TakeSnapshot { .. }
+            | Command::LoadSnapshot { .. }
+            | Command::RenameSnapshot { .. }
+            | Command::DeleteSnapshot { .. }
+            | Command::RestoreSnapshot { .. }
+    );
+    let full = project.snapshots.len() >= daw_model::MAX_SNAPSHOTS;
+    if !quiet || !has_music || about_versions || full {
+        return command;
+    }
+    let taken = project
+        .snapshots
+        .iter()
+        .filter(|s| s.name.starts_with(BEFORE_CLAUDE))
+        .count();
+    let name = if taken == 0 {
+        BEFORE_CLAUDE.to_owned()
+    } else {
+        format!("{BEFORE_CLAUDE} ({})", taken + 1)
+    };
+    Command::Batch {
+        commands: vec![Command::TakeSnapshot { name }, command],
+    }
+}
+
 /// Where a take goes: `(start_beats, offset_seconds)`. Sound captured
 /// before `from_beats` (where recording was asked to start, after any
 /// count-in) or before the song's start is trimmed off rather than shifting
@@ -643,13 +693,8 @@ pub fn save_project<H: Host>(host: &H, path: Option<&Path>) -> Result<SavedProje
             .ok_or_else(|| "the project has not been saved yet; give a file path".to_owned())?,
     };
     let mut session = host.session()?;
-    let files: Vec<String> = session
-        .project()
-        .tracks
-        .iter()
-        .flat_map(|t| &t.clips)
-        .filter_map(|c| c.audio.as_ref().map(|a| a.file.clone()))
-        .collect();
+    // Saved versions keep their recordings too.
+    let files = session.project().audio_files();
     let audio = host.audio();
     let folder = audio_folder_for(&target);
     let missing_audio = if files.is_empty() {
@@ -797,6 +842,9 @@ pub(crate) mod tests {
         pub path: Mutex<Option<PathBuf>>,
         pub changes: Mutex<Vec<String>>,
         pub audio: Arc<AudioPool>,
+        /// Save versions before Claude's edits, like the app does.
+        pub keep_versions: bool,
+        pub last_claude: Mutex<Option<std::time::Instant>>,
         // Keeps the scratch folder alive for the test.
         _scratch: tempfile::TempDir,
     }
@@ -809,6 +857,8 @@ pub(crate) mod tests {
                 path: Mutex::default(),
                 changes: Mutex::default(),
                 audio: Arc::new(AudioPool::new(scratch.path().to_owned())),
+                keep_versions: false,
+                last_claude: Mutex::default(),
                 _scratch: scratch,
             }
         }
@@ -837,10 +887,68 @@ pub(crate) mod tests {
         fn audio(&self) -> Arc<AudioPool> {
             Arc::clone(&self.audio)
         }
+        fn note_claude_edit(&self) -> Option<Option<std::time::Instant>> {
+            if !self.keep_versions {
+                return None;
+            }
+            let mut last = self.last_claude.lock().ok()?;
+            Some(last.replace(std::time::Instant::now()))
+        }
     }
 
     fn ok(r: Response) -> Value {
         r.into_result().expect("request succeeded")
+    }
+
+    #[test]
+    fn claudes_first_change_after_a_while_saves_a_version_first() {
+        let host = TestHost {
+            keep_versions: true,
+            ..TestHost::default()
+        };
+        // The user's own work.
+        host.session
+            .lock()
+            .expect("session")
+            .execute(Command::CreateClip {
+                track_id: 1,
+                start_beats: 0.0,
+                length_beats: 4.0,
+                name: Some("Mine".into()),
+                notes: Vec::new(),
+            })
+            .expect("clip");
+        let snapshots = |h: &TestHost| {
+            h.session
+                .lock()
+                .expect("session")
+                .project()
+                .snapshots
+                .iter()
+                .map(|s| (s.name.clone(), s.song.tempo_bpm))
+                .collect::<Vec<_>>()
+        };
+        ok(execute(&host, Command::SetTempo { bpm: 90.0 }));
+        assert_eq!(snapshots(&host), [(BEFORE_CLAUDE.to_owned(), 120.0)]);
+        // Claude keeps working: no more versions.
+        ok(execute(&host, Command::SetTempo { bpm: 95.0 }));
+        assert_eq!(snapshots(&host).len(), 1);
+        // After a quiet spell, the next change saves another one.
+        *host.last_claude.lock().expect("time") =
+            std::time::Instant::now().checked_sub(CLAUDE_QUIET + std::time::Duration::from_secs(1));
+        ok(execute(&host, Command::SetTempo { bpm: 100.0 }));
+        assert_eq!(
+            snapshots(&host),
+            [
+                (BEFORE_CLAUDE.to_owned(), 120.0),
+                (format!("{BEFORE_CLAUDE} (2)"), 95.0)
+            ]
+        );
+        // One undo takes back the change and its version together.
+        ok(handle(&host, Request::Undo));
+        let session = host.session.lock().expect("session");
+        assert_eq!(session.project().tempo_bpm, 95.0);
+        assert_eq!(session.project().snapshots.len(), 1);
     }
 
     #[test]

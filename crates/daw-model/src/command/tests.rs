@@ -384,6 +384,145 @@ fn chance_and_swing_survive_undo_of_deletes_and_saving() {
 }
 
 #[test]
+fn snapshot_commands_round_trip_through_json() {
+    let mut p = fixture();
+    let snapshot = crate::project::Snapshot {
+        id: 99,
+        name: "Calm".into(),
+        song: p.song_state(),
+    };
+    let commands = [
+        Command::TakeSnapshot {
+            name: "Calm".into(),
+        },
+        Command::LoadSnapshot { snapshot_id: 99 },
+        Command::RenameSnapshot {
+            snapshot_id: 99,
+            name: "Calmer".into(),
+        },
+        Command::DeleteSnapshot { snapshot_id: 99 },
+        Command::RestoreSnapshot {
+            snapshot: snapshot.clone(),
+            index: 0,
+        },
+        Command::SetSongState {
+            song: Box::new(snapshot.song.clone()),
+        },
+    ];
+    for command in commands {
+        let json = serde_json::to_string(&command).expect("serialize");
+        let back: Command = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(command, back, "{json}");
+    }
+    p.snapshots.push(snapshot);
+    let json = crate::file::project_to_json(&p);
+    assert_eq!(
+        crate::file::project_from_json(&json)
+            .expect("load")
+            .snapshots,
+        p.snapshots
+    );
+}
+
+#[test]
+fn loading_a_version_brings_back_its_music_and_undoes_exactly() {
+    let mut s = Session::new(fixture());
+    s.execute(Command::TakeSnapshot {
+        name: "Before Claude's changes".into(),
+    })
+    .expect("take");
+    let version = s.project().snapshots[0].id;
+    let before = s.project().clone();
+    // Change the music a lot.
+    s.execute(Command::SetTempo { bpm: 150.0 }).expect("tempo");
+    s.execute(Command::RemoveTrack { track_id: 1 })
+        .expect("remove");
+    s.execute(Command::AddTrack {
+        name: "Lead".into(),
+        instrument: InstrumentKind::Synth,
+        preset: None,
+        index: None,
+    })
+    .expect("add");
+    let changed = s.project().clone();
+    let next_id = changed.next_id;
+    s.execute(Command::LoadSnapshot {
+        snapshot_id: version,
+    })
+    .expect("load");
+    assert_eq!(s.project().song_state(), before.song_state());
+    // The version list and the name stay; ids keep moving forward.
+    assert_eq!(s.project().snapshots, before.snapshots);
+    assert!(s.project().next_id >= next_id);
+    s.undo();
+    assert_eq!(s.project().song_state(), changed.song_state());
+    s.redo();
+    assert_eq!(s.project().song_state(), before.song_state());
+}
+
+#[test]
+fn versions_can_be_renamed_deleted_and_restored() {
+    let mut p = fixture();
+    let undo_take = Command::TakeSnapshot { name: "A".into() }
+        .apply(&mut p)
+        .expect("take");
+    Command::TakeSnapshot { name: "B".into() }
+        .apply(&mut p)
+        .expect("take");
+    let a = p.snapshots[0].id;
+    let undo_rename = Command::RenameSnapshot {
+        snapshot_id: a,
+        name: "Darker mix".into(),
+    }
+    .apply(&mut p)
+    .expect("rename");
+    assert_eq!(p.snapshots[0].name, "Darker mix");
+    undo_rename.apply(&mut p).expect("undo rename");
+    let with_both = p.clone();
+    let undo_delete = Command::DeleteSnapshot { snapshot_id: a }
+        .apply(&mut p)
+        .expect("delete");
+    assert_eq!(p.snapshots.len(), 1);
+    undo_delete.apply(&mut p).expect("restore");
+    assert_eq!(p.snapshots, with_both.snapshots);
+    // Undoing the first take removes only that version.
+    undo_take.apply(&mut p).expect("undo take");
+    assert_eq!(
+        p.snapshots
+            .iter()
+            .map(|s| s.name.as_str())
+            .collect::<Vec<_>>(),
+        ["B"]
+    );
+    // Bad names and unknown versions are refused.
+    for bad in [
+        Command::TakeSnapshot { name: "  ".into() },
+        Command::LoadSnapshot { snapshot_id: 12345 },
+        Command::DeleteSnapshot { snapshot_id: 12345 },
+    ] {
+        let before = p.clone();
+        assert!(bad.apply(&mut p).is_err());
+        assert_eq!(p, before);
+    }
+}
+
+#[test]
+fn audio_used_only_by_a_version_is_still_part_of_the_song() {
+    let mut p = fixture();
+    Command::TakeSnapshot {
+        name: "With vocals".into(),
+    }
+    .apply(&mut p)
+    .expect("take");
+    Command::DeleteClip {
+        clip_id: AUDIO_CLIP,
+    }
+    .apply(&mut p)
+    .expect("delete");
+    assert_eq!(p.audio_files(), vec!["vox-0123abcd.wav".to_owned()]);
+}
+
+#[test]
 fn swing_slider_drag_is_one_undo_step() {
     let mut s = Session::new(fixture());
     let clip = clip_id(s.project());

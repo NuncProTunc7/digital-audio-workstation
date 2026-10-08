@@ -509,6 +509,57 @@ describe("Drum step sequencer", () => {
   });
 });
 
+describe("Versions", () => {
+  async function saveVersion(name: string) {
+    fireEvent.click(screen.getByRole("button", { name: /^Versions/ }));
+    fireEvent.change(screen.getByLabelText("New version name"), { target: { value: name } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Save version" }));
+    });
+  }
+
+  it("saves a version and loads it back after changes", async () => {
+    const backend = await renderApp();
+    await saveVersion("Slow");
+    expect(screen.getByRole("button", { name: /^Versions \(1\)/ })).toBeTruthy();
+    const tempo = screen.getByLabelText("Tempo in BPM");
+    fireEvent.change(tempo, { target: { value: "150" } });
+    fireEvent.blur(tempo);
+    await screen.findByDisplayValue("150");
+    // The menu is still open; load the version.
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Load" }));
+    });
+    expect(await screen.findByDisplayValue("120")).toBeTruthy();
+    expect((await backend.getProject()).project.snapshots?.map((s) => s.name)).toEqual(["Slow"]);
+    // Loading is undoable.
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(await screen.findByDisplayValue("150")).toBeTruthy();
+  });
+
+  it("compares a version A/B and keeps it", async () => {
+    const backend = createPreviewBackend();
+    vi.spyOn(backend, "compareListen");
+    vi.spyOn(backend, "compareStop");
+    await renderApp(backend);
+    await saveVersion("Darker mix");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "A/B" }));
+    });
+    const bar = await screen.findByRole("group", { name: "Compare versions" });
+    expect(bar.textContent).toContain("turned down 2.0 dB");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /^B: Darker mix/ }));
+    });
+    expect(backend.compareListen).toHaveBeenCalledWith("version");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    });
+    expect(backend.compareStop).toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByRole("group", { name: "Compare versions" })).toBeNull());
+  });
+});
+
 describe("Sound card buffer", () => {
   it("changes the buffer size from the status bar", async () => {
     const backend = createPreviewBackend();

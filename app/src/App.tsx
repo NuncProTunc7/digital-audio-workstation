@@ -11,6 +11,7 @@ import Mixer from "./components/Mixer";
 import Piano from "./components/Piano";
 import PianoRoll from "./components/PianoRoll";
 import StepSequencer from "./components/StepSequencer";
+import Versions from "./components/Versions";
 import SheetMusic from "./components/SheetMusic";
 import StatusBar from "./components/StatusBar";
 import Timeline from "./components/Timeline";
@@ -30,6 +31,7 @@ import type {
   Catalog,
   ClaudeStatus,
   Command,
+  Comparison,
   InputStatus,
   Peaks,
   Project,
@@ -76,6 +78,8 @@ export default function App({ backend }: AppProps) {
   const [claude, setClaude] = useState<ClaudeStatus | null>(null);
   const [claudeOpen, setClaudeOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  // Loudness of the song and the version being compared A/B.
+  const [comparison, setComparison] = useState<Comparison | null>(null);
   // Drum clips open in the step grid unless the user picked the piano roll.
   const [drumView, setDrumView] = useState<"steps" | "roll">("steps");
   const [peaks, setPeaks] = useState<Record<string, Peaks>>({});
@@ -728,6 +732,26 @@ export default function App({ backend }: AppProps) {
             )}
           </div>
         </div>
+
+        <Versions
+          project={project}
+          comparing={transport?.comparing ?? null}
+          comparison={comparison}
+          onCommand={execute}
+          onEndGesture={endGesture}
+          onCompare={(id) => {
+            setToast("Measuring both versions…");
+            void run(() => backend.compareStart(id)).then((c) => {
+              setToast(null);
+              if (c) setComparison(c);
+            });
+          }}
+          onListen={(side) => void run(() => backend.compareListen(side))}
+          onStopComparing={() => {
+            setComparison(null);
+            void run(() => backend.compareStop());
+          }}
+        />
 
         <CommitInput
           key={`name-${project.name}`}

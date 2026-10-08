@@ -25,3 +25,5 @@ The **Claude** panel lists what Claude did this session. **Ctrl+Z** undoes any o
 - **React in your own words**: "too busy", "the lead is annoying", "needs more energy at bar 9". Claude turns that into specific changes.
 - **One change at a time** when fine-tuning, and listen after each.
 - Claude can't hear the way you do. It measures loudness, balance and frequency content, but your ears decide. Say what you hear.
+- **Before Claude's changes**: when Claude starts editing your song, the app first saves a version with that name (see [Versions](basics.md)). Use **A/B** to compare Claude's take with yours, and **Load** to go back.
+- Ask Claude to save versions too: "save this as *Calm verse*, then try a darker version".

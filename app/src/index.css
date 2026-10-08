@@ -1579,6 +1579,64 @@ button.tiny.power.on {
   position: relative;
 }
 
+.versions-menu {
+  min-width: 340px;
+  gap: 4px;
+}
+
+.versions-save {
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+}
+
+.versions-save input {
+  flex: 1;
+}
+
+.versions-empty {
+  max-width: 320px;
+  margin: 4px 8px;
+  font-size: 12px;
+}
+
+.versions-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px;
+}
+
+.versions-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.menu .versions-row button.small {
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  text-align: center;
+}
+
+.compare-bar {
+  position: fixed;
+  top: 58px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--panel-raised);
+  border: 1px solid var(--accent-2);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 50%);
+}
+
 .menu {
   position: absolute;
   top: calc(100% + 4px);

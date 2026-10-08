@@ -10,6 +10,7 @@ pub mod autosave;
 pub mod calibrate;
 pub mod claude_setup;
 mod client;
+pub mod compare;
 pub mod diagnostics;
 mod discovery;
 mod host;

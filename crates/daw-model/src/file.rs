@@ -55,7 +55,37 @@ pub fn project_from_json(json: &str) -> Result<Project, FileError> {
     Ok(project)
 }
 
+/// Checks a loaded project and its saved versions, filling in settings
+/// that older files lack.
 fn validate(project: &mut Project) -> Result<(), FileError> {
+    let mut snapshots = std::mem::take(&mut project.snapshots);
+    validate_project(project)?;
+    for s in &mut snapshots {
+        let mut probe = project.clone();
+        probe.set_song_state(s.song.clone());
+        validate_project(&mut probe)
+            .map_err(|e| FileError::Invalid(format!("saved version \"{}\": {e}", s.name)))?;
+        // Ids inside versions are never handed out again either.
+        project.reserve_id(probe.next_id.saturating_sub(1));
+        project.reserve_id(s.id);
+        s.song = probe.song_state();
+    }
+    let mut ids: Vec<_> = snapshots.iter().map(|s| s.id).collect();
+    ids.sort_unstable();
+    if let Some(w) = ids.windows(2).find(|w| w[0] == w[1]) {
+        return Err(FileError::Invalid(format!("id {} is used twice", w[0])));
+    }
+    if snapshots.iter().any(|s| project.all_ids().contains(&s.id)) {
+        return Err(FileError::Invalid(
+            "a saved version shares an id with the song".into(),
+        ));
+    }
+    project.snapshots = snapshots;
+    Ok(())
+}
+
+/// Checks one song (without its saved versions) as opening a file does.
+pub(crate) fn validate_project(project: &mut Project) -> Result<(), FileError> {
     use crate::command::Command;
     // Reuse the Commands' own checks for tempo and meter.
     let mut probe = Project::default();

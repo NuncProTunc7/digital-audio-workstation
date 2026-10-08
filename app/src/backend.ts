@@ -10,6 +10,8 @@ import type {
   CalibrationResult,
   Catalog,
   ClaudeStatus,
+  CompareSide,
+  Comparison,
   Command,
   ExportReport,
   GodotOptions,
@@ -83,6 +85,10 @@ export interface Backend {
   transportStatus(): Promise<TransportStatus>;
   audioStatus(): Promise<AudioStatus>;
   setOutputDevice(name: string | null): Promise<AudioStatus>;
+  /** Measures the song and a saved version and starts A/B listening on the song. */
+  compareStart(snapshotId: number): Promise<Comparison>;
+  compareListen(side: CompareSide): Promise<void>;
+  compareStop(): Promise<void>;
   /** Sound card buffer in frames (null = the device's default); restarts audio. */
   setBufferSize(frames: number | null): Promise<AudioStatus>;
   refreshMidi(): Promise<AudioStatus>;
@@ -179,6 +185,9 @@ export const tauriBackend: Backend = {
   audioStatus: () => invoke("audio_status"),
   setOutputDevice: (name) => invoke("set_output_device", { name }),
   setBufferSize: (frames) => invoke("set_buffer_size", { frames }),
+  compareStart: (snapshotId) => invoke("compare_start", { snapshotId }),
+  compareListen: (side) => invoke("compare_listen", { side }),
+  compareStop: () => invoke("compare_stop"),
   refreshMidi: () => invoke("refresh_midi"),
   onMidiNote: async (callback) =>
     listen<{ note: number; on: boolean }>("midi-note", (e) => callback(e.payload.note, e.payload.on)),

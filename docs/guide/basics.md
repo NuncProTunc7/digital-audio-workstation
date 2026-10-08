@@ -31,6 +31,16 @@
 - **Autosave:** while you have unsaved changes, the app keeps a hidden copy, updated every 30 seconds. If the app or your PC crashes, the next time you open Nunc Pro Tune it asks whether to recover them. Say **Yes**, then save.
 - **Backups:** each save keeps the previous three versions beside your song as `Song.nptune.bak1` (newest) to `.bak3`. To go back to one, rename it to end in `.nptune` and open it.
 
+## Versions
+
+Versions are named copies of your song kept inside the song file: try something bold, and keep a way back.
+
+- **Versions ▾** in the top bar: type a name ("Calm verse", "Darker mix") and click **Save version**.
+- **Load** puts that version back in place of the song (tracks, mixer, tempo, loop). **Ctrl+Z** undoes a load.
+- **A/B** compares a version with the song as it is now. Press play, then switch between **A: Song now** and **B: version** as often as you like; playback carries on. The louder of the two is turned down to match the other (the bar shows by how much), so you hear which one is *better*, not which is *louder*. **Keep B** loads the version; **Done** goes back to normal.
+- Double-click a version's name to rename it; **✕** deletes it.
+- Claude saves a version called **Before Claude's changes** by itself whenever it starts changing your song after a quiet spell (10 minutes), so your own work is always one click away.
+
 ## Undo
 
 Everything, including what Claude does, can be undone: **Ctrl+Z** undo, **Ctrl+Y** (or Ctrl+Shift+Z) redo. A slider drag or a clip drag counts as one step. The History buttons in the top bar do the same.

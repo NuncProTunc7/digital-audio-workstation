@@ -17,6 +17,7 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use daw_control::autosave::{self, AutosaveSlot, Recoverable};
 use daw_control::claude_setup;
+use daw_control::compare::{self, Comparison, Side};
 use daw_control::diagnostics::{self, DiagnosticInfo};
 use daw_control::settings::{self, Settings};
 use daw_control::{CalibrationResult, ControlServer, Host, RecordingDelay};
@@ -39,6 +40,10 @@ struct AppState {
     output_choice: Mutex<Option<String>>,
     /// Overload count last seen, and when it last went up.
     overload_watch: Mutex<(u32, Option<Instant>)>,
+    /// When Claude last changed the song (for "Before Claude's changes").
+    last_claude_edit: Mutex<Option<Instant>>,
+    /// A/B listening against a saved version, and which side is playing.
+    comparison: Mutex<Option<(Comparison, Side)>>,
     audio_error: Mutex<Option<String>>,
     midi: Mutex<Option<MidiInputs>>,
     /// Track that MIDI keyboards play.
@@ -93,6 +98,8 @@ impl Default for AppState {
             output: Mutex::new(None),
             output_choice: Mutex::new(None),
             overload_watch: Mutex::new((0, None)),
+            last_claude_edit: Mutex::new(None),
+            comparison: Mutex::new(None),
             audio_error: Mutex::new(None),
             midi: Mutex::new(None),
             selected_track: Arc::new(AtomicU32::new(1)),
@@ -127,6 +134,8 @@ impl daw_control::Host for AppState {
     }
 
     fn project_changed(&self, description: &str) {
+        // The engine now plays the edited song; A/B is over.
+        self.end_comparison();
         if let Ok(mut log) = self.remote_log.lock() {
             if log.len() == REMOTE_LOG_LEN {
                 log.pop_front();
@@ -203,6 +212,11 @@ impl daw_control::Host for AppState {
 
     fn count_in_bars(&self) -> u32 {
         self.settings.lock().map_or(0, |s| s.count_in_bars)
+    }
+
+    fn note_claude_edit(&self) -> Option<Option<Instant>> {
+        let mut last = self.last_claude_edit.lock().ok()?;
+        Some(last.replace(Instant::now()))
     }
 
     fn diagnostic_info(&self) -> DiagnosticInfo {
@@ -396,6 +410,13 @@ impl AppState {
         }
     }
 
+    /// Forgets any A/B comparison (the caller resyncs the engine).
+    fn end_comparison(&self) {
+        if let Ok(mut c) = self.comparison.lock() {
+            *c = None;
+        }
+    }
+
     /// Opens the chosen microphone if it isn't open yet.
     fn ensure_input(&self) -> Result<(), String> {
         let mut input = self
@@ -513,6 +534,7 @@ fn view(state: &AppState, session: &Session) -> ProjectView {
 
 /// Pushes the current project to the audio engine and returns the view.
 fn after_edit(state: &AppState, session: &Session) -> ProjectView {
+    state.end_comparison();
     if let Some(engine) = state.engine() {
         engine.sync(session.project());
     }
@@ -752,6 +774,55 @@ fn set_count_in(state: State<'_, AppState>, bars: u32) -> Result<u32, String> {
     state.set_count_in_bars(bars)
 }
 
+/// Measures the song and saved version `snapshot_id` and starts A/B
+/// listening on the song. Rendering takes a moment, so this runs off the
+/// main thread.
+#[tauri::command(async)]
+fn compare_start(state: State<'_, AppState>, snapshot_id: u32) -> Result<Comparison, String> {
+    let project = state.session()?.project().clone();
+    let comparison = compare::measure(&project, &state.audio, snapshot_id)?;
+    diagnostics::log(&format!(
+        "A/B with \"{}\": song {:?} LUFS, version {:?} LUFS",
+        comparison.name, comparison.current_lufs, comparison.version_lufs
+    ));
+    if let Ok(mut c) = state.comparison.lock() {
+        *c = Some((comparison.clone(), Side::Current));
+    }
+    compare_listen(state, Side::Current)?;
+    Ok(comparison)
+}
+
+/// Plays the song or the saved version being compared, at matched loudness.
+#[tauri::command]
+fn compare_listen(state: State<'_, AppState>, side: Side) -> Result<(), String> {
+    let project = state.session()?.project().clone();
+    let mut slot = state
+        .comparison
+        .lock()
+        .map_err(|_| "comparison is unavailable")?;
+    let Some((comparison, current)) = slot.as_mut() else {
+        return Err("not comparing versions".into());
+    };
+    let playing =
+        compare::listening_project(&project, comparison, side).ok_or("that version was deleted")?;
+    *current = side;
+    if let Some(engine) = state.engine() {
+        engine.sync(&playing);
+    }
+    Ok(())
+}
+
+/// Ends A/B listening; the song plays as it is again.
+#[tauri::command]
+fn compare_stop(state: State<'_, AppState>) -> Result<(), String> {
+    state.end_comparison();
+    let session = state.session()?;
+    if let Some(engine) = state.engine() {
+        engine.sync(session.project());
+    }
+    Ok(())
+}
+
 /// The diagnostic report as plain text, for the user to copy.
 #[tauri::command]
 fn diagnostic_report(state: State<'_, AppState>) -> Result<String, String> {
@@ -777,6 +848,12 @@ fn os_version() -> String {
     }
 }
 
+#[derive(Serialize)]
+struct ComparingStatus {
+    snapshot_id: u32,
+    side: Side,
+}
+
 /// Audio CPU load above which sound is about to break up.
 const BUSY_CPU_LOAD: f32 = 0.8;
 /// How long the bigger-buffer hint stays up after a crackle.
@@ -799,6 +876,8 @@ struct TransportStatus {
     overloads: u32,
     /// CPU near its limit, or a crackle in the last few seconds.
     struggling: bool,
+    /// A/B listening: the saved version compared, and which side plays.
+    comparing: Option<ComparingStatus>,
     /// Peak level per track, in track order.
     track_peaks: Vec<f32>,
     recording: bool,
@@ -827,6 +906,12 @@ fn transport_status(state: State<'_, AppState>) -> TransportStatus {
         buffer_frames: snap.buffer_frames,
         overloads: snap.overloads,
         struggling: crackled || snap.cpu_load > BUSY_CPU_LOAD,
+        comparing: state.comparison.lock().ok().and_then(|c| {
+            c.as_ref().map(|(c, side)| ComparingStatus {
+                snapshot_id: c.snapshot_id,
+                side: *side,
+            })
+        }),
         track_peaks: snap.track_peaks,
         recording: state.recording_track.lock().is_ok_and(|r| r.is_some())
             || state.audio_take.lock().is_ok_and(|t| t.is_some()),
@@ -1308,6 +1393,9 @@ pub fn run() {
             set_buffer_size,
             diagnostic_report,
             log_ui_error,
+            compare_start,
+            compare_listen,
+            compare_stop,
             transport_status,
             audio_status,
             set_output_device,

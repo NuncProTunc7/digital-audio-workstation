@@ -129,6 +129,35 @@ export interface Project {
   master: { volume_db: number; effects: Effect[] };
   loop_region: LoopRegion;
   next_id: number;
+  /** Saved versions of the song. */
+  snapshots?: Snapshot[];
+}
+
+/** The music a saved version keeps. */
+export interface SongState {
+  tempo_bpm: number;
+  time_signature: TimeSignature;
+  tracks: Track[];
+  master: { volume_db: number; effects: Effect[] };
+  loop_region: LoopRegion;
+}
+
+export interface Snapshot {
+  id: number;
+  name: string;
+  song: SongState;
+}
+
+export type CompareSide = "current" | "version";
+
+/** Loudness of the song and a saved version, and how they are matched. */
+export interface Comparison {
+  snapshot_id: number;
+  name: string;
+  current_lufs: number | null;
+  version_lufs: number | null;
+  current_gain_db: number;
+  version_gain_db: number;
 }
 
 export interface NoteInput {
@@ -190,6 +219,12 @@ export type Command =
   | { command: "resize_clip"; clip_id: number; length_beats: number }
   | { command: "rename_clip"; clip_id: number; name: string }
   | { command: "set_clip_swing"; clip_id: number; swing: Swing | null }
+  | { command: "take_snapshot"; name: string }
+  | { command: "load_snapshot"; snapshot_id: number }
+  | { command: "rename_snapshot"; snapshot_id: number; name: string }
+  | { command: "delete_snapshot"; snapshot_id: number }
+  | { command: "restore_snapshot"; snapshot: Snapshot; index: number }
+  | { command: "set_song_state"; song: SongState }
   | { command: "duplicate_clip"; clip_id: number; start_beats: Opt<number> }
   | { command: "add_notes"; clip_id: number; notes: NoteInput[] }
   | { command: "remove_notes"; clip_id: number; note_ids: number[] }
@@ -349,6 +384,8 @@ export interface TransportStatus {
   overloads: number;
   /** CPU near its limit, or a crackle in the last few seconds: suggest a bigger buffer. */
   struggling: boolean;
+  /** A/B listening against a saved version. */
+  comparing: { snapshot_id: number; side: CompareSide } | null;
   /** Peak level per track, in track order. */
   track_peaks: number[];
   recording: boolean;

@@ -49,6 +49,31 @@ pub struct Project {
     /// Next free id. Ids are never reused within a project.
     #[serde(default)]
     pub next_id: Id,
+    /// Saved versions of the song ("Before Claude's changes", "Darker
+    /// mix") to go back to or compare with.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub snapshots: Vec<Snapshot>,
+}
+
+/// A named, saved version of the song.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct Snapshot {
+    pub id: Id,
+    pub name: String,
+    pub song: SongState,
+}
+
+/// Everything about the music that a saved version keeps: the song without
+/// its name and its other versions.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct SongState {
+    pub tempo_bpm: f64,
+    pub time_signature: TimeSignature,
+    pub tracks: Vec<Track>,
+    #[serde(default)]
+    pub master: MasterBus,
+    #[serde(default)]
+    pub loop_region: LoopRegion,
 }
 
 fn default_format_version() -> u32 {
@@ -58,6 +83,56 @@ fn default_format_version() -> u32 {
 impl Project {
     pub fn track(&self, id: TrackId) -> Option<&Track> {
         self.tracks.iter().find(|t| t.id == id)
+    }
+
+    /// The music as it is now, for saving as a version.
+    pub fn song_state(&self) -> SongState {
+        SongState {
+            tempo_bpm: self.tempo_bpm,
+            time_signature: self.time_signature,
+            tracks: self.tracks.clone(),
+            master: self.master.clone(),
+            loop_region: self.loop_region,
+        }
+    }
+
+    /// Replaces the music with `song` (keeping the name and the saved
+    /// versions); returns what was there.
+    pub fn set_song_state(&mut self, song: SongState) -> SongState {
+        let old = self.song_state();
+        self.tempo_bpm = song.tempo_bpm;
+        self.time_signature = song.time_signature;
+        self.tracks = song.tracks;
+        self.master = song.master;
+        self.loop_region = song.loop_region;
+        if let Some(max) = self.all_ids().into_iter().max() {
+            self.reserve_id(max);
+        }
+        old
+    }
+
+    /// The song as saved version `snapshot_id` has it, ready to play or
+    /// render.
+    pub fn snapshot_song(&self, snapshot_id: Id) -> Option<Project> {
+        let snapshot = self.snapshots.iter().find(|s| s.id == snapshot_id)?;
+        let mut p = self.clone();
+        p.snapshots.clear();
+        p.set_song_state(snapshot.song.clone());
+        Some(p)
+    }
+
+    /// Every audio file the song or any of its saved versions plays.
+    pub fn audio_files(&self) -> Vec<String> {
+        let mut files: Vec<String> = self
+            .tracks
+            .iter()
+            .chain(self.snapshots.iter().flat_map(|s| &s.song.tracks))
+            .flat_map(|t| &t.clips)
+            .filter_map(|c| c.audio.as_ref().map(|a| a.file.clone()))
+            .collect();
+        files.sort();
+        files.dedup();
+        files
     }
 
     pub fn track_mut(&mut self, id: TrackId) -> Option<&mut Track> {
@@ -95,7 +170,8 @@ impl Project {
 
     /// Whether any track, clip, note, or effect already uses `id`.
     pub fn id_in_use(&self, id: Id) -> bool {
-        self.master.effects.iter().any(|e| e.id == id)
+        self.snapshots.iter().any(|s| s.id == id)
+            || self.master.effects.iter().any(|e| e.id == id)
             || self.tracks.iter().any(|t| {
                 t.id == id
                     || t.mixer.effects.iter().any(|e| e.id == id)
@@ -109,6 +185,7 @@ impl Project {
     /// Every id in the project, for validation.
     pub(crate) fn all_ids(&self) -> Vec<Id> {
         let mut ids: Vec<Id> = self.master.effects.iter().map(|e| e.id).collect();
+        ids.extend(self.snapshots.iter().map(|s| s.id));
         for t in &self.tracks {
             ids.push(t.id);
             ids.extend(t.mixer.effects.iter().map(|e| e.id));
@@ -149,6 +226,7 @@ impl Default for Project {
             automation: Vec::new(),
         };
         Self {
+            snapshots: Vec::new(),
             format_version: FORMAT_VERSION,
             name: "Untitled".to_owned(),
             tempo_bpm: 120.0,

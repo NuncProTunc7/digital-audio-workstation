@@ -7,6 +7,8 @@ mod clips;
 mod effects;
 mod instruments;
 mod notes;
+mod snapshots;
+pub use snapshots::MAX_SNAPSHOTS;
 mod song;
 mod tracks;
 
@@ -216,6 +218,29 @@ pub enum Command {
     ResizeClip { clip_id: ClipId, length_beats: f64 },
     /// Rename a clip.
     RenameClip { clip_id: ClipId, name: String },
+
+    // ---- Saved versions ----
+    /// Save the song as it is now as a named version (kept in the song
+    /// file), so it can be loaded or compared later. Take one before big
+    /// changes, e.g. "Before Claude's changes" or "Calm verse". Returns
+    /// nothing; read the id with get_song.
+    TakeSnapshot { name: String },
+    /// Replace the song's music (tracks, mixer, tempo, meter, loop) with a
+    /// saved version. The song's name and its versions stay. Undoable.
+    LoadSnapshot { snapshot_id: Id },
+    /// Rename a saved version.
+    RenameSnapshot { snapshot_id: Id, name: String },
+    /// Delete a saved version.
+    DeleteSnapshot { snapshot_id: Id },
+    /// Put back a deleted version exactly as it was (used by undo).
+    RestoreSnapshot {
+        snapshot: crate::project::Snapshot,
+        index: usize,
+    },
+    /// Replace the song's music wholesale (used by undo of load_snapshot).
+    SetSongState {
+        song: Box<crate::project::SongState>,
+    },
     /// Swing (shuffle) a note clip: every second step plays late. Notes
     /// keep their written positions; playback, exports and MIDI files hear
     /// the swing. `swing: null` makes the clip straight again. Errors on
@@ -511,6 +536,14 @@ impl Command {
                 length_beats,
             } => clips::resize(project, clip_id, length_beats),
             C::RenameClip { clip_id, name } => clips::rename(project, clip_id, name),
+            C::TakeSnapshot { name } => snapshots::take(project, name),
+            C::LoadSnapshot { snapshot_id } => snapshots::load(project, snapshot_id),
+            C::RenameSnapshot { snapshot_id, name } => {
+                snapshots::rename(project, snapshot_id, name)
+            }
+            C::DeleteSnapshot { snapshot_id } => snapshots::delete(project, snapshot_id),
+            C::RestoreSnapshot { snapshot, index } => snapshots::restore(project, snapshot, index),
+            C::SetSongState { song } => snapshots::set_state(project, *song),
             C::SetClipSwing { clip_id, swing } => clips::set_swing(project, clip_id, swing),
             C::DuplicateClip {
                 clip_id,

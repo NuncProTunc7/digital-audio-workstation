@@ -8,6 +8,7 @@ import type {
   AudioStatus,
   Catalog,
   ClaudeStatus,
+  CompareSide,
   InputStatus,
   Peaks,
   Clip,
@@ -217,6 +218,37 @@ export function applyCommand(project: Project, command: Command): Project {
     case "rename_clip":
       clipOf(command.clip_id)[1].name = command.name;
       break;
+    case "take_snapshot": {
+      const name = command.name.trim();
+      if (!name) throw new Error("version name can't be empty");
+      const { snapshots: _, name: __, format_version: ___, next_id: ____, ...song } = p;
+      p.snapshots = [...(p.snapshots ?? []), { id: id(), name, song: structuredClone(song) }];
+      break;
+    }
+    case "load_snapshot": {
+      const s = (p.snapshots ?? []).find((x) => x.id === command.snapshot_id);
+      if (!s) throw new Error(`there is no saved version with id ${command.snapshot_id}`);
+      Object.assign(p, structuredClone(s.song));
+      break;
+    }
+    case "set_song_state":
+      Object.assign(p, structuredClone(command.song));
+      break;
+    case "rename_snapshot": {
+      const s = (p.snapshots ?? []).find((x) => x.id === command.snapshot_id);
+      if (!s) throw new Error(`there is no saved version with id ${command.snapshot_id}`);
+      s.name = command.name;
+      break;
+    }
+    case "delete_snapshot":
+      p.snapshots = (p.snapshots ?? []).filter((x) => x.id !== command.snapshot_id);
+      break;
+    case "restore_snapshot": {
+      const list = [...(p.snapshots ?? [])];
+      list.splice(command.index, 0, command.snapshot);
+      p.snapshots = list;
+      break;
+    }
     case "set_clip_swing": {
       const [, c] = clipOf(command.clip_id);
       if (c.audio) throw new Error("only note clips swing");
@@ -409,6 +441,7 @@ export function createPreviewBackend(): PreviewBackend {
   let recording = false;
   let metronome = true;
   let countInBars = 1;
+  let comparing: { snapshot_id: number; side: CompareSide } | null = null;
   const uiErrors: string[] = [];
   let startedAt = 0;
   let startBeats = 0;
@@ -561,11 +594,32 @@ export function createPreviewBackend(): PreviewBackend {
       buffer_frames: bufferSetting ?? 480,
       overloads: 0,
       struggling: false,
+      comparing,
       track_peaks: project.tracks.map(() => 0),
       recording,
     }),
     audioStatus: async () => audio(),
     setOutputDevice: async () => audio(),
+    compareStart: async (snapshotId) => {
+      const s = (project.snapshots ?? []).find((x) => x.id === snapshotId);
+      if (!s) throw new Error(`there is no saved version with id ${snapshotId}`);
+      comparing = { snapshot_id: snapshotId, side: "current" };
+      return {
+        snapshot_id: snapshotId,
+        name: s.name,
+        current_lufs: -16,
+        version_lufs: -18,
+        current_gain_db: -2,
+        version_gain_db: 0,
+      };
+    },
+    compareListen: async (side) => {
+      if (!comparing) throw new Error("not comparing versions");
+      comparing = { ...comparing, side };
+    },
+    compareStop: async () => {
+      comparing = null;
+    },
     setBufferSize: async (frames) => {
       bufferSetting = frames;
       return audio();
