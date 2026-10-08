@@ -17,6 +17,10 @@ pub struct EngineStatus {
     sample_rate_hz: AtomicU32,
     // Frames in the most recent sound card callback.
     buffer_frames: AtomicU32,
+    // Callbacks that took longer than the sound they made (heard as a
+    // crackle or dropout), and the highest load seen (f32 bits).
+    overloads: AtomicU32,
+    cpu_peak: AtomicU32,
     // Post-fader peak per track slot since the UI last read them (f32 bits).
     track_peaks: [AtomicU32; MAX_TRACKS],
     // Clock anchor, as a seqlock: odd `clock_seq` means a write is underway.
@@ -56,6 +60,8 @@ impl Default for EngineStatus {
             cpu_load: AtomicU32::new(0),
             sample_rate_hz: AtomicU32::new(0),
             buffer_frames: AtomicU32::new(0),
+            overloads: AtomicU32::new(0),
+            cpu_peak: AtomicU32::new(0),
             track_peaks: std::array::from_fn(|_| AtomicU32::new(0)),
             clock_seq: AtomicU64::new(0),
             clock_ns: AtomicU64::new(0),
@@ -79,6 +85,10 @@ pub struct StatusSnapshot {
     pub sample_rate_hz: u32,
     /// Sound card buffer size; 0 until audio has started.
     pub buffer_frames: u32,
+    /// Callbacks that ran out of time since audio started (likely dropouts).
+    pub overloads: u32,
+    /// Highest audio CPU load since audio started (1.0 = all the time there was).
+    pub cpu_peak: f32,
     /// Peak level per track, in project track order.
     pub track_peaks: Vec<f32>,
 }
@@ -153,6 +163,13 @@ impl EngineStatus {
     pub(crate) fn set_callback_stats(&self, load: f32, frames: u32) {
         self.cpu_load.store(load.to_bits(), Ordering::Relaxed);
         self.buffer_frames.store(frames, Ordering::Relaxed);
+        if load > 1.0 {
+            self.overloads.fetch_add(1, Ordering::Relaxed);
+        }
+        if load.is_finite() {
+            self.cpu_peak
+                .fetch_max(load.max(0.0).to_bits(), Ordering::Relaxed);
+        }
     }
 
     pub(crate) fn set_sample_rate(&self, sample_rate_hz: u32) {
@@ -161,6 +178,11 @@ impl EngineStatus {
 
     pub fn is_playing(&self) -> bool {
         self.playing.load(Ordering::Relaxed)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn callback_for_test(&self, load: f32) {
+        self.set_callback_stats(load, 256);
     }
 
     /// Reads current values and resets the peak meters.
@@ -174,11 +196,30 @@ impl EngineStatus {
             cpu_load: f32::from_bits(self.cpu_load.load(Ordering::Relaxed)),
             sample_rate_hz: self.sample_rate_hz.load(Ordering::Relaxed),
             buffer_frames: self.buffer_frames.load(Ordering::Relaxed),
+            overloads: self.overloads.load(Ordering::Relaxed),
+            cpu_peak: f32::from_bits(self.cpu_peak.load(Ordering::Relaxed)),
             track_peaks: self
                 .track_peaks
                 .iter()
                 .map(|p| f32::from_bits(p.swap(0, Ordering::Relaxed)))
                 .collect(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn counts_callbacks_that_ran_out_of_time() {
+        let status = EngineStatus::default();
+        for load in [0.3, 1.4, 0.5, 2.0, 0.9] {
+            status.callback_for_test(load);
+        }
+        let snap = status.take_snapshot();
+        assert_eq!(snap.overloads, 2);
+        assert_eq!(snap.cpu_peak, 2.0);
+        assert_eq!(snap.cpu_load, 0.9);
     }
 }

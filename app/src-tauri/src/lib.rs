@@ -34,6 +34,10 @@ struct AppState {
     session: Mutex<Session>,
     engine: EngineSlot,
     output: Mutex<Option<AudioOutput>>,
+    /// The output device the user picked (None = system default).
+    output_choice: Mutex<Option<String>>,
+    /// Overload count last seen, and when it last went up.
+    overload_watch: Mutex<(u32, Option<Instant>)>,
     audio_error: Mutex<Option<String>>,
     midi: Mutex<Option<MidiInputs>>,
     /// Track that MIDI keyboards play.
@@ -86,6 +90,8 @@ impl Default for AppState {
             session: Mutex::new(Session::default()),
             engine: Arc::new(RwLock::new(None)),
             output: Mutex::new(None),
+            output_choice: Mutex::new(None),
+            overload_watch: Mutex::new((0, None)),
             audio_error: Mutex::new(None),
             midi: Mutex::new(None),
             selected_track: Arc::new(AtomicU32::new(1)),
@@ -273,8 +279,15 @@ impl AppState {
             .map_err(|_| "project state is unavailable".to_owned())
     }
 
-    /// (Re)opens audio output. Keeps the app running without sound on failure.
+    /// (Re)opens audio output on `device_name` (None = system default) with
+    /// the buffer size from settings. The playhead stays where it was. Keeps
+    /// the app running without sound on failure.
     fn start_audio(&self, device_name: Option<&str>) -> Result<(), String> {
+        if let Ok(mut choice) = self.output_choice.lock() {
+            *choice = device_name.map(str::to_owned);
+        }
+        let buffer_frames = self.settings.lock().ok().and_then(|s| s.buffer_frames);
+        let position = self.engine().map(|e| e.status().position_beats);
         let project = self.session()?.project().clone();
         let mut output = self
             .output
@@ -285,7 +298,12 @@ impl AppState {
         if let Ok(mut slot) = self.engine.write() {
             *slot = None;
         }
-        let result = AudioOutput::start(device_name, &project, Arc::clone(&self.audio));
+        let result = AudioOutput::start(
+            device_name,
+            buffer_frames,
+            &project,
+            Arc::clone(&self.audio),
+        );
         let mut error = self
             .audio_error
             .lock()
@@ -293,6 +311,9 @@ impl AppState {
         match result {
             Ok((engine, new_output)) => {
                 engine.set_metronome(self.metronome_on.load(Ordering::Relaxed));
+                if let Some(beats) = position {
+                    engine.locate(beats);
+                }
                 if let Ok(mut slot) = self.engine.write() {
                     *slot = Some(Arc::new(engine));
                 }
@@ -655,6 +676,11 @@ fn set_count_in(state: State<'_, AppState>, bars: u32) -> Result<u32, String> {
     state.set_count_in_bars(bars)
 }
 
+/// Audio CPU load above which sound is about to break up.
+const BUSY_CPU_LOAD: f32 = 0.8;
+/// How long the bigger-buffer hint stays up after a crackle.
+const CRACKLE_HINT: std::time::Duration = std::time::Duration::from_secs(15);
+
 #[derive(Serialize)]
 struct TransportStatus {
     playing: bool,
@@ -668,6 +694,10 @@ struct TransportStatus {
     peak_right: f32,
     cpu_load: f32,
     buffer_frames: u32,
+    /// Callbacks that ran out of time since audio started (heard as crackles).
+    overloads: u32,
+    /// CPU near its limit, or a crackle in the last few seconds.
+    struggling: bool,
     /// Peak level per track, in track order.
     track_peaks: Vec<f32>,
     recording: bool,
@@ -676,6 +706,14 @@ struct TransportStatus {
 #[tauri::command]
 fn transport_status(state: State<'_, AppState>) -> TransportStatus {
     let snap = state.engine().map(|e| e.status()).unwrap_or_default();
+    let crackled = state.overload_watch.lock().is_ok_and(|mut w| {
+        // A new engine starts counting from 0 again.
+        if snap.overloads > w.0 {
+            w.1 = Some(Instant::now());
+        }
+        w.0 = snap.overloads;
+        w.1.is_some_and(|t| t.elapsed() < CRACKLE_HINT)
+    });
     TransportStatus {
         playing: snap.playing,
         position_beats: snap.position_beats,
@@ -686,6 +724,8 @@ fn transport_status(state: State<'_, AppState>) -> TransportStatus {
         peak_right: snap.peak_right,
         cpu_load: snap.cpu_load,
         buffer_frames: snap.buffer_frames,
+        overloads: snap.overloads,
+        struggling: crackled || snap.cpu_load > BUSY_CPU_LOAD,
         track_peaks: snap.track_peaks,
         recording: state.recording_track.lock().is_ok_and(|r| r.is_some())
             || state.audio_take.lock().is_ok_and(|t| t.is_some()),
@@ -859,6 +899,11 @@ struct AudioStatus {
     default_output: Option<String>,
     active_output: Option<String>,
     sample_rate_hz: Option<u32>,
+    /// The buffer size asked for in frames (None = the device's default).
+    buffer_setting: Option<u32>,
+    /// The fixed buffer size in use (None = the device's default).
+    buffer_active: Option<u32>,
+    buffer_options: Vec<u32>,
     error: Option<String>,
     midi_inputs: Vec<String>,
 }
@@ -871,6 +916,9 @@ fn audio_status_of(state: &AppState) -> AudioStatus {
         default_output: device::default_output_device_name(),
         active_output: output.map(|o| o.device_name().to_owned()),
         sample_rate_hz: output.map(AudioOutput::sample_rate_hz),
+        buffer_setting: state.settings.lock().ok().and_then(|s| s.buffer_frames),
+        buffer_active: output.and_then(AudioOutput::buffer_frames),
+        buffer_options: device::BUFFER_SIZES.to_vec(),
         error: state.audio_error.lock().ok().and_then(|e| e.clone()),
         midi_inputs: state
             .midi
@@ -892,6 +940,29 @@ fn set_output_device(state: State<'_, AppState>, name: Option<String>) -> AudioS
     // The error, if any, is reported in the returned status.
     let _ = state.start_audio(name.as_deref());
     audio_status_of(&state)
+}
+
+/// Changes the sound card buffer size (`None` = the device's default) and
+/// restarts audio with it. Refused while recording.
+#[tauri::command]
+fn set_buffer_size(state: State<'_, AppState>, frames: Option<u32>) -> Result<AudioStatus, String> {
+    let recording = state.recording_track.lock().is_ok_and(|r| r.is_some())
+        || state.audio_take.lock().is_ok_and(|t| t.is_some());
+    if recording {
+        return Err("stop recording before changing the buffer size".into());
+    }
+    {
+        let mut s = state
+            .settings
+            .lock()
+            .map_err(|_| "settings are unavailable")?;
+        s.buffer_frames = frames.filter(|f| device::BUFFER_SIZES.contains(f));
+        s.save(&settings::settings_path())?;
+    }
+    let choice = state.output_choice.lock().ok().and_then(|c| c.clone());
+    // The error, if any, is reported in the returned status.
+    let _ = state.start_audio(choice.as_deref());
+    Ok(audio_status_of(&state))
 }
 
 /// Reconnects to MIDI keyboards (after plugging one in).
@@ -1127,6 +1198,7 @@ pub fn run() {
             stop,
             set_metronome,
             set_count_in,
+            set_buffer_size,
             transport_status,
             audio_status,
             set_output_device,

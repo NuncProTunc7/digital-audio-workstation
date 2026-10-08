@@ -239,7 +239,7 @@ Check each source file's own header before porting; projects sometimes mix licen
 
 ## 13. Next work, in order (agreed Oct 2026)
 
-A design review found gaps that matter more than plugin hosting. Do these **before** CLAP/VST3 and ASIO, in this order. Items 1–2 are done; **next is item 3**. Each item lists what to build and how to know it's done. Items 1–4 were promised by this plan (§3 rule 1, §11 risks) but not built.
+A design review found gaps that matter more than plugin hosting. Do these **before** CLAP/VST3 and ASIO, in this order. Items 1–3 are done; **next is item 4**. Each item lists what to build and how to know it's done. Items 1–4 were promised by this plan (§3 rule 1, §11 risks) but not built.
 
 ### A. Protect the work (do first)
 
@@ -255,9 +255,9 @@ A design review found gaps that matter more than plugin hosting. Do these **befo
 - The Audio tab warns when the input's name looks like Bluetooth and no delay is set. Claude has `recording_delay` and `calibrate_recording`.
 - Verified live through a PulseAudio loopback adding about 160 ms: takes landed 158 ms late, calibration measured 167 ms, and the next take landed 4.5 ms off the beat (the loopback itself drifts by ~10 ms).
 
-**3. Sound card buffer size** (§11 glitch mitigation).
-- Status-bar device menu: buffer 128/256/512/1024/2048 frames (`cpal::BufferSize::Fixed`, falling back to default if refused), saved in app settings. Show the resulting latency in ms. Suggest a bigger buffer when the CPU meter goes past 80% or underruns are counted.
-- Done when changing it restarts the stream without losing the project, and the status bar reports the new latency.
+**3. Sound card buffer size** ✅ (built Oct 2026; §11 glitch mitigation).
+- Status-bar **Buffer** menu: Default or 128/256/512/1024/2048 frames, each with its delay in ms (`cpal::BufferSize::Fixed`, fitted into the device's supported range, falling back to the default if refused), saved in app settings (`buffer_frames`). Changing it restarts the stream on the same device and puts the playhead back; refused while recording.
+- WASAPI doesn't report underruns, so the engine counts **overloads**: callbacks that took longer than the sound they produced (`EngineStatus::overloads`, plus `cpu_peak`). The status bar offers the next size up when CPU passes 80% or an overload happened in the last 15 s.
 
 **4. Diagnostic report** (§11 "owner can't debug").
 - A **Copy diagnostic report** button (Claude panel and status bar) and a `diagnostic_report` control tool: app version, Windows version, output/input devices, sample rate, buffer, measured latency/offset, CPU peak, underrun count, MIDI devices, loaded sample packs, last 50 log lines (from a ring buffer filled off the audio thread), and recent errors. No file paths beyond the project name.
@@ -299,6 +299,24 @@ Owner requests (Oct 2026), done:
 
 **13. Releases and auto-update.** A tag (`v0.x.y`) builds the installer and publishes a GitHub Release (no login needed, doesn't expire). Add `tauri-plugin-updater` with a signing key in repository secrets; the app checks on launch and offers "Update and restart". Unsaved work is protected by item 1.
 **14. Code signing** (optional, costs money: certificate ~$100–400/yr or Azure Trusted Signing [Confidence: Med]). Removes the SmartScreen warning. Owner decides.
+
+### E. Owner's recommendations (Oct 2026)
+
+The owner proposed these. Their priorities: finish items 3–4 first, then the drum step sequencer, snapshots with A/B listening, and the interactive game-music preview. **Working order:** 3, 4, E3 (step sequencer), E5 (snapshots/A-B), 5 (intro loop), 6 (markers), E1 (interactive preview), 10 (user presets), 8 (buses), E9 (sidechain), then the rest.
+
+| # | Feature | Effort | Notes |
+|---|---|---|---|
+| E1 | **Interactive game-music preview**: Explore/Combat/Victory buttons while playing; layers fade and sections change on the beat, as Godot will | Large | Needs markers (6). Mirrors the `AudioStreamInteractive`/`Synchronized` export so what you hear is what Godot plays. |
+| E2 | **Chord track and scale highlighting**: chords above the timeline, scale notes highlighted in the piano roll, shared with Claude | Medium–large | Builds on key signature (12). |
+| E3 | **Drum step sequencer**: grid of steps per drum pad, swing, velocity, rolls, probability hits | Medium | Edits ordinary notes through Commands; probability/variation must render the same every time (seeded). |
+| E4 | **Arrangement variations**: quiet / normal / boss versions sharing material; linked clips | Large | Linked clips first. |
+| E5 | **Named snapshots and A/B listening**: save versions ("Before Claude's changes"), switch and compare at matched loudness | Medium | Snapshots live beside the song; switching is one undo step. |
+| E6 | **Track freeze**: render a heavy track to audio, unfreeze to edit | Medium–large | |
+| E7 | **Loop and export inspector**: audition the loop seam; flag missing audio, clipping, silence, mismatched stem lengths | Medium | After 5. |
+| E8 | **Take lanes and comping** | Large | |
+| E9 | **Sidechain compression** | Medium–large | After buses (8). |
+| E10 | **Searchable sound browser** with tags and favorites | Medium | After user presets (10). |
+| E11 | **Auditionable AI edits**: Claude offers variations, you audition each in context and keep one | Needs design | Could build on snapshots (E5). |
 
 ### Then
 CLAP, then VST3 hosting, and ASIO, once the owner says which plugins or audio interface they'll use.

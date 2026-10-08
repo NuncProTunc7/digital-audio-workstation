@@ -9,7 +9,8 @@
   - **Piano roll**: the notes in the selected clip.
   - **Sheet music**: the selected track (or all tracks) as notation.
   - **Mixer**: volume, pan, mute/solo, and effects for every track.
-- **Status bar** (bottom edge): sound card, sample rate and latency, CPU load, output level, MIDI keyboards, and the **Claude** button.
+- **Status bar** (bottom edge): sound card, sample rate, **Buffer** (see below), CPU load, output level, MIDI keyboards, and the **Claude** button.
+- **Buffer** is how much sound the computer prepares at a time. Smaller (128, 256) answers faster when you play; bigger (1024, 2048) stops crackles on a busy computer. Each choice shows its delay in ms. **Default** lets Windows choose. If the computer struggles, a **Crackling? Use buffer …** button appears; click it to go one size up.
 
 ## Playing
 

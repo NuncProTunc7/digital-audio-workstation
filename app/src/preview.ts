@@ -410,11 +410,15 @@ export function createPreviewBackend(): PreviewBackend {
     file_path: filePath,
     missing_audio: [],
   });
+  let bufferSetting: number | null = null;
   const audio = (): AudioStatus => ({
     output_devices: ["Preview (no audio)"],
     default_output: "Preview (no audio)",
     active_output: "Preview (no audio)",
     sample_rate_hz: 48000,
+    buffer_setting: bufferSetting,
+    buffer_active: bufferSetting,
+    buffer_options: [128, 256, 512, 1024, 2048],
     error: null,
     midi_inputs: [],
   });
@@ -543,12 +547,18 @@ export function createPreviewBackend(): PreviewBackend {
       peak_left: 0,
       peak_right: 0,
       cpu_load: 0,
-      buffer_frames: 480,
+      buffer_frames: bufferSetting ?? 480,
+      overloads: 0,
+      struggling: false,
       track_peaks: project.tracks.map(() => 0),
       recording,
     }),
     audioStatus: async () => audio(),
     setOutputDevice: async () => audio(),
+    setBufferSize: async (frames) => {
+      bufferSetting = frames;
+      return audio();
+    },
     refreshMidi: async () => audio(),
     onMidiNote: async () => () => {},
     importAudio: async (path, trackId, startBeats) => {

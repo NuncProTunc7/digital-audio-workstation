@@ -61,25 +61,33 @@ pub fn default_output_device_name() -> Option<String> {
         .map(|d| d.to_string())
 }
 
+/// Buffer sizes offered to the user, in frames. Smaller answers sooner but
+/// needs more spare CPU.
+pub const BUFFER_SIZES: [u32; 5] = [128, 256, 512, 1024, 2048];
+
 /// A running output stream. Dropping it stops the sound and joins its thread.
 pub struct AudioOutput {
     shutdown_tx: Option<mpsc::Sender<()>>,
     thread: Option<JoinHandle<()>>,
     device_name: String,
     sample_rate_hz: u32,
+    buffer_frames: Option<u32>,
 }
 
 struct Opened {
     engine: Engine,
     device_name: String,
     sample_rate_hz: u32,
+    buffer_frames: Option<u32>,
 }
 
 impl AudioOutput {
     /// Opens `device_name` (or the system default) and starts an engine for
-    /// `project` at the device's sample rate.
+    /// `project` at the device's sample rate. `buffer_frames` asks for a
+    /// fixed buffer size; if the device refuses it, its default is used.
     pub fn start(
         device_name: Option<&str>,
+        buffer_frames: Option<u32>,
         project: &Project,
         audio: Arc<AudioPool>,
     ) -> Result<(Engine, AudioOutput), DeviceError> {
@@ -93,7 +101,8 @@ impl AudioOutput {
         let thread = std::thread::Builder::new()
             .name("npt-audio-output".into())
             .spawn(move || {
-                let stream = match open_stream(device_name.as_deref(), &project, audio) {
+                let opened = open_stream(device_name.as_deref(), buffer_frames, &project, audio);
+                let stream = match opened {
                     Ok((stream, opened)) => {
                         let _ = ready_tx.send(Ok(opened));
                         stream
@@ -115,8 +124,14 @@ impl AudioOutput {
             thread: Some(thread),
             device_name: opened.device_name,
             sample_rate_hz: opened.sample_rate_hz,
+            buffer_frames: opened.buffer_frames,
         };
         Ok((opened.engine, output))
+    }
+
+    /// The fixed buffer size in use, or None for the device's default.
+    pub fn buffer_frames(&self) -> Option<u32> {
+        self.buffer_frames
     }
 
     pub fn device_name(&self) -> &str {
@@ -151,8 +166,19 @@ fn find_device(name: Option<&str>) -> Result<cpal::Device, DeviceError> {
     }
 }
 
+/// The buffer size to ask for: `wanted` fitted into what the device says it
+/// supports (None = the device's default).
+fn fixed_buffer(wanted: Option<u32>, supported: &cpal::SupportedBufferSize) -> Option<u32> {
+    let frames = wanted?.clamp(1, BUFFER_SIZES[BUFFER_SIZES.len() - 1]);
+    match *supported {
+        cpal::SupportedBufferSize::Range { min, max } => Some(frames.clamp(min, max.max(min))),
+        cpal::SupportedBufferSize::Unknown => Some(frames),
+    }
+}
+
 fn open_stream(
     device_name: Option<&str>,
+    buffer_frames: Option<u32>,
     project: &Project,
     audio: Arc<AudioPool>,
 ) -> Result<(cpal::Stream, Opened), DeviceError> {
@@ -161,27 +187,49 @@ fn open_stream(
         .default_output_config()
         .map_err(|e| DeviceError::Backend(e.to_string()))?;
     let format = supported.sample_format();
-    let config: cpal::StreamConfig = supported.into();
+    let fixed = fixed_buffer(buffer_frames, supported.buffer_size());
+    let mut config: cpal::StreamConfig = supported.into();
     let sample_rate_hz = config.sample_rate;
-    let (engine, processor) = Engine::with_audio(project, sample_rate_hz, audio);
-
-    let stream = match format {
-        cpal::SampleFormat::F32 => build::<f32>(&device, &config, processor),
-        cpal::SampleFormat::I16 => build::<i16>(&device, &config, processor),
-        cpal::SampleFormat::I32 => build::<i32>(&device, &config, processor),
-        cpal::SampleFormat::U16 => build::<u16>(&device, &config, processor),
-        cpal::SampleFormat::F64 => build::<f64>(&device, &config, processor),
-        other => Err(DeviceError::UnsupportedFormat(other.to_string())),
-    }?;
-    stream
-        .play()
-        .map_err(|e| DeviceError::Backend(e.to_string()))?;
+    let open = |config: &cpal::StreamConfig| {
+        let (engine, processor) = Engine::with_audio(project, sample_rate_hz, Arc::clone(&audio));
+        let stream = match format {
+            cpal::SampleFormat::F32 => build::<f32>(&device, config, processor),
+            cpal::SampleFormat::I16 => build::<i16>(&device, config, processor),
+            cpal::SampleFormat::I32 => build::<i32>(&device, config, processor),
+            cpal::SampleFormat::U16 => build::<u16>(&device, config, processor),
+            cpal::SampleFormat::F64 => build::<f64>(&device, config, processor),
+            other => Err(DeviceError::UnsupportedFormat(other.to_string())),
+        }?;
+        stream
+            .play()
+            .map_err(|e| DeviceError::Backend(e.to_string()))?;
+        Ok::<_, DeviceError>((stream, engine))
+    };
+    let mut used = None;
+    let (stream, engine) = match fixed {
+        Some(frames) => {
+            config.buffer_size = cpal::BufferSize::Fixed(frames);
+            match open(&config) {
+                Ok(o) => {
+                    used = Some(frames);
+                    o
+                }
+                // Some drivers refuse sizes they claim to support: fall back.
+                Err(_) => {
+                    config.buffer_size = cpal::BufferSize::Default;
+                    open(&config)?
+                }
+            }
+        }
+        None => open(&config)?,
+    };
     Ok((
         stream,
         Opened {
             engine,
             device_name: device.to_string(),
             sample_rate_hz,
+            buffer_frames: used,
         },
     ))
 }
@@ -381,4 +429,23 @@ where
             None,
         )
         .map_err(|e| DeviceError::Backend(e.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn buffer_requests_fit_what_the_device_supports() {
+        let range = cpal::SupportedBufferSize::Range {
+            min: 256,
+            max: 4096,
+        };
+        assert_eq!(fixed_buffer(None, &range), None);
+        assert_eq!(fixed_buffer(Some(512), &range), Some(512));
+        assert_eq!(fixed_buffer(Some(128), &range), Some(256));
+        assert_eq!(fixed_buffer(Some(99_999), &range), Some(2048));
+        let unknown = cpal::SupportedBufferSize::Unknown;
+        assert_eq!(fixed_buffer(Some(1024), &unknown), Some(1024));
+    }
 }

@@ -3,7 +3,8 @@
 | Problem | Try |
 |---|---|
 | No sound | Check the output device in the status bar; check the track isn't muted, or another soloed; check the master fader. |
-| Crackles or dropouts | Close other audio apps; look at the CPU meter in the status bar; remove heavy effects (reverb) from tracks that don't need them. |
+| Crackles or dropouts | Pick a bigger **Buffer** in the status bar (the app offers one when it hears the computer struggling). Close other audio apps; remove heavy effects (reverb) from tracks that don't need them. |
+| Playing the keyboard feels laggy | Pick a smaller **Buffer** in the status bar (256 or 128). If that crackles, go back up one. |
 | Recording is silent | Pick the right **Input** in the Audio tab; check Windows privacy settings allow microphone access. |
 | Recording hears the song | Wear headphones. |
 | Recordings land late | Common with Bluetooth headsets. Click **Calibrate…** in the Audio tab and clap along ([how](audio.md)). |

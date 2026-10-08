@@ -1046,6 +1046,7 @@ export default function App({ backend }: AppProps) {
         error={error}
         filePath={view.file_path}
         onDevice={(name) => void run(() => backend.setOutputDevice(name)).then((a) => a && setAudio(a))}
+        onBufferSize={(frames) => void run(() => backend.setBufferSize(frames)).then((a) => a && setAudio(a))}
         onRefreshMidi={() => void run(() => backend.refreshMidi()).then((a) => a && setAudio(a))}
         claude={claude}
         onToggleClaude={() => setClaudeOpen((o) => !o)}

@@ -23,6 +23,9 @@ pub struct Settings {
     /// Bars of metronome clicks before recording starts (0 = none).
     #[serde(default = "default_count_in_bars")]
     pub count_in_bars: u32,
+    /// Sound card buffer size in frames (None = the device's default).
+    #[serde(default)]
+    pub buffer_frames: Option<u32>,
 }
 
 fn default_count_in_bars() -> u32 {
@@ -34,6 +37,7 @@ impl Default for Settings {
         Self {
             recording_offsets_ms: BTreeMap::new(),
             count_in_bars: default_count_in_bars(),
+            buffer_frames: None,
         }
     }
 }

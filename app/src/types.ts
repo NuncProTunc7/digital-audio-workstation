@@ -330,6 +330,10 @@ export interface TransportStatus {
   cpu_load: number;
   /** Sound card buffer size in frames; 0 until audio starts. */
   buffer_frames: number;
+  /** Times the computer couldn't keep up since audio started (heard as crackles). */
+  overloads: number;
+  /** CPU near its limit, or a crackle in the last few seconds: suggest a bigger buffer. */
+  struggling: boolean;
   /** Peak level per track, in track order. */
   track_peaks: number[];
   recording: boolean;
@@ -340,6 +344,11 @@ export interface AudioStatus {
   default_output: string | null;
   active_output: string | null;
   sample_rate_hz: number | null;
+  /** Buffer size asked for, in frames (null = the device's default). */
+  buffer_setting: number | null;
+  /** Fixed buffer size in use (null = the device's default). */
+  buffer_active: number | null;
+  buffer_options: number[];
   error: string | null;
   midi_inputs: string[];
 }

@@ -395,8 +395,8 @@ describe("Note clips", () => {
       length_beats: 8,
       name: "Riff",
       notes: [
-        { pitch: 60, start_beats: 0, length_beats: 1, velocity: 100, id: null },
-        { pitch: 64, start_beats: 3, length_beats: 1, velocity: 100, id: null },
+        { pitch: 60, start_beats: 0, length_beats: 1, velocity: 100 },
+        { pitch: 64, start_beats: 3, length_beats: 1, velocity: 100 },
       ],
     });
     await renderApp(backend);
@@ -422,6 +422,39 @@ describe("Note clips", () => {
     expect(clip.start_beats).toBe(1);
     expect(clip.length_beats).toBe(7);
     expect(clip.notes.map((n) => n.start_beats)).toEqual([2]);
+  });
+});
+
+describe("Sound card buffer", () => {
+  it("changes the buffer size from the status bar", async () => {
+    const backend = createPreviewBackend();
+    vi.spyOn(backend, "setBufferSize");
+    await renderApp(backend);
+    const select = (await screen.findByLabelText("Sound card buffer")) as HTMLSelectElement;
+    expect(select.value).toBe("default");
+    expect(screen.getByRole("option", { name: "256 (5.3 ms)" })).toBeTruthy();
+    await act(async () => {
+      fireEvent.change(select, { target: { value: "1024" } });
+    });
+    expect(backend.setBufferSize).toHaveBeenCalledWith(1024);
+    await waitFor(() => expect(select.value).toBe("1024"));
+  });
+
+  it("suggests a bigger buffer when the computer struggles", async () => {
+    const backend = createPreviewBackend();
+    const status = backend.transportStatus.bind(backend);
+    vi.spyOn(backend, "transportStatus").mockImplementation(async () => ({
+      ...(await status()),
+      buffer_frames: 256,
+      struggling: true,
+    }));
+    vi.spyOn(backend, "setBufferSize");
+    await renderApp(backend);
+    const hint = await screen.findByRole("button", { name: "Crackling? Use buffer 512" });
+    await act(async () => {
+      fireEvent.click(hint);
+    });
+    expect(backend.setBufferSize).toHaveBeenCalledWith(512);
   });
 });
 

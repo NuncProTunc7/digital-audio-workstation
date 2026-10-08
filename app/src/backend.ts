@@ -83,6 +83,8 @@ export interface Backend {
   transportStatus(): Promise<TransportStatus>;
   audioStatus(): Promise<AudioStatus>;
   setOutputDevice(name: string | null): Promise<AudioStatus>;
+  /** Sound card buffer in frames (null = the device's default); restarts audio. */
+  setBufferSize(frames: number | null): Promise<AudioStatus>;
   refreshMidi(): Promise<AudioStatus>;
   /** Calls back for each MIDI keyboard note. Returns an unsubscribe function. */
   onMidiNote(callback: (note: number, on: boolean) => void): Promise<() => void>;
@@ -172,6 +174,7 @@ export const tauriBackend: Backend = {
   transportStatus: () => invoke("transport_status"),
   audioStatus: () => invoke("audio_status"),
   setOutputDevice: (name) => invoke("set_output_device", { name }),
+  setBufferSize: (frames) => invoke("set_buffer_size", { frames }),
   refreshMidi: () => invoke("refresh_midi"),
   onMidiNote: async (callback) =>
     listen<{ note: number; on: boolean }>("midi-note", (e) => callback(e.payload.note, e.payload.on)),
