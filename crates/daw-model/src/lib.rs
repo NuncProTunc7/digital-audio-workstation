@@ -8,6 +8,7 @@ mod command;
 pub mod effect;
 mod file;
 pub mod instrument;
+pub mod music;
 mod project;
 mod session;
 pub mod summary;

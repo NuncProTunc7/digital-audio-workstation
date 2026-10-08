@@ -155,6 +155,48 @@ export interface Project {
   markers?: Marker[];
   /** Group buses. */
   buses?: Bus[];
+  key?: Key | null;
+  /** The chord track, in time order. */
+  chords?: Chord[];
+}
+
+export type Mode =
+  | "major"
+  | "minor"
+  | "dorian"
+  | "phrygian"
+  | "lydian"
+  | "mixolydian"
+  | "harmonic_minor"
+  | "major_pentatonic"
+  | "minor_pentatonic";
+
+/** The song's key: tonic pitch class (0 = C) and mode. */
+export interface Key {
+  tonic: number;
+  mode: Mode;
+}
+
+export type ChordQuality =
+  | "major"
+  | "minor"
+  | "diminished"
+  | "augmented"
+  | "sus2"
+  | "sus4"
+  | "major7"
+  | "minor7"
+  | "dominant7"
+  | "half_diminished7"
+  | "power";
+
+/** One chord on the chord track; lasts until the next. */
+export interface Chord {
+  id: number;
+  start_beats: number;
+  root: number;
+  quality: ChordQuality;
+  bass?: number | null;
 }
 
 /** A named point where a section starts. */
@@ -281,6 +323,12 @@ export type Command =
       seed: number;
       note_ids: number[] | null;
     }
+  | { command: "set_key"; key: Key | null }
+  | { command: "add_chord"; start_beats: number; root: number; quality: ChordQuality; bass: number | null }
+  | { command: "set_chord"; chord_id: number; root: number; quality: ChordQuality; bass: number | null }
+  | { command: "move_chord"; chord_id: number; start_beats: number }
+  | { command: "remove_chord"; chord_id: number }
+  | { command: "restore_chord"; chord: Chord }
   | { command: "add_bus"; name: string }
   | { command: "remove_bus"; bus_id: number }
   | { command: "rename_bus"; bus_id: number; name: string }

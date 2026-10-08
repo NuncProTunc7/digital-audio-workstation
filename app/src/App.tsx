@@ -17,6 +17,7 @@ import SheetMusic from "./components/SheetMusic";
 import StatusBar from "./components/StatusBar";
 import Timeline from "./components/Timeline";
 import { formatPosition, snapDown } from "./format";
+import { MODES, NOTE_NAMES } from "./music";
 import {
   DEFAULT_BASE_NOTE,
   DEFAULT_VELOCITY,
@@ -33,6 +34,7 @@ import type {
   ClaudeStatus,
   Command,
   Comparison,
+  Mode,
   PreviewPlan,
   UserPreset,
   InputStatus,
@@ -890,6 +892,49 @@ export default function App({ backend }: AppProps) {
           </select>
         </label>
 
+        <label className="field" title="The song's key: its notes are highlighted in the piano roll, and Claude writes in it">
+          <span>Key</span>
+          <select
+            aria-label="Key"
+            value={project.key ? String(project.key.tonic) : ""}
+            onChange={(e) => {
+              const v = e.target.value;
+              void execute({
+                command: "set_key",
+                key: v === "" ? null : { tonic: Number(v), mode: project.key?.mode ?? "major" },
+              }).then(endGesture);
+              e.currentTarget.blur();
+            }}
+          >
+            <option value="">—</option>
+            {NOTE_NAMES.map((n, i) => (
+              <option key={n} value={i}>
+                {n}
+              </option>
+            ))}
+          </select>
+          {project.key && (
+            <select
+              aria-label="Key mode"
+              value={project.key.mode}
+              onChange={(e) => {
+                if (project.key) {
+                  void execute({ command: "set_key", key: { tonic: project.key.tonic, mode: e.target.value as Mode } }).then(
+                    endGesture,
+                  );
+                }
+                e.currentTarget.blur();
+              }}
+            >
+              {MODES.map((m) => (
+                <option key={m.mode} value={m.mode} title={m.hint}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+          )}
+        </label>
+
         <div className="history" role="group" aria-label="History">
           <button onClick={() => void undo()} disabled={!view.can_undo} title="Undo (Ctrl+Z)" aria-label="Undo">
             ↶
@@ -1079,6 +1124,8 @@ export default function App({ backend }: AppProps) {
             ) : selectedClip && clipTrack ? (
               <PianoRoll
                 onShowSteps={clipTrack.instrument.kind === "drums" ? () => setDrumView("steps") : undefined}
+                songKey={project.key}
+                chords={project.chords}
                 clip={selectedClip}
                 track={clipTrack}
                 drumPads={catalog.drum_pads}

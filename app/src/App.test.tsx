@@ -530,6 +530,46 @@ describe("Drum step sequencer", () => {
   });
 });
 
+describe("Key and chords", () => {
+  it("sets a key, adds chords, and highlights them in the piano roll", async () => {
+    const backend = createPreviewBackend();
+    await renderApp(backend);
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText("Key"), { target: { value: "9" } });
+    });
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText("Key mode"), { target: { value: "minor" } });
+    });
+    expect((await backend.getProject()).project.key).toEqual({ tonic: 9, mode: "minor" });
+    // A chord at bar 1: the key's home chord, then changed to Am7.
+    const strip = screen.getByRole("group", { name: "Chord track" });
+    await act(async () => {
+      fireEvent.doubleClick(strip, { clientX: 5, clientY: 5 });
+    });
+    expect(screen.getByRole("button", { name: "Chord Am" })).toBeTruthy();
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText("Chord type"), { target: { value: "minor7" } });
+    });
+    expect(screen.getByRole("button", { name: "Chord Am7" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    // The piano roll shows the key and marks chord tones.
+    await act(async () => {
+      fireEvent.doubleClick(document.querySelectorAll(".lane")[0], { clientX: 10, clientY: 10 });
+    });
+    await waitForElement(".roll-grid");
+    expect(screen.getByText("In A minor")).toBeTruthy();
+    expect(document.querySelectorAll(".roll-row-scale").length).toBeGreaterThan(50);
+    expect(document.querySelectorAll(".roll-chord-tone").length).toBeGreaterThan(30);
+    // Deleting the chord.
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Chord Am7" }), { button: 0, clientX: 5 });
+    fireEvent.pointerUp(document.querySelector(".timeline") as HTMLElement, { clientX: 5, clientY: 5 });
+    await act(async () => {
+      fireEvent.click(await screen.findByRole("button", { name: "Delete chord" }));
+    });
+    expect((await backend.getProject()).project.chords).toEqual([]);
+  });
+});
+
 describe("Section markers", () => {
   it("adds, names, moves and deletes markers, and exports their sections", async () => {
     const backend = createPreviewBackend();

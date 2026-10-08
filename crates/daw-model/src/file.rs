@@ -130,6 +130,15 @@ pub(crate) fn validate_project(project: &mut Project) -> Result<(), FileError> {
             }
         }
     }
+    project
+        .chords
+        .retain(|c| c.start_beats.is_finite() && c.start_beats >= 0.0 && c.root <= 11);
+    project
+        .chords
+        .sort_by(|a, b| a.start_beats.total_cmp(&b.start_beats));
+    if project.key.is_some_and(|k| k.tonic > 11) {
+        project.key = None;
+    }
     // Markers outside the song can't be moved back by hand; drop them.
     project.markers.retain(|m| {
         m.start_beats.is_finite() && (0.0..=crate::project::MAX_BEATS).contains(&m.start_beats)

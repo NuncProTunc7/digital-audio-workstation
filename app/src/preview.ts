@@ -195,6 +195,40 @@ export function applyCommand(project: Project, command: Command): Project {
     case "set_effect_enabled":
       effect(command.track_id, command.effect_id).enabled = command.enabled;
       break;
+    case "set_key":
+      p.key = command.key;
+      break;
+    case "add_chord":
+    case "restore_chord": {
+      const c =
+        command.command === "add_chord"
+          ? { id: id(), start_beats: command.start_beats, root: command.root, quality: command.quality, bass: command.bass }
+          : command.chord;
+      if ((p.chords ?? []).some((x) => Math.abs(x.start_beats - c.start_beats) < 1e-9)) {
+        throw new Error("there is already a chord at that beat");
+      }
+      p.chords = [...(p.chords ?? []), c].sort((a, b) => a.start_beats - b.start_beats);
+      break;
+    }
+    case "set_chord": {
+      const c = (p.chords ?? []).find((x) => x.id === command.chord_id);
+      if (!c) throw new Error(`there is no chord with id ${command.chord_id}`);
+      Object.assign(c, { root: command.root, quality: command.quality, bass: command.bass });
+      break;
+    }
+    case "move_chord": {
+      const c = (p.chords ?? []).find((x) => x.id === command.chord_id);
+      if (!c) throw new Error(`there is no chord with id ${command.chord_id}`);
+      if ((p.chords ?? []).some((x) => x.id !== c.id && Math.abs(x.start_beats - command.start_beats) < 1e-9)) {
+        throw new Error("there is already a chord at that beat");
+      }
+      c.start_beats = command.start_beats;
+      p.chords = [...(p.chords ?? [])].sort((a, b) => a.start_beats - b.start_beats);
+      break;
+    }
+    case "remove_chord":
+      p.chords = (p.chords ?? []).filter((x) => x.id !== command.chord_id);
+      break;
     case "humanize_notes": {
       const [, c] = clipOf(command.clip_id);
       // Not the app's exact numbers, just repeatable ones.

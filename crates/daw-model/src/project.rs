@@ -61,6 +61,12 @@ pub struct Project {
     /// the master after the tracks.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub buses: Vec<Bus>,
+    /// The song's key, if set.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<crate::music::Key>,
+    /// The chord track, in time order: each chord lasts until the next.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub chords: Vec<crate::music::Chord>,
 }
 
 /// A group bus: tracks play into it (or send some of their sound to it),
@@ -132,6 +138,10 @@ pub struct SongState {
     pub markers: Vec<Marker>,
     #[serde(default)]
     pub buses: Vec<Bus>,
+    #[serde(default)]
+    pub key: Option<crate::music::Key>,
+    #[serde(default)]
+    pub chords: Vec<crate::music::Chord>,
 }
 
 fn default_format_version() -> u32 {
@@ -153,7 +163,17 @@ impl Project {
             loop_region: self.loop_region,
             markers: self.markers.clone(),
             buses: self.buses.clone(),
+            key: self.key,
+            chords: self.chords.clone(),
         }
+    }
+
+    /// The chord playing at `beats`, if any.
+    pub fn chord_at(&self, beats: f64) -> Option<&crate::music::Chord> {
+        self.chords
+            .iter()
+            .rev()
+            .find(|c| c.start_beats <= beats + 1e-9)
     }
 
     /// The sections the markers divide the song into: each runs from its
@@ -188,6 +208,8 @@ impl Project {
         self.loop_region = song.loop_region;
         self.markers = song.markers;
         self.buses = song.buses;
+        self.key = song.key;
+        self.chords = song.chords;
         if let Some(max) = self.all_ids().into_iter().max() {
             self.reserve_id(max);
         }
@@ -253,7 +275,8 @@ impl Project {
 
     /// Whether any track, clip, note, or effect already uses `id`.
     pub fn id_in_use(&self, id: Id) -> bool {
-        self.snapshots.iter().any(|s| s.id == id)
+        self.chords.iter().any(|c| c.id == id)
+            || self.snapshots.iter().any(|s| s.id == id)
             || self.markers.iter().any(|m| m.id == id)
             || self
                 .buses
@@ -275,6 +298,7 @@ impl Project {
         let mut ids: Vec<Id> = self.master.effects.iter().map(|e| e.id).collect();
         ids.extend(self.snapshots.iter().map(|s| s.id));
         ids.extend(self.markers.iter().map(|m| m.id));
+        ids.extend(self.chords.iter().map(|c| c.id));
         for b in &self.buses {
             ids.push(b.id);
             ids.extend(b.mixer.effects.iter().map(|e| e.id));
@@ -321,6 +345,8 @@ impl Default for Project {
             automation: Vec::new(),
         };
         Self {
+            chords: Vec::new(),
+            key: None,
             buses: Vec::new(),
             markers: Vec::new(),
             snapshots: Vec::new(),

@@ -4,6 +4,7 @@
 mod audio;
 mod automation;
 mod buses;
+mod chords;
 mod clips;
 mod effects;
 mod instruments;
@@ -126,6 +127,36 @@ pub enum Command {
     },
     /// Set the master volume in dB (-60 to +6).
     SetMasterVolume { volume_db: f64 },
+    // ---- Chord track ----
+    /// Put a chord on the chord track at `start_beats`; it lasts until the
+    /// next chord. root and bass are pitch classes (0 = C ... 11 = B);
+    /// bass makes a slash chord (C/E). The chord track makes no sound: it
+    /// guides writing and is shown above the piano roll. One per beat.
+    AddChord {
+        start_beats: f64,
+        root: u8,
+        quality: crate::music::ChordQuality,
+        bass: Option<u8>,
+    },
+    /// Change a chord (all three fields are set).
+    SetChord {
+        chord_id: Id,
+        root: u8,
+        quality: crate::music::ChordQuality,
+        bass: Option<u8>,
+    },
+    /// Move a chord to another beat.
+    MoveChord { chord_id: Id, start_beats: f64 },
+    /// Delete a chord; the one before lasts longer.
+    RemoveChord { chord_id: Id },
+    /// Put back a deleted chord exactly as it was (used by undo).
+    RestoreChord { chord: crate::music::Chord },
+
+    /// Set the song's key (tonic 0 = C ... 11 = B, and a mode such as
+    /// minor or dorian), or null for none. It drives scale highlighting,
+    /// key signatures in MIDI and MusicXML, and get_song's scale notes.
+    /// It doesn't move any notes.
+    SetKey { key: Option<crate::music::Key> },
 
     // ---- Buses ----
     /// Add a group bus (e.g. "Drums", "Reverb") at the end of the mixer.
@@ -568,6 +599,36 @@ impl Command {
                 solo,
             } => tracks::set_mixer(project, track_id, volume_db, pan, mute, solo),
             C::SetMasterVolume { volume_db } => tracks::set_master_volume(project, volume_db),
+            C::AddChord {
+                start_beats,
+                root,
+                quality,
+                bass,
+            } => chords::add(project, start_beats, root, quality, bass),
+            C::SetChord {
+                chord_id,
+                root,
+                quality,
+                bass,
+            } => chords::set(project, chord_id, root, quality, bass),
+            C::MoveChord {
+                chord_id,
+                start_beats,
+            } => chords::move_to(project, chord_id, start_beats),
+            C::RemoveChord { chord_id } => chords::remove(project, chord_id),
+            C::RestoreChord { chord } => chords::restore(project, chord),
+            C::SetKey { key } => {
+                if let Some(k) = key
+                    && k.tonic > 11
+                {
+                    return Err(invalid(
+                        "key",
+                        format!("tonic must be 0–11, got {}", k.tonic),
+                    ));
+                }
+                let old = std::mem::replace(&mut project.key, key);
+                Ok(C::SetKey { key: old })
+            }
             C::AddBus { name } => buses::add(project, name),
             C::RemoveBus { bus_id } => buses::remove(project, bus_id),
             C::RestoreBus {
@@ -865,6 +926,7 @@ impl Command {
                 ta == tb && ba == bb && la.is_some() == lb.is_some() && pa.is_some() == pb.is_some()
             }
             (C::MoveMarker { marker_id: a, .. }, C::MoveMarker { marker_id: b, .. }) => a == b,
+            (C::MoveChord { chord_id: a, .. }, C::MoveChord { chord_id: b, .. }) => a == b,
             (C::TrimClipStart { clip_id: a, .. }, C::TrimClipStart { clip_id: b, .. }) => a == b,
             (
                 C::SetAutomationPoints { lane_id: a, .. },

@@ -13,6 +13,12 @@ pub fn song_summary(project: &Project) -> Value {
         "tempo_bpm": project.tempo_bpm,
         "time_signature": format!("{}/{}", project.time_signature.numerator, project.time_signature.denominator),
         "beats_per_bar": bpb,
+        "key": project.key.map(|k| json!({
+            "name": k.name(),
+            "tonic": k.tonic,
+            "mode": k.mode,
+            "scale_notes": k.scale().iter().map(|p| crate::music::NOTE_NAMES[usize::from(*p)]).collect::<Vec<_>>(),
+        })),
         "length_beats": project.end_beats(),
         "length_bars": (project.end_beats() / bpb).ceil(),
         "loop": project.loop_region,
@@ -29,6 +35,13 @@ pub fn song_summary(project: &Project) -> Value {
             "mute": b.mixer.mute,
             "effects": b.mixer.effects.iter().map(|e| json!({"id": e.id, "kind": e.kind, "enabled": e.enabled})).collect::<Vec<_>>(),
             "tracks_playing_into_it": project.tracks.iter().filter(|t| t.output == Some(b.id)).map(|t| t.id).collect::<Vec<_>>(),
+        })).collect::<Vec<_>>(),
+        "chords": project.chords.iter().enumerate().map(|(i, c)| json!({
+            "id": c.id,
+            "name": c.name(),
+            "start_beats": c.start_beats,
+            "end_beats": project.chords.get(i + 1).map_or(project.end_beats().max(c.start_beats + bpb), |n| n.start_beats),
+            "notes": c.pitch_classes().iter().map(|p| crate::music::NOTE_NAMES[usize::from(*p)]).collect::<Vec<_>>(),
         })).collect::<Vec<_>>(),
         "markers": project.markers.iter().map(|m| json!({
             "id": m.id,

@@ -548,7 +548,37 @@ button.small {
   position: sticky;
   top: 0;
   z-index: 3;
-  height: 48px;
+  height: 68px;
+}
+
+.chord-strip {
+  position: relative;
+  height: 20px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  cursor: copy;
+}
+
+.chord {
+  position: absolute;
+  top: 1px;
+  height: 17px;
+  padding: 0 6px;
+  overflow: hidden;
+  text-align: left;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text);
+  background: rgba(245, 185, 66, 0.18);
+  border: none;
+  border-left: 2px solid var(--accent);
+  border-radius: 0 4px 4px 0;
+  cursor: grab;
+}
+
+.chord-menu {
+  z-index: 40;
 }
 
 .ruler-stack {
@@ -653,7 +683,7 @@ button.small {
   position: sticky;
   left: 0;
   z-index: 4;
-  height: 48px;
+  height: 68px;
   justify-content: flex-end;
   gap: 4px;
   cursor: default;
@@ -1065,6 +1095,25 @@ button.tiny.delete {
   width: 60px;
   font-size: 12px;
   color: var(--muted);
+}
+
+.roll-row-scale {
+  position: absolute;
+  left: 0;
+  right: 0;
+  background: rgba(94, 214, 196, 0.07);
+  pointer-events: none;
+}
+
+.roll-row-scale.tonic {
+  background: rgba(94, 214, 196, 0.15);
+}
+
+.roll-chord-tone {
+  position: absolute;
+  background: rgba(245, 185, 66, 0.13);
+  border-top: 1px solid rgba(245, 185, 66, 0.25);
+  pointer-events: none;
 }
 
 .roll-toolbar {

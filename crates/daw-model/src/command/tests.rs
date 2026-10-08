@@ -892,6 +892,115 @@ fn humanize_nudges_notes_repeatably_and_undoes() {
 }
 
 #[test]
+fn key_and_chord_track_round_trip_and_undo() {
+    use crate::music::{ChordQuality, Key, Mode};
+    let mut s = Session::new(fixture());
+    let key = Key {
+        tonic: 9,
+        mode: Mode::Minor,
+    };
+    s.execute(Command::SetKey { key: Some(key) }).expect("key");
+    for (beat, root, quality) in [
+        (0.0, 9, ChordQuality::Minor),
+        (4.0, 5, ChordQuality::Major),
+        (2.0, 0, ChordQuality::Major7),
+    ] {
+        s.execute(Command::AddChord {
+            start_beats: beat,
+            root,
+            quality,
+            bass: None,
+        })
+        .expect("chord");
+    }
+    let p = s.project();
+    assert_eq!(
+        p.chords
+            .iter()
+            .map(crate::music::Chord::name)
+            .collect::<Vec<_>>(),
+        ["Am", "Cmaj7", "F"]
+    );
+    assert_eq!(
+        p.chord_at(3.0).map(crate::music::Chord::name).as_deref(),
+        Some("Cmaj7")
+    );
+    let summary = crate::summary::song_summary(p);
+    assert_eq!(summary["key"]["name"], "A minor");
+    assert_eq!(
+        summary["chords"][1]["notes"],
+        serde_json::json!(["C", "E", "G", "B"])
+    );
+    assert_eq!(summary["chords"][2]["end_beats"], 8.0);
+    let first = p.chords[0].id;
+    for command in [
+        Command::SetKey { key: Some(key) },
+        Command::SetChord {
+            chord_id: first,
+            root: 2,
+            quality: ChordQuality::Minor7,
+            bass: Some(5),
+        },
+        Command::MoveChord {
+            chord_id: first,
+            start_beats: 1.0,
+        },
+        Command::RemoveChord { chord_id: first },
+        Command::RestoreChord {
+            chord: p.chords[0].clone(),
+        },
+    ] {
+        let json = serde_json::to_string(&command).expect("json");
+        assert_eq!(
+            serde_json::from_str::<Command>(&json).expect("back"),
+            command,
+            "{json}"
+        );
+    }
+    s.execute(Command::SetChord {
+        chord_id: first,
+        root: 2,
+        quality: ChordQuality::Minor7,
+        bass: Some(5),
+    })
+    .expect("set");
+    assert_eq!(s.project().chords[0].name(), "Dm7/F");
+    s.undo();
+    assert_eq!(s.project().chords[0].name(), "Am");
+    s.execute(Command::RemoveChord { chord_id: first })
+        .expect("remove");
+    s.undo();
+    assert_eq!(s.project().chords[0].id, first);
+    let json = crate::file::project_to_json(s.project());
+    assert_eq!(
+        &crate::file::project_from_json(&json).expect("load"),
+        s.project()
+    );
+    for bad in [
+        Command::AddChord {
+            start_beats: 4.0,
+            root: 0,
+            quality: ChordQuality::Major,
+            bass: None,
+        },
+        Command::AddChord {
+            start_beats: 6.0,
+            root: 12,
+            quality: ChordQuality::Major,
+            bass: None,
+        },
+        Command::SetKey {
+            key: Some(Key {
+                tonic: 14,
+                mode: Mode::Major,
+            }),
+        },
+    ] {
+        assert!(s.execute(bad).is_err());
+    }
+}
+
+#[test]
 fn swing_slider_drag_is_one_undo_step() {
     let mut s = Session::new(fixture());
     let clip = clip_id(s.project());

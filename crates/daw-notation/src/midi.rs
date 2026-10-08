@@ -83,8 +83,14 @@ pub fn export_midi(project: &Project) -> Vec<u8> {
             24,
             8,
         )),
-        meta(MetaMessage::EndOfTrack),
     ]);
+    if let Some(k) = project.key {
+        tracks[0].push(meta(MetaMessage::KeySignature(
+            k.fifths(),
+            k.mode.is_minor(),
+        )));
+    }
+    tracks[0].push(meta(MetaMessage::EndOfTrack));
 
     let mut next_channel = 0u8;
     for track in project

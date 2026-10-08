@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { snap, snapDown } from "../format";
 import { isBlackKey, noteName } from "../keymap";
-import type { Clip, Command, DrumPad, Note, Track } from "../types";
+import type { Chord, Clip, Command, DrumPad, Key, Note, Track } from "../types";
+import { chordTones, keyName, scaleOf } from "../music";
 
 const ROW_HEIGHT = 14;
 const KEYS_WIDTH = 92;
@@ -29,6 +30,9 @@ interface PianoRollProps {
   onAudition: (note: number) => void;
   /** For drum clips: back to the step grid. */
   onShowSteps?: () => void;
+  /** The song's key and chord track, to highlight scale and chord notes. */
+  songKey?: Key | null;
+  chords?: Chord[];
 }
 
 type Drag =
@@ -153,6 +157,20 @@ export default function PianoRoll(props: PianoRollProps) {
   const targetIds = selectedNotes.length > 0 ? selectedNotes.map((n) => n.id) : null;
   const velocity = selectedNotes.length > 0 ? selectedNotes[0].velocity : 100;
   const rows = Array.from({ length: 128 }, (_, i) => 127 - i);
+  const scale = props.songKey && !drums ? scaleOf(props.songKey) : null;
+  // Chord-tone bands for each chord that overlaps the visible part of the clip.
+  const chordBands = drums
+    ? []
+    : (props.chords ?? []).flatMap((c, i, all) => {
+        const from = Math.max(0, c.start_beats - clip.start_beats);
+        const nextStart = all[i + 1]?.start_beats ?? Number.POSITIVE_INFINITY;
+        const to = Math.min(visibleBeats, nextStart - clip.start_beats);
+        if (to <= from) return [];
+        const tones = chordTones(c);
+        return rows
+          .filter((p) => tones.has(p % 12))
+          .map((p) => ({ key: `${c.id}-${p}`, from, to, pitch: p }));
+      });
 
   return (
     <div className="piano-roll">
@@ -254,6 +272,11 @@ export default function PianoRoll(props: PianoRollProps) {
           />
           <span className="param-value">{selectedNotes.length > 0 ? velocity : "–"}</span>
         </label>
+        {scale && props.songKey && (
+          <span className="muted" title="Rows in the key are lighter; notes of the chord playing at that moment are marked">
+            In {keyName(props.songKey)}
+          </span>
+        )}
         <span className="spacer" />
         {props.onShowSteps && (
           <button className="small" onClick={props.onShowSteps} title="Edit this drum clip as a grid of steps">
@@ -300,6 +323,23 @@ export default function PianoRoll(props: PianoRollProps) {
                 <div key={p} className="roll-row-black" style={{ top: (127 - p) * ROW_HEIGHT, height: ROW_HEIGHT }} />
               ) : null,
             )}
+            {scale &&
+              rows.map((p) =>
+                scale.has(p % 12) ? (
+                  <div
+                    key={`s${p}`}
+                    className={p % 12 === props.songKey?.tonic ? "roll-row-scale tonic" : "roll-row-scale"}
+                    style={{ top: (127 - p) * ROW_HEIGHT, height: ROW_HEIGHT }}
+                  />
+                ) : null,
+              )}
+            {chordBands.map((b) => (
+              <div
+                key={b.key}
+                className="roll-chord-tone"
+                style={{ left: b.from * ppb, width: (b.to - b.from) * ppb, top: (127 - b.pitch) * ROW_HEIGHT, height: ROW_HEIGHT }}
+              />
+            ))}
             <div className="roll-clip-end" style={{ left: clip.length_beats * ppb }} />
             {clip.notes.map((n) => (
               <div

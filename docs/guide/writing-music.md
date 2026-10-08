@@ -27,6 +27,13 @@ Synth knobs, in plain terms: **Wave** is the basic tone (Sine soft, Saw bright a
 2. **+ Sampler track**, then in its panel **Load sample pack…** and choose the `.sfz` file.
 3. Big packs load in the background (the panel shows *loading…*). To save memory the app may keep only some of the pack's soft-to-loud layers; the panel tells you how many.
 
+## Key and chords
+
+- **Key** (top bar): pick the song's key, e.g. **A** and **Minor**. In the piano roll, notes in the key get lighter rows (the home note, the tonic, a bit lighter still), so you can stay "in key" without knowing theory. The key is also written into MIDI and sheet-music files. Each mode has a mood: hover over it in the list.
+- **Chord track**: the strip under the section markers. **Double-click** it to add a chord at that bar (it starts as the key's home chord); a menu opens where you choose the **Root**, the **type** (major, m, 7, maj7, sus4...) and an optional **Bass** note (slash chords like C/E). Click a chord to change it again, drag it to move it, **Delete chord** to remove it. Each chord lasts until the next.
+- The chord track makes no sound. It guides: in the piano roll, the notes of the chord playing at that moment are marked with an orange band, a safe choice for bass lines and long melody notes.
+- Claude reads the key and chords too: "write a bass line that follows the chord track" works.
+
 ## Section markers
 
 The strip under the bar numbers holds **section markers**: named points where a part of the song starts (Intro, Explore, Combat, Boss). A section runs from its marker to the next one.

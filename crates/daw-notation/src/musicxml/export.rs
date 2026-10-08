@@ -276,8 +276,15 @@ pub fn export_musicxml(project: &Project, track_ids: Option<&[TrackId]>) -> Stri
             if m == 0 {
                 let _ = write!(
                     w.xml,
-                    "<attributes><divisions>{DIVISIONS}</divisions><key><fifths>0</fifths></key><time><beats>{}</beats><beat-type>{}</beat-type></time>{clef}</attributes>",
-                    ts.numerator, ts.denominator
+                    "<attributes><divisions>{DIVISIONS}</divisions><key><fifths>{}</fifths><mode>{}</mode></key><time><beats>{}</beats><beat-type>{}</beat-type></time>{clef}</attributes>",
+                    project.key.map_or(0, |k| k.fifths()),
+                    if project.key.is_some_and(|k| k.mode.is_minor()) {
+                        "minor"
+                    } else {
+                        "major"
+                    },
+                    ts.numerator,
+                    ts.denominator
                 );
                 if i == 0 {
                     let _ = write!(
@@ -417,6 +424,27 @@ mod tests {
         assert!(xml.contains("<tie type=\"stop\"/>"));
         assert!(xml.contains("<sound tempo=\"120\"/>"));
         assert!(xml.contains("<clef><sign>G</sign><line>2</line></clef>"));
+    }
+
+    #[test]
+    fn the_key_signature_is_written() {
+        let mut p = project_with(1, vec![note(62, 0.0, 1.0)], 4.0);
+        Command::SetKey {
+            key: Some(daw_model::music::Key {
+                tonic: 2,
+                mode: daw_model::music::Mode::Minor,
+            }),
+        }
+        .apply(&mut p)
+        .expect("key");
+        let xml = export_musicxml(&p, None);
+        assert!(
+            xml.contains("<key><fifths>-1</fifths><mode>minor</mode></key>"),
+            "{xml}"
+        );
+        let mid = crate::midi::export_midi(&p);
+        // Key signature meta event: FF 59 02 sf mi (one flat, minor).
+        assert!(mid.windows(5).any(|w| w == [0xFF, 0x59, 0x02, 0xFF, 0x01]));
     }
 
     #[test]

@@ -1,7 +1,8 @@
 import { Fragment, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { meterPercent, snap, snapDown } from "../format";
-import type { AutomationTarget, Catalog, Clip, Command, Marker, Peaks, Project, Track } from "../types";
+import type { AutomationTarget, Catalog, Chord, ChordQuality, Clip, Command, Marker, Peaks, Project, Track } from "../types";
+import { CHORD_QUALITIES, NOTE_NAMES, chordName, homeChord } from "../music";
 import { AUTOMATION_HEIGHT, automatableTargets, targetScale } from "../automation";
 import AutomationLaneEditor from "./AutomationLane";
 import Waveform from "./Waveform";
@@ -50,6 +51,7 @@ type Drag =
   | { kind: "resize"; clip: Clip; x0: number; lastLength: number }
   | { kind: "trim"; clip: Clip; x0: number; lastStart: number }
   | { kind: "marker"; marker: Marker; x0: number; lastStart: number }
+  | { kind: "chord"; chord: Chord; x0: number; lastStart: number; moved: boolean }
   | { kind: "loop"; anchor: number };
 
 /** The arrangement: track headers, clip lanes, ruler, loop region, playhead. */
@@ -62,6 +64,9 @@ export default function Timeline(props: TimelineProps) {
   const [renaming, setRenaming] = useState<number | null>(null);
   const [renamingMarker, setRenamingMarker] = useState<number | null>(null);
   const markers = project.markers ?? [];
+  const chords = project.chords ?? [];
+  // The chord being edited in its little menu, and where to show it.
+  const [chordMenu, setChordMenu] = useState<{ id: number; x: number; y: number } | null>(null);
   // A note clip's new start while its left edge is dragged. Trimming a note
   // clip removes the notes before the start, so it's applied once, on
   // release: dragging back out must not lose them.
@@ -190,6 +195,14 @@ export default function Timeline(props: TimelineProps) {
           setTrimPreview({ clipId: d.clip.id, start });
         }
       }
+    } else if (d.kind === "chord") {
+      const start = Math.max(0, d.chord.start_beats + snap((e.clientX - d.x0) / ppb, grid));
+      const taken = chords.some((c) => c.id !== d.chord.id && Math.abs(c.start_beats - start) < 1e-9);
+      if (start !== d.lastStart && !taken) {
+        d.lastStart = start;
+        d.moved = true;
+        void props.onCommand({ command: "move_chord", chord_id: d.chord.id, start_beats: start });
+      }
     } else if (d.kind === "marker") {
       const start = Math.max(0, d.marker.start_beats + snap((e.clientX - d.x0) / ppb, grid));
       const taken = markers.some((m) => m.id !== d.marker.id && Math.abs(m.start_beats - start) < 1e-9);
@@ -206,10 +219,14 @@ export default function Timeline(props: TimelineProps) {
     }
   };
 
-  const onPointerUp = () => {
+  const onPointerUp = (e: ReactPointerEvent) => {
     const d = drag.current;
     if (!d) return;
     drag.current = null;
+    // A click (no drag) on a chord opens its menu.
+    if (d.kind === "chord" && !d.moved) {
+      setChordMenu({ id: d.chord.id, x: e.clientX, y: e.clientY });
+    }
     if (d.kind === "trim" && !d.clip.audio) {
       const changed = d.lastStart !== d.clip.start_beats;
       void (changed
@@ -238,6 +255,28 @@ export default function Timeline(props: TimelineProps) {
     const created = p?.tracks.find((t) => t.id === track.id)?.clips.find((c) => !before.has(c.id));
     if (created) props.onOpenClip(created.id);
   };
+
+  /** Adds the key's home chord on the bar under the pointer and opens it. */
+  const addChordAt = async (clientX: number, clientY: number) => {
+    const start = snapDown(beatAt(clientX), beatsPerBar);
+    if (chords.some((c) => Math.abs(c.start_beats - start) < 1e-9)) return;
+    const home = homeChord(project.key);
+    const p = await props.onCommand({ command: "add_chord", start_beats: start, ...home, bass: null });
+    props.onEndGesture();
+    const created = p?.chords?.find((c) => Math.abs(c.start_beats - start) < 1e-9);
+    if (created) setChordMenu({ id: created.id, x: clientX, y: clientY });
+  };
+  const editChord = (c: Chord, change: { root?: number; quality?: ChordQuality; bass?: number | null }) =>
+    void props
+      .onCommand({
+        command: "set_chord",
+        chord_id: c.id,
+        root: change.root ?? c.root,
+        quality: change.quality ?? c.quality,
+        bass: change.bass === undefined ? (c.bass ?? null) : change.bass,
+      })
+      .then(props.onEndGesture);
+  const menuChord = chordMenu ? chords.find((c) => c.id === chordMenu.id) : undefined;
 
   /** Adds a marker on the bar under the pointer and starts naming it. */
   const addMarkerAt = async (clientX: number) => {
@@ -358,8 +397,101 @@ export default function Timeline(props: TimelineProps) {
               </div>
             ))}
           </div>
+          <div
+            className="chord-strip"
+            role="group"
+            aria-label="Chord track"
+            title="The chord track: double-click to add a chord, click one to change it, drag to move it. It makes no sound; it guides the notes."
+            onDoubleClick={(e) => {
+              if (e.target === e.currentTarget) void addChordAt(e.clientX, e.clientY);
+            }}
+          >
+            {chords.length === 0 && <span className="marker-hint">Double-click here to add chords</span>}
+            {chords.map((c, i) => {
+              const next = chords[i + 1]?.start_beats ?? c.start_beats + beatsPerBar;
+              return (
+                <button
+                  key={c.id}
+                  className="chord"
+                  style={{ left: c.start_beats * ppb, width: Math.max(18, (next - c.start_beats) * ppb - 2) }}
+                  aria-label={`Chord ${chordName(c)}`}
+                  onPointerDown={(e) => {
+                    if (e.button !== 0) return;
+                    e.stopPropagation();
+                    e.currentTarget.setPointerCapture?.(e.pointerId);
+                    drag.current = { kind: "chord", chord: c, x0: e.clientX, lastStart: c.start_beats, moved: false };
+                  }}
+                >
+                  {chordName(c)}
+                </button>
+              );
+            })}
+          </div>
           </div>
         </div>
+        {menuChord && chordMenu && (
+          <div
+            className="step-menu chord-menu"
+            role="dialog"
+            aria-label={`Edit chord ${chordName(menuChord)}`}
+            style={{ left: chordMenu.x, top: chordMenu.y + 12 }}
+          >
+            <div className="step-menu-row">
+              <span>Root</span>
+              <select
+                aria-label="Chord root"
+                value={menuChord.root}
+                onChange={(e) => editChord(menuChord, { root: Number(e.target.value) })}
+              >
+                {NOTE_NAMES.map((n, i) => (
+                  <option key={n} value={i}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+              <select
+                aria-label="Chord type"
+                value={menuChord.quality}
+                onChange={(e) => editChord(menuChord, { quality: e.target.value as ChordQuality })}
+              >
+                {CHORD_QUALITIES.map((q) => (
+                  <option key={q.quality} value={q.quality}>
+                    {q.symbol === "" ? "major" : q.symbol}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="step-menu-row">
+              <span>Bass</span>
+              <select
+                aria-label="Chord bass note"
+                value={menuChord.bass ?? ""}
+                onChange={(e) => editChord(menuChord, { bass: e.target.value === "" ? null : Number(e.target.value) })}
+              >
+                <option value="">Root</option>
+                {NOTE_NAMES.map((n, i) => (
+                  <option key={n} value={i}>
+                    /{n}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="step-menu-row">
+              <button
+                className="small"
+                onClick={() => {
+                  setChordMenu(null);
+                  void props.onCommand({ command: "remove_chord", chord_id: menuChord.id }).then(props.onEndGesture);
+                }}
+              >
+                Delete chord
+              </button>
+              <button className="small" onClick={() => setChordMenu(null)}>
+                Done
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="timeline-body">
           <div className="headers-column">
