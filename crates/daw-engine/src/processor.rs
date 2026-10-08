@@ -260,6 +260,15 @@ impl AudioProcessor {
                         reassert_automation(t);
                     }
                 }
+                EngineMessage::SetPluginParam {
+                    track_id,
+                    id,
+                    value,
+                } => {
+                    if let Some(t) = self.track(track_id) {
+                        t.instrument.set_plugin_param(id, value);
+                    }
+                }
                 EngineMessage::SetStrip { track_id, strip } => {
                     if let Some(t) = self.track(track_id) {
                         t.strip = strip;
@@ -379,6 +388,7 @@ impl AudioProcessor {
                     self.tempo_bpm = bpm;
                     let bpm = bpm as f32;
                     for t in self.tracks.iter_mut() {
+                        t.instrument.set_tempo(f64::from(bpm));
                         for e in t.effects.effects.iter_mut() {
                             e.processor.set_tempo(bpm);
                         }

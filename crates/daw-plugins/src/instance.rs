@@ -69,6 +69,8 @@ struct Inner {
     parts: Option<Parts>,
     handler: ComWrapper<ComponentHandler>,
     info: PluginInfo,
+    shape: BusShape,
+    setup: Setup,
 }
 
 impl Drop for Inner {
@@ -318,15 +320,96 @@ impl Instance {
                 parts: Some(parts),
                 handler,
                 info: info.clone(),
+                shape,
+                setup,
             }));
-            let rt =
-                PluginProcessor::new(Shared(processor), instance.clone(), shape, setup, info.kind);
+            let rt = instance.processor();
             Ok((instance, rt))
         }
     }
 
     pub fn info(&self) -> &PluginInfo {
         &self.0.info
+    }
+
+    /// Whether two handles are the very same running plugin.
+    pub fn same_as(&self, other: &Instance) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+
+    /// Another audio-thread handle for this same plugin, for when the
+    /// engine rebuilds its tracks: the plugin keeps its sound and settings.
+    /// Only one handle may process at a time (the old one stops when the
+    /// new graph takes over). Starts by releasing any held notes.
+    pub fn processor(&self) -> PluginProcessor {
+        let processor = self
+            .parts()
+            .map(|p| p.processor.0.clone())
+            .expect("a live instance has a processor");
+        let mut rt = PluginProcessor::new(
+            Shared(processor),
+            self.clone(),
+            self.0.shape.clone(),
+            self.0.setup,
+            self.0.info.kind,
+        );
+        rt.release_everything();
+        rt
+    }
+
+    /// Sets parameters that differ from the plugin's current values, both
+    /// in its window and its sound, before it starts playing. Main thread
+    /// (call before handing `rt` to the audio thread).
+    pub fn apply_params(
+        &self,
+        rt: &mut PluginProcessor,
+        params: &[(u32, f64)],
+    ) -> Result<(), String> {
+        let current = self.params_including_hidden()?;
+        let changed: Vec<(u32, f64)> = params
+            .iter()
+            .copied()
+            .filter(|(id, v)| {
+                current
+                    .iter()
+                    .any(|(cid, cv)| cid == id && (cv - v).abs() > 1e-9)
+            })
+            .collect();
+        for chunk in changed.chunks(crate::com::MAX_PARAM_QUEUES) {
+            for &(id, v) in chunk {
+                rt.set_param(id, v);
+                self.show_param(id, v);
+            }
+            // A one-sample silent block delivers the queued changes.
+            let (mut l, mut r) = ([0.0f32], [0.0f32]);
+            rt.process(&mut l, &mut r);
+        }
+        Ok(())
+    }
+
+    #[allow(unsafe_code)]
+    fn params_including_hidden(&self) -> Result<Vec<(u32, f64)>, String> {
+        let me = self.clone();
+        main_thread::run(move || {
+            let Some(c) = me
+                .parts()
+                .ok()
+                .and_then(|p| p.controller.as_ref().map(|c| c.0.clone()))
+            else {
+                return Vec::new();
+            };
+            let mut out = Vec::new();
+            // SAFETY: read-only controller queries.
+            unsafe {
+                for i in 0..c.getParameterCount() {
+                    let mut p: ParameterInfo = std::mem::zeroed();
+                    if c.getParameterInfo(i, &mut p) == kResultOk {
+                        out.push((p.id, c.getParamNormalized(p.id)));
+                    }
+                }
+            }
+            out
+        })
     }
 
     fn parts(&self) -> Result<&Parts, String> {
@@ -645,6 +728,15 @@ impl PluginProcessor {
             *h = false;
         }
         self.note_event(false, note, 0.0);
+    }
+
+    /// Note-offs for every note, held or not (a new handle doesn't know
+    /// what the old one left sounding).
+    // RT-SAFE
+    pub fn release_everything(&mut self) {
+        for n in 0..128u8 {
+            self.note_off(n);
+        }
     }
 
     // RT-SAFE

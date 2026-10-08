@@ -167,3 +167,21 @@ fn a_plugin_file_is_found_loaded_and_played() {
     rt.note_on(60, 0.5);
     assert!(peak(&render(&mut rt, 4)) > 0.05);
 }
+
+#[test]
+fn a_rebuilt_handle_keeps_the_plugin_and_saved_params_apply() {
+    let synth = find(&in_process(), "NPT Test Synth");
+    let (instance, mut rt) = Instance::create(&synth, SETUP, None).expect("create");
+    instance.apply_params(&mut rt, &[(0, 1.0)]).expect("params");
+    assert_eq!(instance.params().expect("params")[0].display, "100");
+    rt.note_on(69, 1.0);
+    let before = peak(&render(&mut rt, 4));
+    // The engine rebuilt its tracks: a new handle, same plugin and level,
+    // and whatever was sounding is released.
+    drop(rt);
+    let mut rt2 = instance.processor();
+    assert_eq!(peak(&render(&mut rt2, 2)), 0.0, "notes released");
+    rt2.note_on(69, 1.0);
+    let after = peak(&render(&mut rt2, 4));
+    assert!((after - before).abs() < 0.01, "{after} vs {before}");
+}

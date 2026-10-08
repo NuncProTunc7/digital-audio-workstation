@@ -567,6 +567,16 @@ export function applyCommand(project: Project, command: Command): Project {
       t.instrument.sample_pack = command.path;
       break;
     }
+    case "set_plugin_params": {
+      const p = track(command.track_id).instrument.plugin;
+      if (!p) throw new Error("this track doesn't play a plugin");
+      for (const [id, v] of Object.entries(command.params)) {
+        if (!(id in p.params)) throw new Error(`${p.name} has no parameter ${id}`);
+        if (v < 0 || v > 1) throw new Error("plugin parameters are 0 to 1");
+        p.params[id] = v;
+      }
+      break;
+    }
     case "add_automation_lane": {
       const t = track(command.track_id);
       t.automation ??= [];

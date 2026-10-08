@@ -5,10 +5,12 @@
 //! whose methods never allocate, lock, or do I/O.
 
 mod drums;
+mod plugin;
 mod sampler;
 mod synth;
 
 pub use drums::{DRUM_PADS, DrumGroup, DrumMachine, DrumPad};
+pub use plugin::{PluginLoad, create_plugin, plugin_info};
 pub use synth::Synth;
 
 use daw_model::{Instrument, InstrumentKind, instrument::param_specs};
@@ -35,6 +37,13 @@ pub trait InstrumentProcessor: Send {
     /// Adds this instrument's output into the buffers (does not clear them).
     // RT-SAFE
     fn process(&mut self, left: &mut [f32], right: &mut [f32]);
+    /// Sets a plugin instrument's parameter `id` (0–1). Built-in
+    /// instruments ignore it.
+    // RT-SAFE
+    fn set_plugin_param(&mut self, _id: u32, _value: f64) {}
+    /// Tempo, for plugins that follow it.
+    // RT-SAFE
+    fn set_tempo(&mut self, _bpm: f64) {}
 }
 
 /// Builds the processor for a track's instrument settings. Allocates; call
@@ -52,6 +61,9 @@ pub fn create(instrument: &Instrument, sample_rate_hz: f32) -> Box<dyn Instrumen
                 .as_deref()
                 .map(|p| daw_sampler::load_cached(std::path::Path::new(p))),
         )),
+        // Offline renders (export, freeze, A/B) get their own copy, from
+        // the settings saved in the song.
+        InstrumentKind::Plugin => return create_plugin(instrument, sample_rate_hz, None).0,
     };
     for (index, spec) in param_specs(instrument.kind).iter().enumerate() {
         let value = instrument.value(spec.id).unwrap_or(spec.default);

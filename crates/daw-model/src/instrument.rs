@@ -21,6 +21,10 @@ pub enum InstrumentKind {
     /// Plays a sampled instrument from an SFZ sample pack on disk (a real
     /// piano, bass, strings...). Set the pack with load_sample_pack.
     Sampler,
+    /// A third-party VST3 instrument installed on this computer. Choose one
+    /// with load_plugin (list them with plugins); it has no built-in
+    /// parameters or presets, see plugin_params instead.
+    Plugin,
 }
 
 impl InstrumentKind {
@@ -48,6 +52,9 @@ pub struct Instrument {
     /// For samplers: the SFZ file of the sample pack, as an absolute path.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sample_pack: Option<String>,
+    /// For plugin instruments: which plugin, and its settings.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plugin: Option<Box<crate::plugin::PluginRef>>,
 }
 
 impl Instrument {
@@ -66,6 +73,7 @@ impl Instrument {
             preset: preset_def.name.to_owned(),
             params,
             sample_pack: None,
+            plugin: None,
         })
     }
 
@@ -571,7 +579,7 @@ pub fn param_specs(kind: InstrumentKind) -> &'static [ParamSpec] {
     match kind {
         InstrumentKind::Synth => SYNTH_PARAMS,
         InstrumentKind::Drums => DRUM_PARAMS,
-        InstrumentKind::Audio => &[],
+        InstrumentKind::Audio | InstrumentKind::Plugin => &[],
         InstrumentKind::Sampler => SAMPLER_PARAMS,
     }
 }
@@ -858,6 +866,7 @@ pub fn presets(kind: InstrumentKind) -> &'static [Preset] {
         InstrumentKind::Drums => DRUM_PRESETS,
         InstrumentKind::Audio => AUDIO_PRESETS,
         InstrumentKind::Sampler => SAMPLER_PRESETS,
+        InstrumentKind::Plugin => &[],
     }
 }
 

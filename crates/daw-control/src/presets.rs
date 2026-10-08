@@ -32,6 +32,7 @@ impl UserPreset {
             preset: self.name.clone(),
             params: self.params.clone(),
             sample_pack: self.sample_pack.clone(),
+            plugin: None,
         }
     }
 }

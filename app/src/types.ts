@@ -6,7 +6,7 @@ export interface TimeSignature {
   denominator: number;
 }
 
-export type InstrumentKind = "synth" | "drums" | "audio" | "sampler";
+export type InstrumentKind = "synth" | "drums" | "audio" | "sampler" | "plugin";
 export type EffectKind = "eq" | "compressor" | "reverb" | "delay" | "chorus" | "distortion" | "limiter";
 
 export interface Instrument {
@@ -15,6 +15,19 @@ export interface Instrument {
   params: Record<string, number>;
   /** Samplers: absolute path of the SFZ file. */
   sample_pack?: string | null;
+  /** Plugin instruments: which VST3 plugin, and its settings. */
+  plugin?: PluginRef | null;
+}
+
+/** A third-party VST3 plugin a track uses (daw-model/src/plugin.rs). */
+export interface PluginRef {
+  uid: string;
+  name: string;
+  vendor: string;
+  path: string;
+  /** Parameter id → value (0–1). */
+  params: Record<string, number>;
+  state?: string | null;
 }
 
 /** Whether a sampler's pack has loaded. */
@@ -411,6 +424,7 @@ export type Command =
     }
   | { command: "set_clip_tempo"; clip_id: number; source_bpm: number | null }
   | { command: "load_sample_pack"; track_id: number; path: string | null }
+  | { command: "set_plugin_params"; track_id: number; effect_id?: number | null; params: Record<string, number> }
   | { command: "add_automation_lane"; track_id: number; target: AutomationTarget; points: AutomationPoint[] }
   | { command: "remove_automation_lane"; track_id: number; lane_id: number }
   | { command: "set_automation_points"; track_id: number; lane_id: number; points: AutomationPoint[] }

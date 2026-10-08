@@ -868,7 +868,9 @@ dependencies = [
  "daw-effects",
  "daw-instruments",
  "daw-model",
+ "daw-plugins",
  "daw-sampler",
+ "daw-test-plugin",
  "midir",
  "rtrb",
  "tempfile",
@@ -893,10 +895,13 @@ dependencies = [
 name = "daw-instruments"
 version = "0.2.0"
 dependencies = [
+ "base64 0.22.1",
  "daw-audio",
  "daw-dsp",
  "daw-model",
+ "daw-plugins",
  "daw-sampler",
+ "daw-test-plugin",
  "serde",
  "tempfile",
 ]

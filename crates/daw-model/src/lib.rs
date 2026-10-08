@@ -9,6 +9,7 @@ pub mod effect;
 mod file;
 pub mod instrument;
 pub mod music;
+pub mod plugin;
 mod project;
 mod session;
 pub mod summary;

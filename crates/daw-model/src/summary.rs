@@ -64,6 +64,11 @@ fn track_brief(t: &Track) -> Value {
         "name": t.name,
         "instrument": t.instrument.kind,
         "preset": t.instrument.preset,
+        "plugin": t.instrument.plugin.as_ref().map(|p| json!({
+            "uid": p.uid,
+            "name": p.name,
+            "vendor": p.vendor,
+        })),
         "volume_db": t.mixer.volume_db,
         "pan": t.mixer.pan,
         "mute": t.mixer.mute,

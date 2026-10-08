@@ -1,5 +1,8 @@
+use std::collections::BTreeMap;
+
 use super::{Command, CommandError, check_value};
 use crate::instrument::{self, Instrument, InstrumentKind};
+use crate::project::EffectId;
 use crate::project::{Project, TrackId};
 
 pub(crate) fn kind_name(kind: InstrumentKind) -> String {
@@ -77,6 +80,17 @@ pub(super) fn set_instrument(
 
 /// Validates every given parameter and fills in defaults for missing ones.
 pub(crate) fn complete_instrument(mut inst: Instrument) -> Result<Instrument, CommandError> {
+    if inst.kind == InstrumentKind::Plugin {
+        let Some(plugin) = &inst.plugin else {
+            return Err(super::invalid(
+                "instrument",
+                "a plugin instrument needs its plugin; use load_plugin",
+            ));
+        };
+        check_plugin_values(&plugin.params)?;
+    } else {
+        inst.plugin = None;
+    }
     for (id, value) in &inst.params {
         let spec = instrument::spec(inst.kind, id).ok_or_else(|| CommandError::UnknownParam {
             kind: kind_name(inst.kind),
@@ -90,6 +104,59 @@ pub(crate) fn complete_instrument(mut inst: Instrument) -> Result<Instrument, Co
             .or_insert(spec.default);
     }
     Ok(inst)
+}
+
+fn check_plugin_values(params: &BTreeMap<u32, f64>) -> Result<(), CommandError> {
+    match params.iter().find(|(_, v)| !(0.0..=1.0).contains(*v)) {
+        Some((id, v)) => Err(super::invalid(
+            "plugin parameter",
+            format!("{id} must be between 0 and 1, got {v}"),
+        )),
+        None => Ok(()),
+    }
+}
+
+pub(super) fn set_plugin_params(
+    project: &mut Project,
+    track_id: TrackId,
+    effect_id: Option<EffectId>,
+    params: BTreeMap<u32, f64>,
+) -> Result<Command, CommandError> {
+    let track = project
+        .track_mut(track_id)
+        .ok_or(CommandError::UnknownTrack(track_id))?;
+    if effect_id.is_some() {
+        return Err(super::invalid(
+            "effect",
+            "plugin effects aren't supported yet",
+        ));
+    }
+    let name = track.name.clone();
+    let plugin = track
+        .instrument
+        .plugin
+        .as_mut()
+        .ok_or_else(|| super::invalid("track", format!("\"{name}\" doesn't play a plugin")))?;
+    if params.is_empty() {
+        return Err(super::invalid("params", "give at least one parameter"));
+    }
+    check_plugin_values(&params)?;
+    let mut old = BTreeMap::new();
+    for id in params.keys() {
+        let v = plugin.params.get(id).ok_or_else(|| {
+            super::invalid(
+                "plugin parameter",
+                format!("{} has no parameter {id}; see plugin_params", plugin.name),
+            )
+        })?;
+        old.insert(*id, *v);
+    }
+    plugin.params.extend(params);
+    Ok(Command::SetPluginParams {
+        track_id,
+        effect_id,
+        params: old,
+    })
 }
 
 pub(super) fn load_sample_pack(

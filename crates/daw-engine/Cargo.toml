@@ -26,6 +26,8 @@ thiserror.workspace = true
 
 [dev-dependencies]
 daw-audio.workspace = true
+daw-plugins = { path = "../daw-plugins" }
+daw-test-plugin = { path = "../daw-test-plugin" }
 daw-sampler = { path = "../daw-sampler" }
 tempfile = "3.27.0"
 

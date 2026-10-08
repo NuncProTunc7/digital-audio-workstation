@@ -486,6 +486,64 @@ fn audio_thread_never_allocates() {
     });
     assert_eq!(process_counting(&mut processor, &mut out), 0, "sampler");
 
+    // A plugin instrument: notes and parameter changes.
+    let path = "in-process://no-alloc/NPT Test.vst3";
+    // SAFETY: GetPluginFactory returns an owned factory reference.
+    let module = unsafe {
+        daw_plugins::Module::from_factory(
+            daw_test_plugin::GetPluginFactory(),
+            std::path::Path::new(path),
+        )
+    }
+    .expect("factory");
+    std::mem::forget(module);
+    session
+        .execute(Command::AddTrack {
+            name: "Strings".into(),
+            instrument: InstrumentKind::Synth,
+            preset: None,
+            index: None,
+        })
+        .expect("track");
+    let strings = session.project().tracks.last().expect("strings").id;
+    session
+        .execute(Command::SetInstrument {
+            track_id: strings,
+            instrument: Instrument {
+                kind: InstrumentKind::Plugin,
+                preset: String::new(),
+                params: Default::default(),
+                sample_pack: None,
+                plugin: Some(Box::new(daw_model::plugin::PluginRef {
+                    uid: "4E50543153594E544800000000000001".into(),
+                    name: "NPT Test Synth".into(),
+                    vendor: "Nunc Pro Tune".into(),
+                    path: path.into(),
+                    params: [(0, 0.5)].into_iter().collect(),
+                    state: None,
+                })),
+            },
+        })
+        .expect("plugin");
+    engine.sync(session.project());
+    process_counting(&mut processor, &mut out);
+    for n in 0..40 {
+        engine.note_on(strings, 40 + n, 0.7);
+    }
+    session
+        .execute(Command::SetPluginParams {
+            track_id: strings,
+            effect_id: None,
+            params: [(0, 0.9)].into_iter().collect(),
+        })
+        .expect("param");
+    engine.sync(session.project());
+    engine.send(EngineMessage::SetTempo(97.0));
+    for n in 0..40 {
+        engine.note_off(strings, 40 + n);
+    }
+    assert_eq!(process_counting(&mut processor, &mut out), 0, "plugin");
+
     // Swapping the whole track set: the old set must be handed back, not freed.
     session
         .execute(Command::SetInstrument {

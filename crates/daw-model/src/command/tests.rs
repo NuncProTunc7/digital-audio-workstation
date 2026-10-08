@@ -86,7 +86,41 @@ fn fixture() -> Project {
     }
     .apply(&mut p)
     .expect("sampler");
+    // Track 14: a plugin instrument with two parameters.
+    Command::AddTrack {
+        name: "Strings".into(),
+        instrument: InstrumentKind::Synth,
+        preset: None,
+        index: None,
+    }
+    .apply(&mut p)
+    .expect("track");
+    Command::SetInstrument {
+        track_id: PLUGIN_TRACK,
+        instrument: plugin_instrument(),
+    }
+    .apply(&mut p)
+    .expect("plugin");
     p
+}
+
+const PLUGIN_TRACK: TrackId = 14;
+
+fn plugin_instrument() -> crate::Instrument {
+    crate::Instrument {
+        kind: InstrumentKind::Plugin,
+        preset: String::new(),
+        params: Default::default(),
+        sample_pack: None,
+        plugin: Some(Box::new(crate::plugin::PluginRef {
+            uid: "4E50543153594E544800000000000001".into(),
+            name: "NPT Test Synth".into(),
+            vendor: "Nunc Pro Tune".into(),
+            path: "C:/Program Files/Common Files/VST3/NPT Test.vst3".into(),
+            params: [(0, 0.5), (7, 1.0)].into_iter().collect(),
+            state: Some("TlBUMQ==".into()),
+        })),
+    }
 }
 
 const AUDIO_CLIP: ClipId = 11;
@@ -300,6 +334,15 @@ fn sample_commands(p: &Project) -> Vec<Command> {
         Command::LoadSamplePack {
             track_id: 13,
             path: Some("C:\\Samples\\Salamander\\SalamanderGrandPiano.sfz".into()),
+        },
+        Command::SetPluginParams {
+            track_id: PLUGIN_TRACK,
+            effect_id: None,
+            params: [(7, 0.25)].into_iter().collect(),
+        },
+        Command::SetInstrument {
+            track_id: 13,
+            instrument: plugin_instrument(),
         },
         Command::RemoveAutomationLane {
             track_id: 1,
@@ -1533,6 +1576,7 @@ fn set_instrument_fills_missing_params_with_defaults() {
         preset: "Custom".into(),
         params: [("filter.cutoff_hz".to_owned(), 300.0)].into(),
         sample_pack: None,
+        plugin: None,
     };
     Command::SetInstrument {
         track_id: 1,
@@ -1847,6 +1891,65 @@ fn automation_drag_is_one_undo_step() {
         s.project().track(1).expect("t").automation[0].points.len(),
         2
     );
+}
+
+#[test]
+fn plugin_params_must_exist_and_stay_between_0_and_1() {
+    let base = fixture();
+    let bad = [
+        (PLUGIN_TRACK, [(3, 0.5)]),
+        (PLUGIN_TRACK, [(0, 1.5)]),
+        (1, [(0, 0.5)]),
+    ];
+    for (track_id, params) in bad {
+        let mut p = base.clone();
+        let r = Command::SetPluginParams {
+            track_id,
+            effect_id: None,
+            params: params.into_iter().collect(),
+        }
+        .apply(&mut p);
+        assert!(r.is_err(), "{track_id} {params:?}");
+    }
+    // A plugin instrument needs its plugin; tracks can't start as one.
+    let mut p = base.clone();
+    let mut no_plugin = plugin_instrument();
+    no_plugin.plugin = None;
+    assert!(
+        Command::SetInstrument {
+            track_id: 1,
+            instrument: no_plugin
+        }
+        .apply(&mut p)
+        .is_err()
+    );
+    assert!(
+        Command::AddTrack {
+            name: "X".into(),
+            instrument: InstrumentKind::Plugin,
+            preset: None,
+            index: None,
+        }
+        .apply(&mut p)
+        .is_err()
+    );
+    // A drag in the plugin's window is one undo step.
+    let mut s = Session::new(base);
+    for v in [0.1, 0.2, 0.3] {
+        s.execute(Command::SetPluginParams {
+            track_id: PLUGIN_TRACK,
+            effect_id: None,
+            params: [(0, v)].into_iter().collect(),
+        })
+        .expect("drag");
+    }
+    s.end_gesture();
+    assert!(s.undo());
+    let plugin = s
+        .project()
+        .track(PLUGIN_TRACK)
+        .and_then(|t| t.instrument.plugin.clone());
+    assert_eq!(plugin.expect("plugin").params[&0], 0.5);
 }
 
 #[test]

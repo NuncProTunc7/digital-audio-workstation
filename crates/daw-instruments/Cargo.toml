@@ -11,6 +11,8 @@ authors.workspace = true
 daw-dsp = { path = "../daw-dsp" }
 daw-model.workspace = true
 daw-sampler = { path = "../daw-sampler" }
+daw-plugins = { path = "../daw-plugins" }
+base64 = "0.22"
 serde.workspace = true
 
 [lints]
@@ -19,3 +21,4 @@ workspace = true
 [dev-dependencies]
 tempfile = "3.27.0"
 daw-audio.workspace = true
+daw-test-plugin = { path = "../daw-test-plugin" }

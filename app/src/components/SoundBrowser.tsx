@@ -27,6 +27,7 @@ const KIND_NAMES: Record<InstrumentKind, string> = {
   drums: "Drums",
   sampler: "Sampler",
   audio: "Audio",
+  plugin: "Plugin",
 };
 
 const FAVORITES_KEY = "npt.favoriteSounds";

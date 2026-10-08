@@ -59,7 +59,13 @@ interface TimelineProps {
 
 const isAudio = (t: Track) => t.instrument.kind === "audio";
 
-const TRACK_ICONS: Record<Track["instrument"]["kind"], string> = { synth: "🎹", drums: "🥁", audio: "🎤", sampler: "🎻" };
+const TRACK_ICONS: Record<Track["instrument"]["kind"], string> = {
+  synth: "🎹",
+  drums: "🥁",
+  audio: "🎤",
+  sampler: "🎻",
+  plugin: "🔌",
+};
 
 type Drag =
   | {

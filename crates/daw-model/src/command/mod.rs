@@ -458,6 +458,20 @@ pub enum Command {
         path: Option<String>,
     },
 
+    /// Set parameters of a track's plugin instrument, by the parameter ids
+    /// plugin_params lists. Values are 0–1 on the plugin's own scale
+    /// (plugin_params shows what each value means, e.g. 0.5 = "-6 dB").
+    /// Fails if the track isn't a plugin track or an id isn't one of the
+    /// plugin's parameters.
+    SetPluginParams {
+        track_id: TrackId,
+        /// Leave out: plugin effects aren't supported yet.
+        effect_id: Option<EffectId>,
+        /// Parameter id → value (0–1).
+        #[serde(deserialize_with = "crate::plugin::id_map::deserialize")]
+        params: std::collections::BTreeMap<u32, f64>,
+    },
+
     // ---- Automation ----
     /// Add an automation lane that moves one of a track's settings over
     /// time: volume (dB), pan (-1..1), an instrument parameter, or a
@@ -925,6 +939,11 @@ impl Command {
             C::LoadSamplePack { track_id, path } => {
                 instruments::load_sample_pack(project, track_id, path)
             }
+            C::SetPluginParams {
+                track_id,
+                effect_id,
+                params,
+            } => instruments::set_plugin_params(project, track_id, effect_id, params),
             C::AddAutomationLane {
                 track_id,
                 target,
@@ -1024,6 +1043,18 @@ impl Command {
                     && sb.is_none()
             }
             (C::SetMasterVolume { .. }, C::SetMasterVolume { .. }) => true,
+            (
+                C::SetPluginParams {
+                    track_id: a,
+                    effect_id: ea,
+                    params: pa,
+                },
+                C::SetPluginParams {
+                    track_id: b,
+                    effect_id: eb,
+                    params: pb,
+                },
+            ) => a == b && ea == eb && pa.keys().eq(pb.keys()),
             (
                 C::SetEffectParam {
                     track_id: ta,

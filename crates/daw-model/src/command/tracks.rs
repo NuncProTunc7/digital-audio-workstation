@@ -23,6 +23,12 @@ pub(super) fn add(
     index: Option<usize>,
 ) -> Result<Command, CommandError> {
     let name = check_name(name)?;
+    if kind == InstrumentKind::Plugin {
+        return Err(super::invalid(
+            "instrument",
+            "add a track with any instrument, then choose its plugin with load_plugin",
+        ));
+    }
     if project.tracks.len() >= MAX_TRACKS {
         return Err(CommandError::TooManyTracks(MAX_TRACKS));
     }

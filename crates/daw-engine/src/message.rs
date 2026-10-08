@@ -302,6 +302,12 @@ pub enum EngineMessage {
         index: usize,
         value: f32,
     },
+    /// A plugin instrument's parameter (plugin id, 0–1).
+    SetPluginParam {
+        track_id: TrackId,
+        id: u32,
+        value: f64,
+    },
     SetStrip {
         track_id: TrackId,
         strip: StripSettings,
