@@ -20,6 +20,7 @@
 | Synth | Warm Keys, Soft Pad, Bright Lead, Pluck, Chip Square, Brass Stab, Sub Bass, Fat Bass, Acid Bass (Init = blank) | Chords, leads, pads, basses, chiptune |
 | Drums | Classic Kit, Tight Kit, Boomy Kit | Beats: 16 pads (kick, snare, hats, toms, crash, ride...) |
 | Sampler | Free instruments (pianos, cello, double bass, flute, tuba) or any SFZ pack | Realistic piano, strings, brass, woodwinds |
+| Plugin | A VST3 instrument you installed (see [Plugins](plugins.md)) | Whatever it does: orchestras, synths, pianos |
 
 Synth knobs, in plain terms: **Wave** is the basic tone (Sine soft, Saw bright and buzzy, Square hollow and 8-bit, Triangle mellow). **Cutoff** is brightness. **Resonance** adds a whistle at the cutoff. **Attack** is how slowly a note fades in. **Release** is how long it rings after you let go. **LFO** makes things wobble.
 

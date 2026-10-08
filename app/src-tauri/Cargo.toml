@@ -24,6 +24,7 @@ daw-audio.workspace = true
 daw-control = { path = "../../crates/daw-control" }
 daw-export = { path = "../../crates/daw-export" }
 daw-instruments = { path = "../../crates/daw-instruments" }
+daw-plugins = { path = "../../crates/daw-plugins" }
 daw-model.workspace = true
 serde.workspace = true
 serde_json.workspace = true

@@ -272,6 +272,7 @@ pub enum Garbage {
     Buses(#[allow(dead_code)] Box<[BusSlot]>),
     Effects(#[allow(dead_code)] Box<EffectChain>),
     Sequence(#[allow(dead_code)] Box<Sequence>),
+    Instrument(#[allow(dead_code)] Box<dyn daw_instruments::InstrumentProcessor>),
 }
 
 /// Everything the audio thread can be told. Sent through a lock-free queue.
@@ -301,6 +302,12 @@ pub enum EngineMessage {
         track_id: TrackId,
         index: usize,
         value: f32,
+    },
+    /// A track's instrument, built later than its track (a plugin that
+    /// finished loading).
+    ReplaceInstrument {
+        track_id: TrackId,
+        instrument: Box<dyn daw_instruments::InstrumentProcessor>,
     },
     /// A plugin instrument's parameter (plugin id, 0–1).
     SetPluginParam {

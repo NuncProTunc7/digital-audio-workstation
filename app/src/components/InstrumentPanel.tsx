@@ -1,7 +1,9 @@
 import { useState } from "react";
-import type { Catalog, LibraryPack, SamplePackStatus, Track, UserPreset } from "../types";
+import type { Catalog, LibraryPack, PluginList, PluginParam, PluginStatus, SamplePackStatus, Track, UserPreset } from "../types";
 import DrumPads from "./DrumPads";
 import ParamControl from "./ParamControl";
+import PluginChooser from "./PluginChooser";
+import PluginPanel from "./PluginPanel";
 import SamplePack from "./SamplePack";
 
 interface InstrumentPanelProps {
@@ -23,6 +25,15 @@ interface InstrumentPanelProps {
   sampleLibrary?: () => Promise<LibraryPack[]>;
   onDownloadSamplePack?: (id: string) => Promise<void>;
   onUseSamplePack?: (path: string) => void;
+  /** Third-party plugins; omitted where they can't be used. */
+  plugins?: {
+    list: (rescan: boolean) => Promise<PluginList>;
+    status: (trackId: number) => Promise<PluginStatus>;
+    params: (trackId: number) => Promise<PluginParam[]>;
+    onLoad: (uid: string) => void;
+    onOpenWindow: () => void;
+    onParam: (id: number, value: number) => void;
+  };
 }
 
 /** Preset picker plus every parameter of the selected track's instrument. */
@@ -44,8 +55,37 @@ export default function InstrumentPanel({
   sampleLibrary,
   onDownloadSamplePack,
   onUseSamplePack,
+  plugins,
 }: InstrumentPanelProps) {
   const [saving, setSaving] = useState(false);
+  const chooser = plugins && track.instrument.kind !== "audio" && (
+    <PluginChooser list={plugins.list} current={track.instrument.plugin?.uid} onChoose={plugins.onLoad} />
+  );
+  if (track.instrument.kind === "plugin") {
+    return (
+      <section className="instrument-panel" aria-label={`${track.name} instrument`}>
+        <header className="instrument-header">
+          <h2>{track.name}</h2>
+          <span className="instrument-kind">Plugin</span>
+          {chooser}
+        </header>
+        <div className="instrument-body plugin">
+          {plugins ? (
+            <PluginPanel
+              track={track}
+              status={plugins.status}
+              params={plugins.params}
+              onOpenWindow={plugins.onOpenWindow}
+              onParam={plugins.onParam}
+              onEndGesture={onEndGesture}
+            />
+          ) : (
+            <p className="muted">Plugins need the desktop app.</p>
+          )}
+        </div>
+      </section>
+    );
+  }
   const description = catalog.instruments.find((i) => i.kind === track.instrument.kind);
   if (!description) return null;
 
@@ -146,6 +186,7 @@ export default function InstrumentPanel({
             ✕
           </button>
         )}
+        {chooser}
         {preset && <span className="preset-description">{preset.description}</span>}
       </header>
 

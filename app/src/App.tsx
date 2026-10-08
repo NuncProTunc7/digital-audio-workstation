@@ -1128,6 +1128,23 @@ export default function App({ backend }: AppProps) {
                   })
                 }
                 samplePackStatus={backend.samplePackStatus}
+                plugins={{
+                  list: backend.plugins,
+                  status: backend.pluginStatus,
+                  params: backend.pluginParams,
+                  onLoad: (uid) =>
+                    void run(() => backend.loadPlugin(selectedTrack.id, uid)).then((v) => {
+                      applyView(v);
+                      endGesture();
+                    }),
+                  onOpenWindow: () => void run(() => backend.openPluginWindow(selectedTrack.id)),
+                  onParam: (id, value) =>
+                    void execute({
+                      command: "set_plugin_params",
+                      track_id: selectedTrack.id,
+                      params: { [String(id)]: value },
+                    }),
+                }}
                 sampleLibrary={backend.sampleLibrary}
                 onDownloadSamplePack={async (id) => {
                   await run(() => backend.downloadSamplePack(id));

@@ -26,7 +26,7 @@ mod status;
 mod tone;
 
 pub use daw_audio::{AudioBuffer, AudioPool};
-pub use engine::Engine;
+pub use engine::{Engine, PLUGIN_LOADING};
 pub use message::{EngineMessage, RecordedEvent};
 pub use processor::{AudioProcessor, MAX_BLOCK_FRAMES};
 pub use sequence::{build_sequence, plays_frozen, track_sequence};

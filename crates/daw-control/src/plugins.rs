@@ -75,6 +75,9 @@ pub fn live<H: Host>(host: &H, track_id: TrackId) -> Result<Instance, String> {
         .ok_or("audio isn't running, so plugins aren't loaded")?;
     match engine.plugin(track_id) {
         Some(Ok(instance)) => Ok(instance),
+        Some(Err(e)) if e == daw_engine::PLUGIN_LOADING => {
+            Err("the plugin is still loading; try again in a moment".into())
+        }
         Some(Err(e)) => Err(format!("the plugin couldn't load: {e}")),
         None => Err("that track doesn't play a plugin".into()),
     }
@@ -104,13 +107,19 @@ pub fn load_plugin<H: Host>(host: &H, track_id: TrackId, uid: &str) -> Result<Pl
             state: None,
         })),
     };
-    host.session()?
-        .execute(Command::SetInstrument {
+    {
+        let mut s = host.session()?;
+        s.execute(Command::SetInstrument {
             track_id,
             instrument,
         })
         .map_err(|e| e.to_string())?;
+        s.end_gesture();
+        crate::host::sync(host, &s);
+    }
     host.project_changed(&format!("Load plugin {}", info.name));
+    // In the app the plugin is still loading; its list arrives with
+    // `plugin_loaded`.
     note_live(host, track_id);
     Ok(info)
 }
@@ -128,6 +137,18 @@ pub fn note_live<H: Host>(host: &H, track_id: TrackId) {
     if let Ok(mut s) = host.session() {
         s.note_plugin(track_id, &params, None);
     }
+}
+
+/// A plugin finished loading in the background: record its parameters,
+/// send its window's edits to `edits`, and tell the screens.
+pub fn plugin_loaded<H: Host>(
+    host: &H,
+    track_id: TrackId,
+    edits: &std::sync::mpsc::Sender<(TrackId, Edit)>,
+) {
+    note_live(host, track_id);
+    connect_edits(host, edits);
+    host.project_changed("Plugin loaded");
 }
 
 /// Before saving or rendering: stores every live plugin's own settings in
@@ -188,6 +209,7 @@ pub fn apply_edit<H: Host>(host: &H, track_id: TrackId, edit: Edit) -> Result<()
                     params: [(id, value.clamp(0.0, 1.0))].into_iter().collect(),
                 })
                 .map_err(|e| e.to_string())?;
+                crate::host::sync(host, &s);
             }
             host.project_changed("Plugin setting");
             Ok(())
@@ -225,6 +247,7 @@ pub fn apply_edit<H: Host>(host: &H, track_id: TrackId, edit: Edit) -> Result<()
                 })
                 .map_err(|e| e.to_string())?;
                 s.end_gesture();
+                crate::host::sync(host, &s);
             }
             host.project_changed("Plugin preset");
             Ok(())

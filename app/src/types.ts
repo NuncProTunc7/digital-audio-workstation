@@ -251,6 +251,43 @@ export type LibraryJob =
   | { state: "failed"; error: string };
 
 /** A free instrument the app can download (crates/daw-control/src/library.rs). */
+/** An installed VST3 plugin (crates/daw-plugins PluginInfo). */
+export interface PluginInfo {
+  uid: string;
+  name: string;
+  vendor: string;
+  version: string;
+  kind: "instrument" | "effect";
+  categories: string;
+  path: string;
+}
+
+/** Installed plugins, and ones that couldn't be used. */
+export interface PluginList {
+  plugins: PluginInfo[];
+  could_not_use: { path: string; error: string }[];
+}
+
+/** One of a plugin's parameters (crates/daw-plugins ParamInfo). */
+export interface PluginParam {
+  id: number;
+  name: string;
+  units: string;
+  /** 0–1. */
+  value: number;
+  default: number;
+  /** What the plugin shows for the value, e.g. "-6.0 dB". */
+  display: string;
+  /** 0 = continuous. */
+  steps: number;
+  automatable: boolean;
+}
+
+/** Whether a track's plugin has loaded. */
+export type PluginStatus =
+  | { state: "none" | "loading" | "ready" }
+  | { state: "failed"; error: string };
+
 export interface LibraryPack {
   id: string;
   name: string;

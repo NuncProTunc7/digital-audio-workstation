@@ -19,6 +19,7 @@ daw-audio.workspace = true
 daw-dsp = { path = "../daw-dsp" }
 daw-effects = { path = "../daw-effects" }
 daw-instruments = { path = "../daw-instruments" }
+daw-plugins = { path = "../daw-plugins" }
 daw-model.workspace = true
 midir = { version = "0.11", optional = true }
 rtrb = "0.4"
@@ -26,7 +27,6 @@ thiserror.workspace = true
 
 [dev-dependencies]
 daw-audio.workspace = true
-daw-plugins = { path = "../daw-plugins" }
 daw-test-plugin = { path = "../daw-test-plugin" }
 daw-sampler = { path = "../daw-sampler" }
 tempfile = "3.27.0"

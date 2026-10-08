@@ -48,7 +48,7 @@ cargo test -p daw-export                     # Godot export: seamless loops, .im
 cargo build --release -p daw-mcp && npm --prefix app run tauri build -- --config src-tauri/tauri.installer.conf.json   # installer with the Claude bridge
 ```
 
-Claude connects through `npt-mcp`: run the app, then point Claude at the bridge (`claude mcp add --scope user nunc-pro-tune -- "<path to npt-mcp>"`, or the app's **Claude** button for Claude Desktop). `NPT_CONTROL_FILE` overrides where the app writes, and the bridge reads, the control discovery file.
+Claude connects through `npt-mcp`: run the app, then point Claude at the bridge (`claude mcp add --scope user nunc-pro-tune -- "<path to npt-mcp>"`, or the app's **Claude** button for Claude Desktop). `NPT_CONTROL_FILE` overrides where the app writes, and the bridge reads, the control discovery file. `NPT_VST3_PATH` adds plugin folders (looked through before the standard VST3 folders); `cargo build -p daw-test-plugin` builds a tiny test plugin (`target/debug/daw_test_plugin.dll`; copy it as `NPT Test.vst3`).
 
 Dev builds optimize the audio crates (see `[profile.dev.package.*]` in `Cargo.toml`); unoptimized DSP cannot keep up in real time.
 

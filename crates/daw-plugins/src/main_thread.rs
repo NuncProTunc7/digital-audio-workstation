@@ -34,6 +34,21 @@ pub fn run<R: Send + 'static>(f: impl FnOnce() -> R + Send + 'static) -> Result<
     }
 }
 
+/// Whether the app installed a main-thread runner.
+pub fn has_runner() -> bool {
+    RUNNER.get().is_some()
+}
+
+/// Queues `f` for the main thread even when called from it, so the caller
+/// finishes first (and holds no locks when `f` runs). Without a runner, `f`
+/// runs now.
+pub fn post_later(f: impl FnOnce() + Send + 'static) {
+    match RUNNER.get() {
+        Some((_, post)) => post(Box::new(f)),
+        None => f(),
+    }
+}
+
 /// Runs `f` on the main thread without waiting (for releasing plugins).
 pub fn post(f: impl FnOnce() + Send + 'static) {
     match RUNNER.get() {

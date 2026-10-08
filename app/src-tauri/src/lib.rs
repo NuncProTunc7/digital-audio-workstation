@@ -78,6 +78,8 @@ struct AppState {
     /// Unsaved work left by a run that didn't close properly, until the
     /// user recovers or declines it.
     recoverable: Mutex<Option<Recoverable>>,
+    /// Edits made in plugins' own windows, applied by a worker thread.
+    plugin_edits: OnceLock<std::sync::mpsc::Sender<(TrackId, daw_plugins::Edit)>>,
 }
 
 /// One thing Claude did, for the activity list.
@@ -120,6 +122,7 @@ impl Default for AppState {
             settings: Mutex::new(Settings::load(&settings::settings_path())),
             autosave: Mutex::new(AutosaveSlot::new(autosave::autosave_dir())),
             recoverable: Mutex::new(None),
+            plugin_edits: OnceLock::new(),
         }
     }
 }
@@ -151,6 +154,7 @@ impl daw_control::Host for AppState {
         if let Some(app) = self.app.get() {
             let _ = app.emit("project-changed", description.to_owned());
         }
+        close_stale_plugin_windows(self.engine());
     }
 
     fn project_path(&self) -> Option<PathBuf> {
@@ -208,6 +212,11 @@ impl daw_control::Host for AppState {
 
     fn metronome_on(&self) -> bool {
         self.metronome_on.load(Ordering::Relaxed)
+    }
+
+    fn plugin_scanner(&self) -> Option<PathBuf> {
+        // The app scans each plugin by running itself with --scan-vst3.
+        std::env::current_exe().ok()
     }
 
     fn count_in_bars(&self) -> u32 {
@@ -391,6 +400,7 @@ impl AppState {
                     ));
                 }
                 engine.set_metronome(self.metronome_on.load(Ordering::Relaxed));
+                self.watch_plugins(&engine);
                 if let Some(beats) = position {
                     engine.locate(beats);
                 }
@@ -399,6 +409,10 @@ impl AppState {
                 }
                 *output = Some(new_output);
                 *error = None;
+                // Plugins the new engine loaded right away.
+                if let Some(tx) = self.plugin_edits.get() {
+                    daw_control::plugins::connect_edits(self, tx);
+                }
                 Ok(())
             }
             Err(e) => {
@@ -408,6 +422,20 @@ impl AppState {
                 Err(message)
             }
         }
+    }
+
+    /// When a plugin finishes loading: record its parameters in the song
+    /// and listen to edits in its window.
+    fn watch_plugins(&self, engine: &Engine) {
+        let Some(app) = self.app.get().cloned() else {
+            return;
+        };
+        engine.on_plugin_loaded(move |track_id| {
+            let state = app.state::<AppState>();
+            if let Some(tx) = state.plugin_edits.get() {
+                daw_control::plugins::plugin_loaded(&*state, track_id, tx);
+            }
+        });
     }
 
     /// Forgets any A/B comparison (the caller resyncs the engine).
@@ -548,7 +576,27 @@ fn after_edit(state: &AppState, session: &Session) -> ProjectView {
     if let Some(engine) = state.engine() {
         engine.sync(session.project());
     }
+    close_stale_plugin_windows(state.engine());
     view(state, session)
+}
+
+/// Closes plugin windows whose track no longer plays that plugin (deleted
+/// track, other plugin, undo). Runs later on the main thread, never waiting.
+fn close_stale_plugin_windows(engine: Option<Arc<Engine>>) {
+    let Some(engine) = engine else {
+        return;
+    };
+    daw_plugins::main_thread::post_later(move || {
+        for (key, instance) in daw_plugins::editor::open_windows() {
+            let same = matches!(
+                engine.plugin(key as TrackId),
+                Some(Ok(live)) if live.same_as(&instance)
+            );
+            if !same {
+                daw_plugins::editor::close(key);
+            }
+        }
+    });
 }
 
 #[derive(Serialize)]
@@ -813,6 +861,75 @@ fn audition_seam(
     let bar = state.session()?.project().beats_per_bar();
     engine.audition_seam(start_beats, end_beats, bar);
     Ok(())
+}
+
+/// Installed plugins and ones that couldn't be used (rescan: look through
+/// the plugin folders again; slow the first time, so off the main thread).
+#[tauri::command]
+async fn plugins(state: State<'_, AppState>, rescan: bool) -> Result<serde_json::Value, String> {
+    daw_control::handle(&*state, daw_control::Request::Plugins { rescan }).into_result()
+}
+
+/// Gives a track an installed plugin instrument (one undo step).
+#[tauri::command]
+fn load_plugin(
+    state: State<'_, AppState>,
+    track_id: TrackId,
+    uid: String,
+) -> Result<ProjectView, String> {
+    daw_control::plugins::load_plugin(&*state, track_id, &uid)?;
+    let session = state.session()?;
+    Ok(view(&state, &session))
+}
+
+/// A plugin track's parameters with names, values and display text.
+#[tauri::command]
+fn plugin_params(
+    state: State<'_, AppState>,
+    track_id: TrackId,
+) -> Result<Vec<daw_plugins::ParamInfo>, String> {
+    daw_control::plugins::params(&*state, track_id)
+}
+
+/// Whether a track's plugin is loading, ready, or failed (and why).
+#[tauri::command]
+fn plugin_status(state: State<'_, AppState>, track_id: TrackId) -> serde_json::Value {
+    match state.engine().and_then(|e| e.plugin(track_id)) {
+        None => serde_json::json!({ "state": "none" }),
+        Some(Ok(_)) => serde_json::json!({ "state": "ready" }),
+        Some(Err(e)) if e == daw_engine::PLUGIN_LOADING => {
+            serde_json::json!({ "state": "loading" })
+        }
+        Some(Err(e)) => serde_json::json!({ "state": "failed", "error": e }),
+    }
+}
+
+/// Opens (or brings forward) a plugin track's own window.
+#[tauri::command]
+fn open_plugin_window(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    track_id: TrackId,
+) -> Result<(), String> {
+    let instance = daw_control::plugins::live(&*state, track_id)?;
+    let track_name = state
+        .session()?
+        .project()
+        .track(track_id)
+        .map(|t| t.name.clone())
+        .unwrap_or_default();
+    let title = format!("{} – {}", instance.info().name, track_name);
+    #[cfg(windows)]
+    let owner = app
+        .get_webview_window("main")
+        .and_then(|w| w.hwnd().ok())
+        .map(|h| h.0 as isize);
+    #[cfg(not(windows))]
+    let owner = {
+        let _ = &app;
+        None
+    };
+    daw_plugins::editor::open(&instance, u64::from(track_id), &title, owner)
 }
 
 /// Free instruments the app can download, and which are installed.
@@ -1452,6 +1569,11 @@ fn start_control(app: &AppHandle) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // `--scan-vst3 <path>`: describe one plugin for the main app and exit,
+    // so a plugin that crashes while loading can't take the app down.
+    if let Some(code) = daw_plugins::scan::child_main(&std::env::args().collect::<Vec<_>>()) {
+        std::process::exit(code);
+    }
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -1460,6 +1582,33 @@ pub fn run() {
         .setup(|app| {
             let state = app.state::<AppState>();
             let _ = state.app.set(app.handle().clone());
+            // Plugins are created and shown on this, the main thread.
+            let main = app.handle().clone();
+            daw_plugins::main_thread::install(move |job| {
+                let _ = main.run_on_main_thread(job);
+            });
+            let (edits_tx, edits_rx) = std::sync::mpsc::channel::<(TrackId, daw_plugins::Edit)>();
+            let _ = state.plugin_edits.set(edits_tx);
+            let edits_app = app.handle().clone();
+            let _ = std::thread::Builder::new()
+                .name("npt-plugin-edits".into())
+                .spawn(move || {
+                    for (track_id, edit) in edits_rx {
+                        let state = edits_app.state::<AppState>();
+                        if let Err(e) = daw_control::plugins::apply_edit(&*state, track_id, edit) {
+                            diagnostics::log_error(&format!("plugin window edit: {e}"));
+                        }
+                    }
+                });
+            // Look for newly installed plugins in the background.
+            let scan_app = app.handle().clone();
+            let _ = std::thread::Builder::new()
+                .name("npt-plugin-scan".into())
+                .spawn(move || {
+                    let state = scan_app.state::<AppState>();
+                    daw_control::plugins::rescan(&*state);
+                    let _ = scan_app.emit("plugins-changed", ());
+                });
             if let Ok(slot) = state.autosave.lock()
                 && let Ok(mut r) = state.recoverable.lock()
             {
@@ -1531,6 +1680,11 @@ pub fn run() {
             audition_seam,
             freeze_track,
             user_presets,
+            plugins,
+            load_plugin,
+            plugin_params,
+            plugin_status,
+            open_plugin_window,
             sample_library,
             download_sample_pack,
             save_preset,

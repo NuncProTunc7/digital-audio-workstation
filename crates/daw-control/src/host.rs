@@ -244,6 +244,9 @@ pub fn save_user_preset<H: Host>(
         .ok_or_else(|| format!("there is no track with id {track_id}"))?
         .instrument
         .clone();
+    if instrument.kind == InstrumentKind::Plugin {
+        return Err("plugins keep their own presets: save one in the plugin's window".into());
+    }
     crate::presets::save(&host.presets_path(), name, &instrument)
 }
 

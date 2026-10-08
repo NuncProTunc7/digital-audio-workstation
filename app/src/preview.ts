@@ -10,6 +10,8 @@ import type {
   ClaudeStatus,
   CompareSide,
   LibraryPack,
+  PluginInfo,
+  PluginParam,
   UserPreset,
   InputStatus,
   Peaks,
@@ -662,6 +664,27 @@ export function createPreviewBackend(): PreviewBackend {
   let comparing: { snapshot_id: number; side: CompareSide } | null = null;
   const uiErrors: string[] = [];
   let userPresets: UserPreset[] = [];
+  // Stand-ins for installed plugins.
+  const previewPlugins: PluginInfo[] = [
+    {
+      uid: "4E50543153594E544800000000000001",
+      name: "NPT Test Synth",
+      vendor: "Nunc Pro Tune",
+      version: "1.0.0",
+      kind: "instrument",
+      categories: "Instrument|Synth",
+      path: "C:/Program Files/Common Files/VST3/NPT Test.vst3",
+    },
+    {
+      uid: "4E5054314741494E0000000000000001",
+      name: "NPT Test Gain",
+      vendor: "Nunc Pro Tune",
+      version: "1.0.0",
+      kind: "effect",
+      categories: "Fx",
+      path: "C:/Program Files/Common Files/VST3/NPT Test.vst3",
+    },
+  ];
   // A tiny stand-in for the free instrument library: a download finishes
   // after a couple of looks.
   const library: LibraryPack[] = [
@@ -996,6 +1019,48 @@ export function createPreviewBackend(): PreviewBackend {
     pickFolder: async () => null,
     pickSamplePack: async () => null,
     samplePackStatus: async () => ({ state: "ready", name: "Preview", zones: 0, megabytes: 0 }),
+    plugins: async () => ({ plugins: structuredClone(previewPlugins), could_not_use: [] }),
+    loadPlugin: async (trackId, uid) => {
+      const p = previewPlugins.find((x) => x.uid === uid);
+      if (!p) throw new Error(`no installed plugin has id ${uid}`);
+      if (p.kind !== "instrument") throw new Error(`${p.name} is an effect, not an instrument`);
+      if (!project.tracks.some((x) => x.id === trackId)) throw new Error(`there is no track ${trackId}`);
+      undoStack.push(project);
+      redoStack.length = 0;
+      project = applyCommand(project, {
+        command: "set_instrument",
+        track_id: trackId,
+        instrument: {
+          kind: "plugin",
+          preset: p.name,
+          params: {},
+          plugin: { uid: p.uid, name: p.name, vendor: p.vendor, path: p.path, params: { "0": 0.5, "1": 0.25 } },
+        },
+      });
+      return view();
+    },
+    pluginParams: async (trackId) => {
+      const p = project.tracks.find((x) => x.id === trackId)?.instrument.plugin;
+      if (!p) throw new Error("that track doesn't play a plugin");
+      const names = ["Level", "Brightness"];
+      return Object.entries(p.params).map(
+        ([id, value]): PluginParam => ({
+          id: Number(id),
+          name: names[Number(id)] ?? `Param ${id}`,
+          units: "%",
+          value,
+          default: 0.5,
+          display: `${Math.round(value * 100)}`,
+          steps: 0,
+          automatable: true,
+        }),
+      );
+    },
+    pluginStatus: async (trackId) =>
+      project.tracks.find((x) => x.id === trackId)?.instrument.plugin ? { state: "ready" } : { state: "none" },
+    openPluginWindow: async () => {
+      throw new Error("Plugin windows need the desktop app");
+    },
     sampleLibrary: async () => {
       for (const p of library) {
         if (p.job?.state === "downloading") {

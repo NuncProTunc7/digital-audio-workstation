@@ -72,6 +72,11 @@ pub fn create(instrument: &Instrument, sample_rate_hz: f32) -> Box<dyn Instrumen
     processor
 }
 
+/// An instrument that plays nothing (a stand-in while a plugin loads).
+pub fn silent() -> Box<dyn InstrumentProcessor> {
+    Box::new(Silent)
+}
+
 /// The "instrument" of an audio track: ignores notes and adds nothing.
 struct Silent;
 

@@ -10,6 +10,7 @@ pub const PAGES: &[(&str, &str)] = &[
         "writing-music",
         include_str!("../../../docs/guide/writing-music.md"),
     ),
+    ("plugins", include_str!("../../../docs/guide/plugins.md")),
     ("audio", include_str!("../../../docs/guide/audio.md")),
     ("mixing", include_str!("../../../docs/guide/mixing.md")),
     (

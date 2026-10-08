@@ -950,6 +950,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "vst3",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2644,6 +2645,7 @@ dependencies = [
  "daw-export",
  "daw-instruments",
  "daw-model",
+ "daw-plugins",
  "serde",
  "serde_json",
  "tauri",

@@ -17,12 +17,92 @@ use crate::status::{EngineStatus, StatusSnapshot};
 
 /// Plugins playing on tracks, kept across rebuilds of the track graph so
 /// they keep their sound and live settings.
-type LivePlugins = Mutex<HashMap<TrackId, LivePlugin>>;
+type LivePlugins = Arc<Mutex<HashMap<TrackId, LivePlugin>>>;
 
 struct LivePlugin {
     /// Which plugin (uid, path): a different one means a fresh instance.
     key: (String, String),
+    /// `Err(PLUGIN_LOADING)` until a background load finishes.
     load: daw_instruments::PluginLoad,
+    /// Which load request this is, so a superseded one is dropped.
+    ticket: u64,
+}
+
+/// What [`Engine::plugin`] says about a plugin that is still starting.
+pub const PLUGIN_LOADING: &str = "still loading";
+
+type Producer = Arc<Mutex<rtrb::Producer<EngineMessage>>>;
+
+/// Told which track's plugin just finished loading in the background.
+type LoadedHook = Arc<Mutex<Option<Arc<dyn Fn(TrackId) + Send + Sync>>>>;
+
+/// What building tracks needs to create plugins.
+struct PluginCtx {
+    plugins: LivePlugins,
+    producer: Producer,
+    synced: Arc<Mutex<Project>>,
+    loaded: LoadedHook,
+    sample_rate_hz: f32,
+    /// Load new plugins on the main thread in the background (the app),
+    /// instead of right away (tests, offline renders).
+    later: bool,
+}
+
+fn next_ticket() -> u64 {
+    static T: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    T.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
+
+impl PluginCtx {
+    /// Loads `track_id`'s plugin on the main thread, then swaps it in. Uses
+    /// the song as it is by then, so edits made meanwhile aren't lost.
+    fn load_later(&self, track_id: TrackId, key: (String, String), ticket: u64) {
+        let (plugins, producer, synced, loaded) = (
+            Arc::clone(&self.plugins),
+            Arc::clone(&self.producer),
+            Arc::clone(&self.synced),
+            Arc::clone(&self.loaded),
+        );
+        let sample_rate_hz = self.sample_rate_hz;
+        daw_plugins::main_thread::post_later(move || {
+            let current = synced.lock().ok().and_then(|p| {
+                let t = p.track(track_id)?;
+                (plugin_key(t).as_ref() == Some(&key)).then(|| (t.instrument.clone(), p.tempo_bpm))
+            });
+            let Some((instrument, tempo)) = current else {
+                return;
+            };
+            let still_wanted = |m: &HashMap<TrackId, LivePlugin>| {
+                m.get(&track_id).is_some_and(|e| e.ticket == ticket)
+            };
+            if !plugins.lock().is_ok_and(|m| still_wanted(&m)) {
+                return;
+            }
+            let (mut processor, load) =
+                daw_instruments::create_plugin(&instrument, sample_rate_hz, None);
+            processor.set_tempo(tempo);
+            let Ok(mut map) = plugins.lock() else {
+                return;
+            };
+            if !still_wanted(&map) {
+                return;
+            }
+            if let (Some(entry), Some(load)) = (map.get_mut(&track_id), load) {
+                entry.load = load;
+            }
+            drop(map);
+            if let Ok(mut p) = producer.lock() {
+                let _ = p.push(EngineMessage::ReplaceInstrument {
+                    track_id,
+                    instrument: processor,
+                });
+            }
+            let hook = loaded.lock().ok().and_then(|h| h.clone());
+            if let Some(hook) = hook {
+                hook(track_id);
+            }
+        });
+    }
 }
 
 fn plugin_key(t: &Track) -> Option<(String, String)> {
@@ -41,7 +121,7 @@ const RECORD_CAPACITY: usize = 16_384;
 /// Safe to share between threads (UI commands, MIDI input). Locks here only
 /// guard the control side of the queues; the audio thread never sees them.
 pub struct Engine {
-    producer: Mutex<rtrb::Producer<EngineMessage>>,
+    producer: Producer,
     garbage: Mutex<rtrb::Consumer<Garbage>>,
     recorded: Mutex<rtrb::Consumer<RecordedEvent>>,
     status: Arc<EngineStatus>,
@@ -49,8 +129,9 @@ pub struct Engine {
     // Where audio clips' files come from.
     audio: Arc<AudioPool>,
     // The project as last sent to the processor, for diffing.
-    synced: Mutex<Project>,
+    synced: Arc<Mutex<Project>>,
     plugins: LivePlugins,
+    plugin_loaded: LoadedHook,
 }
 
 impl Engine {
@@ -74,7 +155,16 @@ impl Engine {
         let (record_tx, record_rx) = rtrb::RingBuffer::new(RECORD_CAPACITY);
         let status = Arc::new(EngineStatus::default());
         status.set_sample_rate(sample_rate_hz);
-        let plugins = LivePlugins::default();
+        let producer = Arc::new(Mutex::new(producer));
+        let synced = Arc::new(Mutex::new(project.clone()));
+        let ctx = PluginCtx {
+            plugins: LivePlugins::default(),
+            producer: Arc::clone(&producer),
+            synced: Arc::clone(&synced),
+            loaded: LoadedHook::default(),
+            sample_rate_hz: sample_rate,
+            later: false,
+        };
         let processor = AudioProcessor::new(
             sample_rate,
             consumer,
@@ -84,7 +174,7 @@ impl Engine {
             },
             Arc::clone(&status),
             ProcessorInit {
-                tracks: build_tracks(project, sample_rate, &audio, &plugins),
+                tracks: build_tracks(project, &audio, &ctx),
                 buses: build_buses(project, sample_rate),
                 master_effects: build_chain(
                     &project.tracks,
@@ -101,14 +191,15 @@ impl Engine {
             },
         );
         let engine = Engine {
-            producer: Mutex::new(producer),
+            producer,
             garbage: Mutex::new(garbage_rx),
             recorded: Mutex::new(record_rx),
             status,
             sample_rate_hz: sample_rate,
             audio,
-            synced: Mutex::new(project.clone()),
-            plugins,
+            synced,
+            plugins: ctx.plugins,
+            plugin_loaded: ctx.loaded,
         };
         (engine, processor)
     }
@@ -118,10 +209,19 @@ impl Engine {
     }
 
     /// The plugin a track plays (to open its window or read its settings),
-    /// or why it couldn't load. None for tracks without a plugin.
+    /// or why it couldn't load ([`PLUGIN_LOADING`] while it starts). None
+    /// for tracks without a plugin.
     pub fn plugin(&self, track_id: TrackId) -> Option<daw_instruments::PluginLoad> {
         let map = self.plugins.lock().ok()?;
         map.get(&track_id).map(|p| p.load.clone())
+    }
+
+    /// Calls `hook` (on the main thread, holding no locks) whenever a
+    /// plugin finishes loading in the background.
+    pub fn on_plugin_loaded(&self, hook: impl Fn(TrackId) + Send + Sync + 'static) {
+        if let Ok(mut h) = self.plugin_loaded.lock() {
+            *h = Some(Arc::new(hook));
+        }
     }
 
     /// The pool audio clips are loaded from.
@@ -398,11 +498,18 @@ impl Engine {
                     ),
                 });
             }
+            let ctx = PluginCtx {
+                plugins: Arc::clone(&self.plugins),
+                producer: Arc::clone(&self.producer),
+                synced: Arc::clone(&self.synced),
+                loaded: Arc::clone(&self.plugin_loaded),
+                sample_rate_hz: sr,
+                later: daw_plugins::main_thread::has_runner(),
+            };
             self.send(EngineMessage::ReplaceTracks(build_tracks(
                 project,
-                sr,
                 &self.audio,
-                &self.plugins,
+                &ctx,
             )));
         }
         *synced = project.clone();
@@ -592,31 +699,60 @@ fn build_buses(project: &Project, sample_rate_hz: f32) -> Box<[BusSlot]> {
         .collect()
 }
 
-fn build_tracks(
-    project: &Project,
-    sample_rate_hz: f32,
-    audio: &AudioPool,
-    plugins: &LivePlugins,
-) -> Box<[TrackSlot]> {
+fn build_tracks(project: &Project, audio: &AudioPool, ctx: &PluginCtx) -> Box<[TrackSlot]> {
+    let sample_rate_hz = ctx.sample_rate_hz;
     let bus_index = |id: daw_model::Id| project.buses.iter().position(|b| b.id == id);
-    let mut live = plugins
+    let mut live = ctx
+        .plugins
         .lock()
         .map(|mut m| std::mem::take(&mut *m))
         .unwrap_or_default();
     let mut kept = HashMap::new();
+    let mut later = Vec::new();
     let mut instrument_for = |t: &Track| {
         let Some(key) = plugin_key(t) else {
             return daw_instruments::create(&t.instrument, sample_rate_hz);
         };
-        let reuse = live
-            .remove(&t.id)
-            .filter(|p| p.key == key)
-            .and_then(|p| p.load.ok());
+        if let Some(p) = live.remove(&t.id).filter(|p| p.key == key) {
+            match &p.load {
+                // Same plugin: a new handle, same sound and settings.
+                Ok(instance) => {
+                    let (mut processor, _) = daw_instruments::create_plugin(
+                        &t.instrument,
+                        sample_rate_hz,
+                        Some(instance),
+                    );
+                    processor.set_tempo(project.tempo_bpm);
+                    kept.insert(t.id, p);
+                    return processor;
+                }
+                // Still loading: it arrives by itself.
+                Err(e) if e == PLUGIN_LOADING => {
+                    kept.insert(t.id, p);
+                    return daw_instruments::silent();
+                }
+                // It failed before: try again below.
+                Err(_) => {}
+            }
+        }
+        let ticket = next_ticket();
+        if ctx.later {
+            kept.insert(
+                t.id,
+                LivePlugin {
+                    key: key.clone(),
+                    load: Err(PLUGIN_LOADING.into()),
+                    ticket,
+                },
+            );
+            later.push((t.id, key, ticket));
+            return daw_instruments::silent();
+        }
         let (mut processor, load) =
-            daw_instruments::create_plugin(&t.instrument, sample_rate_hz, reuse.as_ref());
+            daw_instruments::create_plugin(&t.instrument, sample_rate_hz, None);
         processor.set_tempo(project.tempo_bpm);
         if let Some(load) = load {
-            kept.insert(t.id, LivePlugin { key, load });
+            kept.insert(t.id, LivePlugin { key, load, ticket });
         }
         processor
     };
@@ -656,8 +792,12 @@ fn build_tracks(
         })
         .collect();
     // Plugins of removed tracks are released here, off the audio thread.
-    if let Ok(mut m) = plugins.lock() {
+    if let Ok(mut m) = ctx.plugins.lock() {
         *m = kept;
+    }
+    // After the map lists them, so their loads find their tickets.
+    for (track_id, key, ticket) in later {
+        ctx.load_later(track_id, key, ticket);
     }
     tracks
 }

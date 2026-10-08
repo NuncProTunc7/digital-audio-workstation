@@ -7,6 +7,7 @@ How to use the app, written for people who make music, not code. Claude reads th
 | [Lessons](lessons.md) | A short course, start to finish: your first loop to a finished Godot track. Ask Claude "teach me lesson 1". |
 | [The basics](basics.md) | The screen, playing and stopping, tempo, saving, keyboard shortcuts. |
 | [Writing music](writing-music.md) | Tracks, clips, the piano roll, drums, sounds and presets, recording what you play. |
+| [Plugins](plugins.md) | Using VST3 instruments you installed (Spitfire LABS, Surge XT, Vital...). |
 | [Recording and audio](audio.md) | Your mic, phone recordings, trimming, fades, follow tempo. |
 | [Mixing](mixing.md) | Volume, pan, effects, automation, loudness. |
 | [Sheet music and MIDI](sheet-music.md) | Notation view, MusicXML, MIDI files, photos of scores. |

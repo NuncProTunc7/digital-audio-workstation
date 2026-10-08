@@ -335,6 +335,18 @@ impl AudioProcessor {
                         self.throw_away(Garbage::Sequence(old));
                     }
                 }
+                EngineMessage::ReplaceInstrument {
+                    track_id,
+                    instrument,
+                } => {
+                    let old = self.track(track_id).map(|t| {
+                        t.instrument.all_notes_off();
+                        std::mem::replace(&mut t.instrument, instrument)
+                    });
+                    if let Some(old) = old {
+                        self.throw_away(Garbage::Instrument(old));
+                    }
+                }
                 EngineMessage::ReplaceTracks(new_tracks) => {
                     let old = std::mem::replace(&mut self.tracks, new_tracks);
                     let position = self.song_position();

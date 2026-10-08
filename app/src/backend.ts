@@ -26,6 +26,9 @@ import type {
   Recoverable,
   SamplePackStatus,
   LibraryPack,
+  PluginList,
+  PluginParam,
+  PluginStatus,
   TransportStatus,
 } from "./types";
 
@@ -158,6 +161,15 @@ export interface Backend {
   samplePackStatus(path: string): Promise<SamplePackStatus>;
   /** Free instruments the app can download, and which are installed. */
   sampleLibrary(): Promise<LibraryPack[]>;
+  /** Installed VST3 plugins (rescan: look through the plugin folders again). */
+  plugins(rescan: boolean): Promise<PluginList>;
+  /** Gives a track an installed plugin instrument (one undo step). */
+  loadPlugin(trackId: number, uid: string): Promise<ProjectView>;
+  /** A plugin track's parameters with what each value means. */
+  pluginParams(trackId: number): Promise<PluginParam[]>;
+  pluginStatus(trackId: number): Promise<PluginStatus>;
+  /** Opens the plugin's own window. */
+  openPluginWindow(trackId: number): Promise<void>;
   /** Starts downloading a library instrument in the background. */
   downloadSamplePack(id: string): Promise<void>;
   /** Shows a folder picker; null if cancelled. */
@@ -290,6 +302,11 @@ export const tauriBackend: Backend = {
   },
   samplePackStatus: (path) => invoke("sample_pack_status", { path }),
   sampleLibrary: () => invoke("sample_library"),
+  plugins: (rescan) => invoke("plugins", { rescan }),
+  loadPlugin: (trackId, uid) => invoke("load_plugin", { trackId, uid }),
+  pluginParams: (trackId) => invoke("plugin_params", { trackId }),
+  pluginStatus: (trackId) => invoke("plugin_status", { trackId }),
+  openPluginWindow: (trackId) => invoke("open_plugin_window", { trackId }),
   downloadSamplePack: (id) => invoke("download_sample_pack", { id }),
   pickFolder: async (title) => {
     const picked = await open({ directory: true, multiple: false, title });

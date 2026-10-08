@@ -1211,6 +1211,31 @@ describe("Automation", () => {
   });
 });
 
+describe("Plugins", () => {
+  it("plays a track with an installed plugin and shows its controls", async () => {
+    const backend = createPreviewBackend();
+    await renderApp(backend);
+    fireEvent.click(trackHeader("Keys"));
+    const chooser = (await screen.findByRole("combobox", { name: "Plugin instrument" })) as HTMLSelectElement;
+    // Effects aren't offered as instruments.
+    expect([...chooser.options].map((o) => o.textContent)).not.toContain("NPT Test Gain (Nunc Pro Tune)");
+    await act(async () => {
+      fireEvent.change(chooser, { target: { value: "4E50543153594E544800000000000001" } });
+    });
+    const keys = (await backend.getProject()).project.tracks[0];
+    expect(keys.instrument.kind).toBe("plugin");
+    expect(keys.instrument.plugin?.name).toBe("NPT Test Synth");
+    expect(await screen.findByRole("button", { name: "Open plugin window" })).toBeTruthy();
+    const level = (await screen.findByRole("slider", { name: "Level" })) as HTMLInputElement;
+    await act(async () => {
+      fireEvent.change(level, { target: { value: "0.8" } });
+    });
+    const after = (await backend.getProject()).project.tracks[0];
+    expect(after.instrument.plugin?.params["0"]).toBe(0.8);
+    expect(await screen.findByText("80 %")).toBeTruthy();
+  });
+});
+
 describe("Sampler", () => {
   it("adds a sampler track and loads a sample pack", async () => {
     const backend = createPreviewBackend();

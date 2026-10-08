@@ -21,9 +21,15 @@ pub const SCAN_FLAG: &str = "--scan-vst3";
 /// How long a module may take to describe itself.
 const SCAN_TIMEOUT: Duration = Duration::from_secs(60);
 
-/// The standard VST3 folders for this platform.
+/// Extra plugin folders (separated like `PATH`), looked through first.
+pub const FOLDERS_ENV: &str = "NPT_VST3_PATH";
+
+/// The standard VST3 folders for this platform, after any in
+/// [`FOLDERS_ENV`].
 pub fn default_folders() -> Vec<PathBuf> {
-    let mut out = Vec::new();
+    let mut out: Vec<PathBuf> = std::env::var_os(FOLDERS_ENV)
+        .map(|v| std::env::split_paths(&v).collect())
+        .unwrap_or_default();
     #[cfg(windows)]
     {
         if let Some(common) = std::env::var_os("CommonProgramFiles") {
