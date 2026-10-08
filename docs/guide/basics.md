@@ -2,7 +2,7 @@
 
 ## The screen
 
-- **Top bar**: Open, Save, Import…, Export ▾, then the transport (Play, Stop, Record, position as *Bar.Beat*, Loop, Metronome, Tempo, Time signature), then Undo/Redo.
+- **Top bar**: Open, Save, Import…, Export ▾, then the transport (Play, Stop, Record, position as *Bar.Beat*, Loop, Metronome, Count-in, Tempo, Time signature), then Undo/Redo.
 - **Timeline** (middle): one row per track, clips laid out left to right. The ruler on top shows bars.
 - **Bottom panel** with tabs:
   - **Instrument** (or **Audio** for an audio track): the selected track's sound and settings.
@@ -20,6 +20,7 @@
 | Jump somewhere | Click the ruler |
 | Loop a section | Drag along the top strip of the ruler, then turn **Loop** on |
 | Click track | **Metronome** button |
+| Count in before recording | **Count-in**: Off, 1 bar (the default) or 2 bars of clicks before the song starts |
 | Change speed | Type in **Tempo** (BPM) |
 
 ## Saving

@@ -59,6 +59,10 @@ export default function Timeline(props: TimelineProps) {
   const lanesRef = useRef<HTMLDivElement>(null);
   const drag = useRef<Drag | null>(null);
   const [renaming, setRenaming] = useState<number | null>(null);
+  // A note clip's new start while its left edge is dragged. Trimming a note
+  // clip removes the notes before the start, so it's applied once, on
+  // release: dragging back out must not lose them.
+  const [trimPreview, setTrimPreview] = useState<{ clipId: number; start: number } | null>(null);
   // Tracks showing their automation row, and the lane each row shows.
   const [openAutomation, setOpenAutomation] = useState<ReadonlySet<number>>(new Set());
   const [shownLane, setShownLane] = useState<Record<number, number>>({});
@@ -177,7 +181,11 @@ export default function Timeline(props: TimelineProps) {
       );
       if (start !== d.lastStart) {
         d.lastStart = start;
-        void props.onCommand({ command: "trim_clip_start", clip_id: d.clip.id, start_beats: start });
+        if (d.clip.audio) {
+          void props.onCommand({ command: "trim_clip_start", clip_id: d.clip.id, start_beats: start });
+        } else {
+          setTrimPreview({ clipId: d.clip.id, start });
+        }
       }
     } else {
       const here = snap(beatAt(e.clientX), beatsPerBar);
@@ -189,10 +197,21 @@ export default function Timeline(props: TimelineProps) {
   };
 
   const onPointerUp = () => {
-    if (drag.current) {
-      drag.current = null;
-      props.onEndGesture();
+    const d = drag.current;
+    if (!d) return;
+    drag.current = null;
+    if (d.kind === "trim" && !d.clip.audio) {
+      const changed = d.lastStart !== d.clip.start_beats;
+      void (changed
+        ? props.onCommand({ command: "trim_clip_start", clip_id: d.clip.id, start_beats: d.lastStart })
+        : Promise.resolve()
+      ).finally(() => {
+        setTrimPreview(null);
+        props.onEndGesture();
+      });
+      return;
     }
+    props.onEndGesture();
   };
 
   const createClipAt = async (e: React.MouseEvent, track: Track) => {
@@ -452,11 +471,11 @@ export default function Timeline(props: TimelineProps) {
                   ) : (
                     <ClipBox
                       key={c.id}
-                      clip={c}
+                      clip={trimPreview?.clipId === c.id ? trimmedClip(c, trimPreview.start) : c}
                       ppb={ppb}
                       selected={c.id === props.selectedClipId}
                       drums={t.instrument.kind === "drums"}
-                      onPointerDown={(e, resize) => startClipDrag(e, c, i, resize ? "end" : "move")}
+                      onPointerDown={(e, edge) => startClipDrag(e, c, i, edge)}
                       onDoubleClick={() => props.onOpenClip(c.id)}
                     />
                   ),
@@ -503,8 +522,22 @@ interface ClipBoxProps {
   ppb: number;
   selected: boolean;
   drums: boolean;
-  onPointerDown: (e: ReactPointerEvent, resize: boolean) => void;
+  onPointerDown: (e: ReactPointerEvent, edge: "move" | "end" | "start") => void;
   onDoubleClick: () => void;
+}
+
+/** How a note clip looks with its start moved to `start` (end kept): what
+ * trim_clip_start will make of it. */
+function trimmedClip(clip: Clip, start: number): Clip {
+  const delta = start - clip.start_beats;
+  return {
+    ...clip,
+    start_beats: start,
+    length_beats: clip.start_beats + clip.length_beats - start,
+    notes: clip.notes
+      .map((n) => ({ ...n, start_beats: n.start_beats - delta }))
+      .filter((n) => n.start_beats >= 0),
+  };
 }
 
 function ClipBox({ clip, ppb, selected, drums, onPointerDown, onDoubleClick }: ClipBoxProps) {
@@ -517,7 +550,7 @@ function ClipBox({ clip, ppb, selected, drums, onPointerDown, onDoubleClick }: C
     <div
       className={`clip${selected ? " selected" : ""}${drums ? " drums" : ""}`}
       style={{ left: clip.start_beats * ppb, width: Math.max(4, clip.length_beats * ppb) }}
-      onPointerDown={(e) => onPointerDown(e, false)}
+      onPointerDown={(e) => onPointerDown(e, "move")}
       onDoubleClick={(e) => {
         e.stopPropagation();
         onDoubleClick();
@@ -542,9 +575,10 @@ function ClipBox({ clip, ppb, selected, drums, onPointerDown, onDoubleClick }: C
           ) : null,
         )}
       </div>
+      <div className="clip-trim" onPointerDown={(e) => onPointerDown(e, "start")} title="Drag to trim the start" />
       <div
         className="clip-resize"
-        onPointerDown={(e) => onPointerDown(e, true)}
+        onPointerDown={(e) => onPointerDown(e, "end")}
         title="Drag to change the clip length"
       />
     </div>

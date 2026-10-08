@@ -38,6 +38,14 @@ pub trait Host: Send + Sync {
     fn metronome_on(&self) -> bool {
         false
     }
+    /// Bars of clicks before recording starts (0 = none).
+    fn count_in_bars(&self) -> u32 {
+        0
+    }
+    /// Sets the count-in (0-2 bars); returns what was stored.
+    fn set_count_in_bars(&self, _bars: u32) -> Result<u32, String> {
+        Err("this copy of Nunc Pro Tune has no count-in setting".into())
+    }
     /// How late the current microphone's recordings arrive (ms); takes are
     /// moved this much earlier.
     fn recording_offset_ms(&self) -> f64 {
@@ -181,6 +189,11 @@ fn handle_inner<H: Host>(host: &H, request: Request) -> Result<Value, String> {
         Request::SetMetronome { on } => {
             engine(host)?.set_metronome(on);
             Ok(json!({ "metronome": on }))
+        }
+        Request::SetCountIn { bars } => {
+            let bars = host.set_count_in_bars(bars)?;
+            host.project_changed("Claude set the count-in");
+            Ok(json!({ "count_in_bars": bars }))
         }
         Request::Status => {
             let s = engine(host)?.status();
@@ -408,25 +421,33 @@ fn newest_clip(project: &Project, track_id: TrackId) -> Result<ClipId, String> {
 }
 
 /// Where a take goes: `(start_beats, offset_seconds)`. Sound captured
-/// before the song's start is trimmed off rather than shifting the take, so
-/// everything after stays in time. None if almost nothing is left.
-/// `late_ms` is the microphone's known recording delay: the take moves that
-/// much earlier.
-fn place_take(start_beats: f64, seconds: f64, tempo_bpm: f64, late_ms: f64) -> Option<(f64, f64)> {
+/// before `from_beats` (where recording was asked to start, after any
+/// count-in) or before the song's start is trimmed off rather than shifting
+/// the take, so everything after stays in time. None if almost nothing is
+/// left. `late_ms` is the microphone's known recording delay: the take moves
+/// that much earlier.
+fn place_take(
+    start_beats: f64,
+    seconds: f64,
+    tempo_bpm: f64,
+    late_ms: f64,
+    from_beats: f64,
+) -> Option<(f64, f64)> {
     let start_beats = start_beats - late_ms / 1000.0 * tempo_bpm / 60.0;
-    let offset_seconds = (-start_beats * 60.0 / tempo_bpm).max(0.0);
-    (seconds - offset_seconds >= 0.05).then_some((start_beats.max(0.0), offset_seconds))
+    let keep_from = from_beats.max(0.0);
+    let offset_seconds = ((keep_from - start_beats) * 60.0 / tempo_bpm).max(0.0);
+    (seconds - offset_seconds >= 0.05).then_some((start_beats.max(keep_from), offset_seconds))
 }
 
 /// Starts a take on `track_id`: checks it is an audio track, starts the
-/// transport (with looping paused, so the take runs straight through), and
-/// starts writing the microphone to a new file.
+/// transport after the user's count-in (with looping paused, so the take
+/// runs straight through), and starts writing the microphone to a new file.
 pub fn begin_take<H: Host>(
     host: &H,
     recorder: &mut AudioRecorder,
     track_id: TrackId,
 ) -> Result<(), String> {
-    {
+    let count_in_beats = {
         let session = host.session()?;
         let track = session
             .project()
@@ -438,7 +459,8 @@ pub fn begin_take<H: Host>(
                 track.name
             ));
         }
-    }
+        f64::from(host.count_in_bars()) * session.project().beats_per_bar()
+    };
     let engine = engine(host)?;
     let (file, path) = host
         .audio()
@@ -453,7 +475,7 @@ pub fn begin_take<H: Host>(
     recorder
         .start(file, path, engine.status_handle(), fallback)
         .map_err(|e| e.to_string())?;
-    engine.play();
+    engine.play_with_count_in(count_in_beats);
     Ok(())
 }
 
@@ -483,6 +505,7 @@ pub fn end_take<H: Host>(
         take.seconds,
         session.project().tempo_bpm,
         host.recording_offset_ms(),
+        take.requested_beats,
     ) else {
         let _ = std::fs::remove_file(&take.path);
         return Ok(None);
@@ -1076,15 +1099,15 @@ pub(crate) mod tests {
     #[test]
     fn takes_that_start_before_the_song_are_trimmed_not_shifted() {
         // Starts on beat 8: placed as is.
-        assert_eq!(place_take(8.0, 4.0, 120.0, 0.0), Some((8.0, 0.0)));
+        assert_eq!(place_take(8.0, 4.0, 120.0, 0.0, 0.0), Some((8.0, 0.0)));
         // Capture began 0.05 beats (25 ms at 120 BPM) before beat 0: the
         // first 25 ms are skipped so beat 1 of the take is beat 1 of the song.
-        let (start, offset) = place_take(-0.05, 4.0, 120.0, 0.0).expect("kept");
+        let (start, offset) = place_take(-0.05, 4.0, 120.0, 0.0, 0.0).expect("kept");
         assert_eq!(start, 0.0);
         assert!((offset - 0.025).abs() < 1e-12);
         // Nothing left after trimming.
-        assert_eq!(place_take(-1.0, 0.5, 120.0, 0.0), None);
-        assert_eq!(place_take(0.0, 0.01, 120.0, 0.0), None);
+        assert_eq!(place_take(-1.0, 0.5, 120.0, 0.0, 0.0), None);
+        assert_eq!(place_take(0.0, 0.01, 120.0, 0.0, 0.0), None);
     }
 
     #[test]
@@ -1092,11 +1115,26 @@ pub(crate) mod tests {
         // A Bluetooth headset delivers sound 180 ms late: a take the clock
         // puts at beat 8.36 (at 120 BPM, 0.36 beats = 180 ms) was played
         // on beat 8.
-        let (start, offset) = place_take(8.36, 4.0, 120.0, 180.0).expect("kept");
+        let (start, offset) = place_take(8.36, 4.0, 120.0, 180.0, 0.0).expect("kept");
         assert!((start - 8.0).abs() < 1e-9 && offset == 0.0);
         // Moved before the song start: trimmed, as usual.
-        let (start, offset) = place_take(0.2, 4.0, 120.0, 180.0).expect("kept");
+        let (start, offset) = place_take(0.2, 4.0, 120.0, 180.0, 0.0).expect("kept");
         assert_eq!(start, 0.0);
         assert!((offset - 0.08).abs() < 1e-9);
+    }
+
+    #[test]
+    fn the_count_in_is_trimmed_off_a_take() {
+        // Recording from beat 8 with a one-bar count-in: capture began at
+        // beat 4, so the first 4 beats (2 s at 120 BPM) are skipped.
+        let (start, offset) = place_take(4.0, 6.0, 120.0, 0.0, 8.0).expect("kept");
+        assert_eq!(start, 8.0);
+        assert!((offset - 2.0).abs() < 1e-12);
+        // With a recording delay, the corrected take is trimmed the same way.
+        let (start, offset) = place_take(4.36, 6.0, 120.0, 180.0, 8.0).expect("kept");
+        assert_eq!(start, 8.0);
+        assert!((offset - 2.0).abs() < 1e-9);
+        // Stopped during the count-in: nothing to keep.
+        assert_eq!(place_take(4.0, 1.5, 120.0, 0.0, 8.0), None);
     }
 }

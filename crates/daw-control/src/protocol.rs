@@ -35,6 +35,10 @@ pub enum Request {
     SetMetronome {
         on: bool,
     },
+    /// Bars of clicks before recording starts (0-2).
+    SetCountIn {
+        bars: u32,
+    },
     /// Transport position and levels.
     Status,
     Save {

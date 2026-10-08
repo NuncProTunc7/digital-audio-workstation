@@ -643,6 +643,7 @@ export default function App({ backend }: AppProps) {
   const beatsPerBar = project.time_signature.numerator;
   const pianoLow = Math.max(24, Math.min(60, baseNote - 12));
   const position = transport?.position_beats ?? 0;
+  const countInBeats = transport?.count_in_beats ?? 0;
 
   return (
     <div className="app" style={{ gridTemplateRows: `auto 1fr 6px ${dockHeight}px auto` }}>
@@ -739,9 +740,15 @@ export default function App({ backend }: AppProps) {
           </button>
         </div>
 
-        <span className="position" aria-label="Position" title="Bar.Beat">
-          {formatPosition(position, beatsPerBar)}
-        </span>
+        {countInBeats > 0 ? (
+          <span className="position counting-in" aria-label="Count-in" title="Counting in: start on the beat after the last click">
+            {Math.ceil(countInBeats - 1e-6)}
+          </span>
+        ) : (
+          <span className="position" aria-label="Position" title="Bar.Beat">
+            {formatPosition(position, beatsPerBar)}
+          </span>
+        )}
 
         <button
           className={project.loop_region.enabled ? "toggle on" : "toggle"}
@@ -761,6 +768,21 @@ export default function App({ backend }: AppProps) {
         >
           Click
         </button>
+        <label className="field" title="Clicks to play before recording starts, so you can come in on the first beat">
+          <span>Count-in</span>
+          <select
+            aria-label="Count-in before recording"
+            value={transport?.count_in_bars ?? 1}
+            onChange={(e) => {
+              void run(() => backend.setCountIn(Number(e.target.value)));
+              e.currentTarget.blur();
+            }}
+          >
+            <option value={0}>Off</option>
+            <option value={1}>1 bar</option>
+            <option value={2}>2 bars</option>
+          </select>
+        </label>
 
         <label className="field">
           <span>Tempo</span>

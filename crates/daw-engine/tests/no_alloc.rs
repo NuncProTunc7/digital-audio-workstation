@@ -181,6 +181,19 @@ fn audio_thread_never_allocates() {
         "params + controls"
     );
 
+    // A count-in (clicks, then the song) while recording notes, stopped
+    // once and run through to the song.
+    engine.locate(2.0);
+    engine.start_recording(1);
+    engine.play_with_count_in(4.0);
+    engine.note_on(1, 60, 0.8);
+    engine.stop();
+    engine.play_with_count_in(1.0);
+    assert_eq!(process_counting(&mut processor, &mut out), 0, "count-in");
+    engine.note_off(1, 60);
+    engine.stop_recording();
+    engine.stop();
+
     // Arrangement playback: clips, effects on tracks and master, a loop that
     // wraps several times, live recording, and edits while playing.
     session

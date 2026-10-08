@@ -398,6 +398,7 @@ export function createPreviewBackend(): PreviewBackend {
   let playing = false;
   let recording = false;
   let metronome = true;
+  let countInBars = 1;
   let startedAt = 0;
   let startBeats = 0;
 
@@ -529,9 +530,15 @@ export function createPreviewBackend(): PreviewBackend {
     setMetronome: async (on) => {
       metronome = on;
     },
+    setCountIn: async (bars) => {
+      countInBars = Math.max(0, Math.min(2, Math.round(bars)));
+      return countInBars;
+    },
     transportStatus: async () => ({
       playing,
       position_beats: position(),
+      count_in_beats: 0,
+      count_in_bars: countInBars,
       metronome_on: metronome,
       peak_left: 0,
       peak_right: 0,

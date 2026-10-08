@@ -42,6 +42,9 @@ pub struct AudioProcessor {
     right: Box<[f32]>,
     playing: bool,
     position_beats: f64,
+    /// Where the song starts after a count-in; until the playhead gets
+    /// there only clicks play. NEG_INFINITY when not counting in.
+    count_in_end: f64,
     next_click_beat: f64,
     tempo_bpm: f64,
     beats_per_bar: u8,
@@ -87,6 +90,7 @@ impl AudioProcessor {
             right: vec![0.0; MAX_BLOCK_FRAMES].into_boxed_slice(),
             playing: false,
             position_beats: 0.0,
+            count_in_end: f64::NEG_INFINITY,
             next_click_beat: 0.0,
             tempo_bpm: init.tempo_bpm,
             beats_per_bar: init.beats_per_bar.max(1),
@@ -143,7 +147,18 @@ impl AudioProcessor {
                 }
             }
         }
-        self.status.publish(self.playing, self.position_beats);
+        self.status.publish(
+            self.playing,
+            self.song_position(),
+            (self.count_in_end - self.position_beats).max(0.0),
+        );
+    }
+
+    /// The playhead as the song sees it: during a count-in, where the song
+    /// will start.
+    // RT-SAFE
+    fn song_position(&self) -> f64 {
+        self.position_beats.max(self.count_in_end)
     }
 
     // RT-SAFE
@@ -158,8 +173,10 @@ impl AudioProcessor {
     // RT-SAFE
     fn record(&mut self, track_id: TrackId, note: u8, velocity: f32) {
         if self.playing && self.record_track == Some(track_id) {
+            // A note played during the count-in (jumping the gun on the
+            // first downbeat) lands on the start.
             let _ = self.outputs.recorded.push(RecordedEvent {
-                beat: self.position_beats,
+                beat: self.song_position(),
                 note,
                 velocity,
             });
@@ -269,7 +286,7 @@ impl AudioProcessor {
                     }
                 }
                 EngineMessage::ReplaceSequence { track_id, sequence } => {
-                    let position = self.position_beats;
+                    let position = self.song_position();
                     let old = self.track(track_id).map(|t| {
                         release_sequenced(t);
                         let old = std::mem::replace(&mut t.sequence, sequence);
@@ -282,7 +299,7 @@ impl AudioProcessor {
                 }
                 EngineMessage::ReplaceTracks(new_tracks) => {
                     let old = std::mem::replace(&mut self.tracks, new_tracks);
-                    let position = self.position_beats;
+                    let position = self.song_position();
                     for t in self.tracks.iter_mut() {
                         t.cursor = first_event_at(t, position);
                     }
@@ -294,13 +311,35 @@ impl AudioProcessor {
                         self.seek(self.position_beats);
                     }
                 }
+                EngineMessage::CountIn(beats) => {
+                    if !self.playing {
+                        self.playing = true;
+                        let start = self.position_beats;
+                        // Cursors wait at the start; nothing plays before it.
+                        self.seek(start);
+                        if beats > 0.0 && beats.is_finite() {
+                            self.position_beats = start - beats;
+                            self.next_click_beat = self.position_beats.ceil();
+                            self.count_in_end = start;
+                        }
+                    }
+                }
                 EngineMessage::Stop => {
                     self.playing = false;
                     for t in self.tracks.iter_mut() {
                         release_sequenced(t);
                     }
+                    // Stopped during a count-in: back where it would have started.
+                    if self.count_in_end.is_finite() {
+                        let start = self.song_position();
+                        self.count_in_end = f64::NEG_INFINITY;
+                        self.seek(start);
+                    }
                 }
-                EngineMessage::Locate(beats) => self.seek(beats.max(0.0)),
+                EngineMessage::Locate(beats) => {
+                    self.count_in_end = f64::NEG_INFINITY;
+                    self.seek(beats.max(0.0));
+                }
                 EngineMessage::SetTempo(bpm) => {
                     self.tempo_bpm = bpm;
                     let bpm = bpm as f32;
@@ -373,7 +412,17 @@ impl AudioProcessor {
                     ((self.loop_end - self.position_beats) / beats_per_sample - 1e-6).ceil();
                 end = (start + (to_end as usize).max(1)).min(frames);
             }
+            let counting = self.playing && self.position_beats < self.count_in_end;
+            if counting {
+                // The song starts on the first sample past the count-in.
+                let to_start =
+                    ((self.count_in_end - self.position_beats) / beats_per_sample - 1e-6).ceil();
+                end = end.min(start + (to_start as usize).max(1));
+            }
             self.render_segment(start, end, beats_per_sample);
+            if counting && self.position_beats >= self.count_in_end - 1e-9 {
+                self.count_in_end = f64::NEG_INFINITY;
+            }
             if looping && self.position_beats >= self.loop_end - 1e-9 {
                 let over = self.position_beats - self.loop_end;
                 self.seek(self.loop_start + over);
@@ -411,11 +460,14 @@ impl AudioProcessor {
         let n = end - start;
         let window_start = self.position_beats;
         let window_end = window_start + n as f64 * beats_per_sample;
-        let playing = self.playing;
+        // Segments never straddle the end of a count-in (see render_block).
+        let counting = self.playing && window_start < self.count_in_end;
+        let playing = self.playing && !counting;
+        let song_start = window_start.max(self.count_in_end);
         let any_solo = self.tracks.iter().any(|t| t.strip.solo);
 
         for (index, t) in self.tracks.iter_mut().enumerate() {
-            apply_automation(t, window_start);
+            apply_automation(t, song_start);
             let (bl, br) = (&mut t.buf_left[..n], &mut t.buf_right[..n]);
             bl.fill(0.0);
             br.fill(0.0);
@@ -485,10 +537,12 @@ impl AudioProcessor {
             .iter_mut()
             .zip(self.right[start..end].iter_mut())
         {
-            if playing {
+            if self.playing {
                 if self.position_beats >= self.next_click_beat {
-                    let beat_in_bar = (self.next_click_beat as u64) % u64::from(self.beats_per_bar);
-                    if self.metronome_on {
+                    // Count-ins can start before the song (negative beats).
+                    let beat_in_bar =
+                        (self.next_click_beat as i64).rem_euclid(i64::from(self.beats_per_bar));
+                    if self.metronome_on || self.position_beats < self.count_in_end {
                         self.metronome.trigger(beat_in_bar == 0);
                     }
                     self.next_click_beat += 1.0;

@@ -12,7 +12,8 @@
 2. In the **Audio** tab, choose the **Input** device and check the **Microphone** meter moves when you speak. Aim for the loud parts reaching about three quarters of the meter, never pinned at the top.
 3. Wear headphones, so the mic doesn't record the song.
 4. **Bluetooth headset? Calibrate once** (see below), or your takes land late.
-5. Press **R**. The song plays; perform; press **R** again. The take lines up with the beat you heard.
+5. Press **R**. First you hear a bar of clicks (the **count-in**; the position box counts down 4, 3, 2, 1 in red). Then the song plays from the playhead: come in right after the last click. Press **R** again to stop. The take lines up with the beat you heard, and anything the mic picked up during the count-in is left out.
+6. Want more time, or none? Set **Count-in** in the top bar to 2 bars or Off.
 
 ## Calibrate the recording delay (Bluetooth headsets)
 

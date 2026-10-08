@@ -150,6 +150,16 @@ impl Engine {
         self.send(EngineMessage::Play);
     }
 
+    /// Plays `beats` metronome clicks, then starts the song from the
+    /// playhead (a count-in for recording). 0 beats plays straight away.
+    pub fn play_with_count_in(&self, beats: f64) {
+        if beats > 0.0 {
+            self.send(EngineMessage::CountIn(beats));
+        } else {
+            self.play();
+        }
+    }
+
     /// Stops playback. A second stop while stopped returns to the start.
     pub fn stop(&self) {
         if !self.status.is_playing() {
@@ -693,6 +703,106 @@ mod tests {
         assert!((events[0].beat - 1.0).abs() < 0.02, "{}", events[0].beat);
         assert!((events[1].beat - 1.5).abs() < 0.02, "{}", events[1].beat);
         assert_eq!(events[1].velocity, 0.0);
+    }
+
+    #[test]
+    fn count_in_clicks_then_starts_the_song_on_the_beat() {
+        let s = kick_session();
+        let (engine, mut p) = Engine::new(s.project(), SR);
+        // Clicks during the count-in even with the metronome off.
+        engine.set_metronome(false);
+        engine.play_with_count_in(4.0);
+        render(&mut p, 0.25);
+        let status = engine.status();
+        assert!(status.playing);
+        assert_eq!(
+            status.position_beats, 0.0,
+            "the playhead waits at the start"
+        );
+        assert!(
+            (status.count_in_beats - 3.5).abs() < 0.02,
+            "{}",
+            status.count_in_beats
+        );
+        let out = left(&render(&mut p, 3.75));
+        let found = onsets(&out, 0.01, 4_800);
+        // Four clicks (at 0.0 s..1.5 s, the first already heard), then a
+        // kick on each beat from 2.0 s: the song starts right after the
+        // last click, on beat 1.
+        let expected: Vec<usize> = (1..8).map(|n| n * 24_000 - 12_000).collect();
+        assert_eq!(found.len(), expected.len(), "{found:?}");
+        for (&onset, &want) in found.iter().zip(&expected) {
+            assert!(onset.abs_diff(want) <= 2, "onset at {onset}, wanted {want}");
+        }
+        assert_eq!(engine.status().count_in_beats, 0.0);
+    }
+
+    #[test]
+    fn the_song_is_silent_during_a_count_in_from_the_middle() {
+        // Kicks on the off-beats of bars 1 and 2; count in to bar 2.
+        let mut s = Session::default();
+        s.execute(Command::CreateClip {
+            track_id: 3,
+            start_beats: 0.0,
+            length_beats: 8.0,
+            name: None,
+            notes: (0..8)
+                .map(|b| NoteInput {
+                    pitch: 36,
+                    start_beats: f64::from(b) + 0.5,
+                    length_beats: 0.25,
+                    velocity: 127,
+                    id: None,
+                })
+                .collect(),
+        })
+        .expect("clip");
+        let (engine, mut p) = Engine::new(s.project(), SR);
+        engine.set_metronome(false);
+        engine.locate(4.0);
+        engine.play_with_count_in(4.0);
+        let out = left(&render(&mut p, 4.0));
+        let found = onsets(&out, 0.01, 4_800);
+        // Clicks on the beats of the count-in, then the bar-2 kicks.
+        let expected: Vec<usize> = (0..4)
+            .map(|n| n * 24_000)
+            .chain((0..4).map(|n| 48_000 * 2 + 12_000 + n * 24_000))
+            .collect();
+        assert_eq!(found.len(), expected.len(), "{found:?}");
+        for (&onset, &want) in found.iter().zip(&expected) {
+            assert!(onset.abs_diff(want) <= 2, "onset at {onset}, wanted {want}");
+        }
+    }
+
+    #[test]
+    fn stopping_during_a_count_in_returns_to_where_it_would_start() {
+        let (engine, mut p) = Engine::new(&Project::default(), SR);
+        engine.locate(8.0);
+        engine.play_with_count_in(4.0);
+        render(&mut p, 0.5);
+        engine.stop();
+        render(&mut p, 0.01);
+        let status = engine.status();
+        assert!(!status.playing);
+        assert_eq!(status.position_beats, 8.0);
+        assert_eq!(status.count_in_beats, 0.0);
+    }
+
+    #[test]
+    fn notes_played_early_in_a_count_in_land_on_the_start() {
+        let (engine, mut p) = Engine::new(&Project::default(), SR);
+        engine.locate(4.0);
+        engine.start_recording(1);
+        engine.play_with_count_in(4.0);
+        render(&mut p, 1.9); // just before the song starts
+        engine.note_on(1, 64, 0.8);
+        render(&mut p, 0.35);
+        engine.note_off(1, 64);
+        render(&mut p, 0.01);
+        let events = engine.stop_recording();
+        assert_eq!(events.len(), 2, "{events:?}");
+        assert_eq!(events[0].beat, 4.0);
+        assert!((events[1].beat - 4.5).abs() < 0.02, "{}", events[1].beat);
     }
 
     #[test]

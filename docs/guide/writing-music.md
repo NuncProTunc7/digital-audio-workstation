@@ -29,7 +29,7 @@ Synth knobs, in plain terms: **Wave** is the basic tone (Sine soft, Saw bright a
 ## Clips
 
 - **Double-click** an empty spot on an instrument track to add a clip. Double-click a clip to open it in the piano roll.
-- Drag a clip to move it; drag its right edge to change its length. Clips snap to beats (zoomed in) or bars (zoomed out). Use the zoom buttons to change.
+- Drag a clip to move it; drag its right edge to change its length, or its left edge to trim the start (the end stays put). Trimming the start removes notes before the new start once you let go; **Ctrl+Z** brings them back. Clips snap to beats (zoomed in) or bars (zoomed out). Use the zoom buttons to change.
 - **Ctrl+D** duplicates the selected clip right after itself: the fastest way to repeat a pattern.
 - **Ctrl+E** splits it at the playhead. **Delete** removes it.
 
@@ -46,7 +46,7 @@ Synth knobs, in plain terms: **Wave** is the basic tone (Sine soft, Saw bright a
 
 - Your computer keyboard is a piano: **A** = C, **W** = C#, **S** = D, and so on along the row. **Z/X** change octave, **C/V** change loudness.
 - You can also click the on-screen piano or drum pads, or plug in a MIDI keyboard (the status bar shows it).
-- To record: select the track, press **R** (the song plays), play, press **R** again. Your notes become a clip. Then quantize if the timing is loose.
+- To record: select the track, press **R**, wait for the count-in clicks (set **Count-in** in the top bar), play from the next beat, press **R** again. Your notes become a clip. Then quantize if the timing is loose.
 
 ## Tips
 

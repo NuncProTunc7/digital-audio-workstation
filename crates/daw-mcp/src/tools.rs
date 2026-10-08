@@ -215,6 +215,15 @@ fn extra_tools() -> Vec<ToolDef> {
             false,
         ),
         tool(
+            "set_count_in",
+            "Set how many bars of metronome clicks play before recording starts (0 = none, 1 or 2 bars), so the performer can come in on the first beat. Applies to recording audio and notes, by the user or with record_audio. The song stays silent during the count-in. Saved on this computer, not in the song.",
+            object_schema(
+                json!({ "bars": { "type": "integer", "minimum": 0, "maximum": 2 } }),
+                &["bars"],
+            ),
+            false,
+        ),
+        tool(
             "transport_status",
             "Whether the song is playing and where the playhead is.",
             object_schema(json!({}), &[]),
@@ -284,7 +293,7 @@ fn extra_tools() -> Vec<ToolDef> {
         ),
         tool(
             "record_audio",
-            "Start recording the user's microphone onto an audio track. The song plays from the current position so they can play along; looping pauses while recording. Only do this when the user asks to record, then call stop_recording when they say they're done.",
+            "Start recording the user's microphone onto an audio track. After the count-in (see set_count_in), the song plays from the current position so they can play along; looping pauses while recording. Only do this when the user asks to record, then call stop_recording when they say they're done.",
             object_schema(
                 json!({ "track_id": { "type": "integer", "description": "An audio track (instrument \"audio\")." } }),
                 &["track_id"],
@@ -426,6 +435,13 @@ pub fn to_request(name: &str, args: Map<String, Value>) -> Result<Request, Strin
         },
         "set_metronome" => Request::SetMetronome {
             on: get_bool("on").ok_or("on is required")?,
+        },
+        "set_count_in" => Request::SetCountIn {
+            bars: args
+                .get("bars")
+                .and_then(Value::as_u64)
+                .map(|b| b.min(2) as u32)
+                .ok_or("bars must be 0, 1, or 2")?,
         },
         "transport_status" => Request::Status,
         "analyze_mix" => Request::Analyze {

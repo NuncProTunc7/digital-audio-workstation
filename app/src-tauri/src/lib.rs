@@ -194,6 +194,20 @@ impl daw_control::Host for AppState {
         self.metronome_on.load(Ordering::Relaxed)
     }
 
+    fn count_in_bars(&self) -> u32 {
+        self.settings.lock().map_or(0, |s| s.count_in_bars)
+    }
+
+    fn set_count_in_bars(&self, bars: u32) -> Result<u32, String> {
+        let mut s = self
+            .settings
+            .lock()
+            .map_err(|_| "settings are unavailable")?;
+        let bars = s.set_count_in_bars(bars);
+        s.save(&settings::settings_path())?;
+        Ok(bars)
+    }
+
     fn recording_offset_ms(&self) -> f64 {
         let device = self.input_name();
         self.settings
@@ -581,11 +595,13 @@ fn record_start(state: State<'_, AppState>, track_id: TrackId) -> Result<(), Str
     if is_audio {
         return state.start_audio_recording(track_id);
     }
+    let count_in_beats =
+        f64::from(state.count_in_bars()) * state.session()?.project().beats_per_bar();
     if let Ok(mut r) = state.recording_track.lock() {
         *r = Some(track_id);
     }
     engine.start_recording(track_id);
-    engine.play();
+    engine.play_with_count_in(count_in_beats);
     Ok(())
 }
 
@@ -633,10 +649,20 @@ fn set_metronome(state: State<'_, AppState>, on: bool) {
     }
 }
 
+/// Sets how many bars of clicks play before recording starts (0-2).
+#[tauri::command]
+fn set_count_in(state: State<'_, AppState>, bars: u32) -> Result<u32, String> {
+    state.set_count_in_bars(bars)
+}
+
 #[derive(Serialize)]
 struct TransportStatus {
     playing: bool,
     position_beats: f64,
+    /// Beats of count-in left before the song starts (0 when not counting in).
+    count_in_beats: f64,
+    /// Bars of clicks before recording starts.
+    count_in_bars: u32,
     metronome_on: bool,
     peak_left: f32,
     peak_right: f32,
@@ -653,6 +679,8 @@ fn transport_status(state: State<'_, AppState>) -> TransportStatus {
     TransportStatus {
         playing: snap.playing,
         position_beats: snap.position_beats,
+        count_in_beats: snap.count_in_beats,
+        count_in_bars: state.count_in_bars(),
         metronome_on: state.metronome_on.load(Ordering::Relaxed),
         peak_left: snap.peak_left,
         peak_right: snap.peak_right,
@@ -1098,6 +1126,7 @@ pub fn run() {
             play,
             stop,
             set_metronome,
+            set_count_in,
             transport_status,
             audio_status,
             set_output_device,

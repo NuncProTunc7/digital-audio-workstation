@@ -8,6 +8,7 @@ use daw_model::MAX_TRACKS;
 pub struct EngineStatus {
     playing: AtomicBool,
     position_beats: AtomicU64,
+    count_in_beats: AtomicU64,
     // Peak levels since the UI last read them (f32 bits).
     peak_left: AtomicU32,
     peak_right: AtomicU32,
@@ -49,6 +50,7 @@ impl Default for EngineStatus {
         Self {
             playing: AtomicBool::new(false),
             position_beats: AtomicU64::new(0),
+            count_in_beats: AtomicU64::new(0),
             peak_left: AtomicU32::new(0),
             peak_right: AtomicU32::new(0),
             cpu_load: AtomicU32::new(0),
@@ -69,6 +71,8 @@ impl Default for EngineStatus {
 pub struct StatusSnapshot {
     pub playing: bool,
     pub position_beats: f64,
+    /// Beats of count-in left before the song starts (0 when not counting in).
+    pub count_in_beats: f64,
     pub peak_left: f32,
     pub peak_right: f32,
     pub cpu_load: f32,
@@ -81,10 +85,12 @@ pub struct StatusSnapshot {
 
 impl EngineStatus {
     // RT-SAFE
-    pub(crate) fn publish(&self, playing: bool, position_beats: f64) {
+    pub(crate) fn publish(&self, playing: bool, position_beats: f64, count_in_beats: f64) {
         self.playing.store(playing, Ordering::Relaxed);
         self.position_beats
             .store(position_beats.to_bits(), Ordering::Relaxed);
+        self.count_in_beats
+            .store(count_in_beats.to_bits(), Ordering::Relaxed);
     }
 
     // RT-SAFE
@@ -162,6 +168,7 @@ impl EngineStatus {
         StatusSnapshot {
             playing: self.playing.load(Ordering::Relaxed),
             position_beats: f64::from_bits(self.position_beats.load(Ordering::Relaxed)),
+            count_in_beats: f64::from_bits(self.count_in_beats.load(Ordering::Relaxed)),
             peak_left: f32::from_bits(self.peak_left.swap(0, Ordering::Relaxed)),
             peak_right: f32::from_bits(self.peak_right.swap(0, Ordering::Relaxed)),
             cpu_load: f32::from_bits(self.cpu_load.load(Ordering::Relaxed)),

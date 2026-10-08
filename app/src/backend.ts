@@ -78,6 +78,8 @@ export interface Backend {
   /** Stops recording; the returned project contains the new clip. */
   recordStop(): Promise<ProjectView>;
   setMetronome(on: boolean): Promise<void>;
+  /** Bars of clicks before recording starts (0-2); returns what was stored. */
+  setCountIn(bars: number): Promise<number>;
   transportStatus(): Promise<TransportStatus>;
   audioStatus(): Promise<AudioStatus>;
   setOutputDevice(name: string | null): Promise<AudioStatus>;
@@ -166,6 +168,7 @@ export const tauriBackend: Backend = {
   recordStart: (trackId) => invoke("record_start", { trackId }),
   recordStop: () => invoke("record_stop"),
   setMetronome: (on) => invoke("set_metronome", { on }),
+  setCountIn: (bars) => invoke("set_count_in", { bars }),
   transportStatus: () => invoke("transport_status"),
   audioStatus: () => invoke("audio_status"),
   setOutputDevice: (name) => invoke("set_output_device", { name }),

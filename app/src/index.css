@@ -402,6 +402,11 @@ kbd {
   color: var(--accent-2);
 }
 
+.position.counting-in {
+  color: var(--danger);
+  font-weight: 700;
+}
+
 .transport-buttons .playing {
   background: var(--accent-2);
   color: var(--bg);

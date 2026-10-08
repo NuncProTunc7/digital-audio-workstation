@@ -244,6 +244,11 @@ pub enum EngineMessage {
     /// off the audio thread.
     ReplaceTracks(Box<[TrackSlot]>),
     Play,
+    /// Starts playback after this many beats of metronome clicks (a
+    /// count-in), so the song starts where the playhead is on the beat after
+    /// the last click. Clicks play even with the metronome off; the song is
+    /// silent until the count-in ends. Ignored while already playing.
+    CountIn(f64),
     Stop,
     /// Moves the playhead, in beats from the start.
     Locate(f64),

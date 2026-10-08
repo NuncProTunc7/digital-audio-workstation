@@ -385,6 +385,61 @@ describe("Audio", () => {
   });
 });
 
+describe("Note clips", () => {
+  it("trims a note clip's start once, when the drag ends", async () => {
+    const backend = createPreviewBackend();
+    await backend.execute({
+      command: "create_clip",
+      track_id: 1,
+      start_beats: 0,
+      length_beats: 8,
+      name: "Riff",
+      notes: [
+        { pitch: 60, start_beats: 0, length_beats: 1, velocity: 100, id: null },
+        { pitch: 64, start_beats: 3, length_beats: 1, velocity: 100, id: null },
+      ],
+    });
+    await renderApp(backend);
+    vi.spyOn(backend, "execute");
+    const trim = document.querySelector(".clip:not(.audio) .clip-trim") as HTMLElement;
+    const timeline = document.querySelector(".timeline") as HTMLElement;
+    const ppb = parseFloat((document.querySelector(".clip:not(.audio)") as HTMLElement).style.width) / 8;
+    await act(async () => {
+      fireEvent.pointerDown(trim, { clientX: 100, clientY: 10 });
+      // Past the first note's start and back: the note must survive.
+      fireEvent.pointerMove(timeline, { clientX: 100 + 2 * ppb, clientY: 10 });
+      fireEvent.pointerMove(timeline, { clientX: 100 + 1 * ppb, clientY: 10 });
+    });
+    expect(backend.execute).not.toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.pointerUp(timeline);
+    });
+    expect(backend.execute).toHaveBeenCalledTimes(1);
+    expect(backend.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ command: "trim_clip_start", start_beats: 1 }),
+    );
+    const clip = (await backend.getProject()).project.tracks[0].clips[0];
+    expect(clip.start_beats).toBe(1);
+    expect(clip.length_beats).toBe(7);
+    expect(clip.notes.map((n) => n.start_beats)).toEqual([2]);
+  });
+});
+
+describe("Count-in", () => {
+  it("chooses how many bars to count in before recording", async () => {
+    const backend = createPreviewBackend();
+    vi.spyOn(backend, "setCountIn");
+    await renderApp(backend);
+    const select = screen.getByLabelText("Count-in before recording") as HTMLSelectElement;
+    await waitFor(() => expect(select.value).toBe("1"));
+    await act(async () => {
+      fireEvent.change(select, { target: { value: "2" } });
+    });
+    expect(backend.setCountIn).toHaveBeenCalledWith(2);
+    await waitFor(() => expect(select.value).toBe("2"));
+  });
+});
+
 describe("Import and export", () => {
   it("offers WAV and MIDI export", async () => {
     const backend = createPreviewBackend();

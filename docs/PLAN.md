@@ -148,7 +148,7 @@ Only use sample content that is CC0, CC-BY, or similar, and record its license i
 - The app runs a **control server** (`daw-control`) on `127.0.0.1` at a random port. It writes the port and a random 64-character token to `control.json` in the app data folder (`%APPDATA%\io.github.nuncprotunc7.nuncprotune\` on Windows), and deletes it on exit.
 - The installer ships **`npt-mcp.exe`** (`daw-mcp`), a stdio MCP server. Claude Desktop or Claude Code starts it; on every tool call it reads `control.json` and forwards the request. If the app isn't open, the tool says so in plain words.
 - **Setup:** the app's **Claude** button (status bar) adds the bridge to Claude Desktop's config in one click (backing up the old file), and shows the `claude mcp add --scope user nunc-pro-tune -- "<path>"` line for Claude Code.
-- **Tools are generated from the Command schema**, so every project edit the UI can make, Claude can make, with the same validation and undo. `batch` applies many Commands as one all-or-nothing undo step. Extra tools: `get_song`, `get_track`, `get_clip`, `describe_instruments`, `undo`, `redo`, `play`, `stop`, `locate`, `set_metronome`, `transport_status`, `analyze_mix`, `export_wav`, `save_project`, `open_project`, `new_project`.
+- **Tools are generated from the Command schema**, so every project edit the UI can make, Claude can make, with the same validation and undo. `batch` applies many Commands as one all-or-nothing undo step. Extra tools: `get_song`, `get_track`, `get_clip`, `describe_instruments`, `undo`, `redo`, `play`, `stop`, `locate`, `set_metronome`, `set_count_in`, `transport_status`, `analyze_mix`, `export_wav`, `save_project`, `open_project`, `new_project`.
 - **Claude's ears** (`daw-analysis`): `analyze_mix` renders offline and reports integrated/short-term LUFS (EBU R128), true peak, RMS, crest, stereo correlation, six frequency-band shares, per-track levels and plain-language hints, plus an optional spectrogram image.
 - The app refreshes when Claude changes something, shows a toast, and lists recent Claude actions in the Claude panel.
 
@@ -163,7 +163,7 @@ Planned tool groups (✅ = built; the rest arrive with their phase):
 | Notes | ✅ `get_clip`, `create_clip`, `add_notes`, `edit_notes`, `remove_notes`, `quantize_notes`, `transpose_notes`, clip move/resize/duplicate; later `humanize` |
 | Audio | ✅ `import_audio`, `add_audio_clip`, `set_audio_clip` (gain, fades), `split_clip`, `trim_clip_start`, `record_audio`, `stop_recording`; later `time_stretch` |
 | Mixer | ✅ `set_track_mixer`, `set_master_volume`, `add_effect`, `set_effect_param`, `set_effect_enabled`; later `add_send`, `automate` |
-| Transport | ✅ `play`, `stop`, `locate`, `set_loop`, `set_metronome`, `transport_status` |
+| Transport | ✅ `play`, `stop`, `locate`, `set_loop`, `set_metronome`, `set_count_in`, `transport_status` |
 | Notation | ✅ `import_musicxml`, `export_musicxml`, `import_midi`, `export_midi` |
 | Analysis ("Claude's ears") | ✅ `analyze_mix` → LUFS, true peak, spectrum balance, stereo, per-track levels, hints, spectrogram |
 | Export | ✅ `export_wav`, `export_godot` (loops, stems, layers, sections) |
@@ -290,6 +290,10 @@ A design review found gaps that matter more than plugin hosting. Do these **befo
 **10. User presets:** `SavePreset` saves the track's instrument settings under a name in app data; listed after factory presets; Claude gets `save_preset`.
 **11. Humanize:** `HumanizeNotes { clip_id, note_ids, timing_beats, velocity }` with a seeded random so undo/redo is exact.
 **12. Key signature:** `Project.key` (`SetKey`), shown in the top bar, written to MusicXML/MIDI, and given to Claude in `get_song`.
+
+Owner requests (Oct 2026), done:
+- ✅ **Count-in before recording.** Off / 1 bar (default) / 2 bars, in app settings (`count_in_bars`), next to the metronome; Claude has `set_count_in`. The engine's `CountIn` message starts the transport that many beats before the playhead with clicks only (even with the metronome off) and the song silent, so the clock stays continuous and recording alignment is unchanged. Notes played early land on the start; audio captured before the record point is trimmed off the take.
+- ✅ **Trim note clips from the left.** Note clips got the left-edge handle audio clips had. Because trimming removes notes before the new start, the UI previews the drag and sends one `TrimClipStart` on release.
 
 ### D. Getting builds to the owner
 

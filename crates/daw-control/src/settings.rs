@@ -11,13 +11,31 @@ use crate::discovery::APP_ID;
 
 /// Largest recording delay correction, either way (ms).
 pub const MAX_RECORDING_OFFSET_MS: f64 = 500.0;
+/// Longest count-in before recording, in bars.
+pub const MAX_COUNT_IN_BARS: u32 = 2;
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Settings {
     /// Per input device: how much later than the beat its recordings arrive
     /// (ms). Takes are moved this much earlier.
     #[serde(default)]
     pub recording_offsets_ms: BTreeMap<String, f64>,
+    /// Bars of metronome clicks before recording starts (0 = none).
+    #[serde(default = "default_count_in_bars")]
+    pub count_in_bars: u32,
+}
+
+fn default_count_in_bars() -> u32 {
+    1
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            recording_offsets_ms: BTreeMap::new(),
+            count_in_bars: default_count_in_bars(),
+        }
+    }
 }
 
 /// `%APPDATA%\io.github.nuncprotunc7.nuncprotune\settings.json` on Windows.
@@ -52,6 +70,12 @@ impl Settings {
             .get(device)
             .copied()
             .unwrap_or(0.0)
+    }
+
+    /// Sets the count-in (clamped to 0..=2 bars); returns what was stored.
+    pub fn set_count_in_bars(&mut self, bars: u32) -> u32 {
+        self.count_in_bars = bars.min(MAX_COUNT_IN_BARS);
+        self.count_in_bars
     }
 
     /// Sets a device's offset (clamped to ±500 ms); returns what was stored.
@@ -106,6 +130,20 @@ mod tests {
         let back = Settings::load(&path);
         assert_eq!(back.recording_offset_ms("Headset (WH-1000XM4)"), 183.0);
         assert_eq!(back.recording_offset_ms("Laptop mic"), 0.0);
+    }
+
+    #[test]
+    fn count_in_defaults_to_one_bar_and_round_trips() {
+        let dir = tempfile::tempdir().expect("tmp");
+        let path = dir.path().join("settings.json");
+        // Settings saved before the count-in existed get the default.
+        std::fs::write(&path, r#"{ "recording_offsets_ms": {} }"#).expect("write");
+        assert_eq!(Settings::load(&path).count_in_bars, 1);
+        let mut s = Settings::default();
+        assert_eq!(s.set_count_in_bars(9), 2);
+        assert_eq!(s.set_count_in_bars(0), 0);
+        s.save(&path).expect("save");
+        assert_eq!(Settings::load(&path).count_in_bars, 0);
     }
 
     #[test]

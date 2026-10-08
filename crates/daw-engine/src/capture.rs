@@ -114,6 +114,9 @@ pub struct FinishedTake {
     /// negative when capture began just before the song's start; the part
     /// before beat 0 should then be trimmed, not the take moved.
     pub start_beats: f64,
+    /// Where recording was asked to start (the playhead when it began);
+    /// sound before it, such as a count-in, isn't part of the take.
+    pub requested_beats: f64,
     /// Samples lost to an overloaded disk (should be 0).
     pub dropped_samples: u64,
 }
@@ -226,6 +229,7 @@ impl AudioRecorder {
             path,
             seconds,
             start_beats: take_start_beats(anchor, first_capture_ns, take.fallback_beats),
+            requested_beats: take.fallback_beats,
             dropped_samples: self.shared.dropped.load(Ordering::Relaxed),
         }))
     }

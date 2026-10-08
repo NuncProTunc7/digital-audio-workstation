@@ -320,6 +320,10 @@ export interface Catalog {
 export interface TransportStatus {
   playing: boolean;
   position_beats: number;
+  /** Beats of count-in left before the song starts (0 when not counting in). */
+  count_in_beats: number;
+  /** Bars of clicks before recording starts (0-2). */
+  count_in_bars: number;
   metronome_on: boolean;
   peak_left: number;
   peak_right: number;
