@@ -36,7 +36,7 @@
 | MIDI files | **midly** | Read/write Standard MIDI Files. |
 | AI control | MCP server written with **rmcp** (official Rust MCP SDK) | Works with both Claude Desktop and Claude Code. |
 | Layout | Linear timeline first (GarageBand-style) | Simpler; suits writing complete tracks. |
-| Plugins (later) | **CLAP first, then VST3** | Both are open (CLAP: MIT; VST3: MIT since SDK 3.8, Oct 2025). |
+| Plugins | **VST3 first, then CLAP** (changed Oct 2026; owner approved) | Both are open (CLAP: MIT; VST3: MIT since SDK 3.8, Oct 2025). The free plugins the owner wants (Spitfire LABS, Valhalla Supermassive, Vital) ship as VST3 only, so VST3 comes first. |
 | Internal audio format | 32-bit float, 48 kHz default, stereo buses | Industry norm; matches Godot's mixer. |
 | Tempo convention | BPM counts the time signature's beat (quarter notes in 4/4, eighth notes in 6/8); the metronome clicks every beat | Simple and predictable; revisit if compound-meter users want dotted-quarter clicks. |
 | Project file | One JSON file, `MySong.nptune` (versioned, validated on load). Recorded audio (Phase 4) goes in a `MySong Audio/` folder beside it | Human-readable, diff-able, easy for Claude to inspect; a single file is simpler to open, save, and email than a folder. Changed in Phase 2 from a `.daw` folder; owner approved. |
@@ -183,7 +183,7 @@ Each phase ends with a Windows installer you can download from GitHub Actions an
 | **3. Claude** ✅ | Control server, MCP bridge, full tool list, analysis tools | Ask Claude to build or remix a track |
 | **4. Record** ✅ | Audio tracks; import audio (phone m4a/AAC and ALAC, mp3, wav, flac, ogg) by button or drag-and-drop; microphone recording lined up with the beat; waveforms; trim, split, clip gain, fades, normalize; audio kept in a `Song Audio` folder beside the project; Claude can import, edit, record, and analyze audio | Record guitar/vocals (or bring them over from your phone) and mix them in |
 | **5. Godot + notation** ✅ | Godot export (seamless OGG/WAV loops with tail wrap, stems, `AudioStreamSynchronized` layers, `AudioStreamInteractive` sections, loudness normalization, `.import` settings), MIDI import/export, MusicXML import/export (incl. `.mxl`), sheet music view | Drop music straight into your game; turn sheet music into tracks |
-| **6. Expand** (in progress; see §13 for what comes first) | ✅ Automation lanes (volume, pan, any instrument or effect setting); ✅ SFZ sampler for recorded pianos/basses (memory-capped velocity layers); ✅ time-stretch (audio clips can follow tempo, pitch kept); next: CLAP then VST3 hosting, ASIO and multi-input recording | Use outside plugins, record a band |
+| **6. Expand** (in progress; see §13 for what comes first) | ✅ Automation lanes (volume, pan, any instrument or effect setting); ✅ SFZ sampler for recorded pianos/basses (memory-capped velocity layers); ✅ time-stretch (audio clips can follow tempo, pitch kept); next: VST3 then CLAP hosting, ASIO and multi-input recording | Use outside plugins, record a band |
 
 Phase 3 (Claude) comes before recording on purpose: once Claude can drive the app, it can help test everything that follows.
 
@@ -325,5 +325,18 @@ The owner proposed these. Their priorities: finish items 3–4 first, then the d
 | E10 ✅ | **Searchable sound browser** with tags and favorites | Medium | Built Oct 2026. **Sounds** tab: built-in and user presets of every kind, search, mood chips (hand-tagged factory sounds; user presets tagged from their names), favorites (per computer, in the webview's storage), **Try on …** (load + a short demo phrase, undoable) or **+ New track** for other instrument kinds. |
 | E11 ✅ | **Auditionable AI edits**: Claude offers variations, you audition each in context and keep one | Needs design | Built Oct 2026 on versions (E5): the composing playbook tells Claude to save each option as a version and restore the original; the A/B bar has a menu to switch B between options; Keep B is one undoable load. |
 
-### Then
-CLAP, then VST3 hosting, and ASIO, once the owner says which plugins or audio interface they'll use.
+### Then: VST3 plugin hosting (in progress, Oct 2026)
+Owner decisions (Oct 2026): VST3 first, CLAP later; ASIO waits until the owner has an audio interface; tempo changes mid-song (item 9) are a future item.
+
+Design:
+- **Crate `daw-plugins`** on the `vst3` bindings crate (MIT/Apache, generated from the MIT VST3 SDK 3.8). Loads a module (`.vst3` bundle's `Contents/x86_64-win/*.vst3`, or a single-file `.vst3`), reads its factory, and creates instances.
+- **Finding plugins**: the standard folders (`%CommonProgramFiles%\VST3`, `%LOCALAPPDATA%\Programs\Common\VST3`). A bundle's `moduleinfo.json` is read without loading code; otherwise the app runs itself with `--scan-vst3 <path>` in a child process, so a plugin that crashes while being scanned can't take the app down. Results are cached per computer (path + modified time).
+- **Model**: `InstrumentKind::Plugin` and `EffectKind::Plugin` with a `PluginRef { uid, name, vendor, params: {id → normalized}, state: base64 }`. Commands: `LoadPlugin` (instrument), add_effect with a plugin, `SetPluginParam` (coalesces, so a knob drag in the plugin's window is one undo step). Edits in the plugin's own window reach us through `IComponentHandler::performEdit` and become `SetPluginParam` Commands, so Claude sees them and undo works. The opaque state blob (non-parameter state such as a chosen sample set) is refreshed from the live plugin when the song is saved; it is not undoable.
+- **Engine**: a plugin instance implements `InstrumentProcessor`/`EffectProcessor`; the engine rebuilds it only when the plugin (uid) changes. Our side of `process` uses preallocated event and parameter queues (no allocation); what the plugin does inside its own `process` is outside our control. Offline renders (export, freeze, A/B) create their own instances from the saved state.
+- **Threads**: plugins are created and their windows opened on the app's main thread (JUCE-based plugins such as Spitfire LABS require it).
+- **Editor**: the plugin's own window (`IPlugView`) in a native window the app opens; it resizes when the plugin asks.
+- **Claude**: `plugins` (installed list), `load_plugin`, `plugin_params` (names, current values and display text), `set_plugin_param`.
+- **Crashes**: plugins run inside the app at first. A plugin crash closes the app, but autosave and crash recovery keep the song; on restart the app offers to open it with that plugin switched off. Running plugins in a separate process is a later step.
+- **Tests**: a tiny test plugin crate (synth + gain) built by the tests, so no downloads are needed.
+
+Order: (1) load + scan + test plugin, (2) instruments playing in the engine and offline, (3) plugin windows, (4) parameters, state and Claude tools, (5) effects, (6) crash-safe restart. CLAP follows, reusing the same model and engine path.
