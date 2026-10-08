@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Nunc Pro Tune",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "identifier": "io.github.nuncprotunc7.nuncprotune",
   "build": {
     "frontendDist": "../dist",
