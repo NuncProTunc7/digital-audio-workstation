@@ -12,6 +12,7 @@ import Piano from "./components/Piano";
 import PianoRoll from "./components/PianoRoll";
 import StepSequencer from "./components/StepSequencer";
 import Versions from "./components/Versions";
+import GamePreview from "./components/GamePreview";
 import SheetMusic from "./components/SheetMusic";
 import StatusBar from "./components/StatusBar";
 import Timeline from "./components/Timeline";
@@ -32,6 +33,7 @@ import type {
   ClaudeStatus,
   Command,
   Comparison,
+  PreviewPlan,
   InputStatus,
   Peaks,
   Project,
@@ -78,6 +80,8 @@ export default function App({ backend }: AppProps) {
   const [claude, setClaude] = useState<ClaudeStatus | null>(null);
   const [claudeOpen, setClaudeOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  // The game preview's sections and layers while it is open.
+  const [previewPlan, setPreviewPlan] = useState<PreviewPlan | null>(null);
   // Loudness of the song and the version being compared A/B.
   const [comparison, setComparison] = useState<Comparison | null>(null);
   // Drum clips open in the step grid unless the user picked the piano roll.
@@ -733,6 +737,22 @@ export default function App({ backend }: AppProps) {
           </div>
         </div>
 
+        <button
+          className={previewPlan ? "small toggle on" : "small"}
+          aria-pressed={previewPlan !== null}
+          onClick={() => {
+            if (previewPlan) {
+              setPreviewPlan(null);
+              void run(() => backend.previewStop());
+            } else {
+              void run(() => backend.previewStart(0)).then((p) => p && setPreviewPlan(p));
+            }
+          }}
+          title="Play the song the way your game will: switch sections on the bar and fade layers in and out"
+        >
+          🎮 Game preview
+        </button>
+
         <Versions
           project={project}
           comparing={transport?.comparing ?? null}
@@ -1108,6 +1128,20 @@ export default function App({ backend }: AppProps) {
         claude={claude}
         onToggleClaude={() => setClaudeOpen((o) => !o)}
       />
+      {previewPlan && (
+        <GamePreview
+          plan={previewPlan}
+          positionBeats={position}
+          jumpAtBeats={transport?.jump_at_beats ?? null}
+          beatsPerBar={beatsPerBar}
+          onSwitch={(i) => void run(() => backend.previewSwitch(i))}
+          onLayer={(id, on, fade) => void run(() => backend.previewLayer(id, on, fade))}
+          onClose={() => {
+            setPreviewPlan(null);
+            void run(() => backend.previewStop());
+          }}
+        />
+      )}
       {godotOpen && (
         <GodotExportDialog
           project={project}

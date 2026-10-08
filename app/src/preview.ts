@@ -632,6 +632,26 @@ export function createPreviewBackend(): PreviewBackend {
     }),
     audioStatus: async () => audio(),
     setOutputDevice: async () => audio(),
+    previewStart: async (index) => {
+      const sections = (project.markers ?? []).map((m, i, all) => ({
+        name: m.name,
+        start_beats: m.start_beats,
+        end_beats: all[i + 1]?.start_beats ?? Math.max(m.start_beats + 4, 16),
+      }));
+      if (sections.length === 0) sections.push({ name: "Whole song", start_beats: 0, end_beats: 16 });
+      const s = sections[index];
+      if (!s) throw new Error(`there is no section ${index}`);
+      startBeats = s.start_beats;
+      startedAt = performance.now();
+      playing = true;
+      return { sections, layers: project.tracks.map((t) => ({ track_id: t.id, name: t.name })) };
+    },
+    previewSwitch: async () => {},
+    previewLayer: async () => {},
+    previewStop: async () => {
+      startBeats = position();
+      playing = false;
+    },
     compareStart: async (snapshotId) => {
       const s = (project.snapshots ?? []).find((x) => x.id === snapshotId);
       if (!s) throw new Error(`there is no saved version with id ${snapshotId}`);

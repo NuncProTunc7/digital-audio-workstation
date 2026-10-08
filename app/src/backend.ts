@@ -12,6 +12,7 @@ import type {
   ClaudeStatus,
   CompareSide,
   Comparison,
+  PreviewPlan,
   Command,
   ExportReport,
   GodotOptions,
@@ -85,6 +86,13 @@ export interface Backend {
   transportStatus(): Promise<TransportStatus>;
   audioStatus(): Promise<AudioStatus>;
   setOutputDevice(name: string | null): Promise<AudioStatus>;
+  /** Game preview: loops section `index` with every layer up. */
+  previewStart(index: number): Promise<PreviewPlan>;
+  /** Game preview: changes to section `index` at the next bar line. */
+  previewSwitch(index: number): Promise<void>;
+  /** Game preview: fades a track in or out over `fadeBeats`. */
+  previewLayer(trackId: number, on: boolean, fadeBeats: number): Promise<void>;
+  previewStop(): Promise<void>;
   /** Measures the song and a saved version and starts A/B listening on the song. */
   compareStart(snapshotId: number): Promise<Comparison>;
   compareListen(side: CompareSide): Promise<void>;
@@ -185,6 +193,10 @@ export const tauriBackend: Backend = {
   audioStatus: () => invoke("audio_status"),
   setOutputDevice: (name) => invoke("set_output_device", { name }),
   setBufferSize: (frames) => invoke("set_buffer_size", { frames }),
+  previewStart: (index) => invoke("preview_start", { index }),
+  previewSwitch: (index) => invoke("preview_switch", { index }),
+  previewLayer: (trackId, on, fadeBeats) => invoke("preview_layer", { trackId, on, fadeBeats }),
+  previewStop: () => invoke("preview_stop"),
   compareStart: (snapshotId) => invoke("compare_start", { snapshotId }),
   compareListen: (side) => invoke("compare_listen", { side }),
   compareStop: () => invoke("compare_stop"),

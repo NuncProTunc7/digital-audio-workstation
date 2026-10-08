@@ -1,5 +1,15 @@
 # Godot
 
+## Try it like the game first: Game preview
+
+Click **🎮 Game preview** in the top bar. The song plays the way your game will play the export:
+
+- **Sections**: one button per section marker (or the loop region, or the whole song if there are no markers). The playing section loops. Click another one and it starts at the **next bar line**, while the old section's echoes ring out, just like the game switching from *Explore* to *Combat*. A blinking button is waiting for its bar.
+- **Layers**: one button per track. Click to fade it out or back in over the **Fade** time (at once, 1–4 beats, 2 bars): try starting with pads and bass only, then bringing the drums in for combat.
+- Nothing you do here changes the song or goes into undo. Close the panel to stop.
+
+## Export
+
 **Export ▾ → To Godot (loops, stems)…**
 
 1. **Godot project**: browse to the folder with `project.godot` (once; it's remembered).

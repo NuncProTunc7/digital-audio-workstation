@@ -3,8 +3,8 @@ use std::sync::Arc;
 use daw_model::TrackId;
 
 use crate::message::{
-    AudioRegionPlay, AutoTarget, EffectChain, EngineMessage, Garbage, RecordedEvent, StripSettings,
-    TrackSlot,
+    AudioRegionPlay, AutoTarget, EffectChain, EngineMessage, Garbage, PendingJump, RecordedEvent,
+    StripSettings, TrackSlot, next_layer_gain,
 };
 use crate::metronome::Metronome;
 use crate::status::EngineStatus;
@@ -57,6 +57,8 @@ pub struct AudioProcessor {
     /// Laps of the loop since playback started; notes with a chance below
     /// 100 % roll differently on each lap.
     loop_pass: u32,
+    /// A game-preview section change waiting for its bar line.
+    pending_jump: Option<PendingJump>,
     /// When the next output buffer reaches the speakers (device clock, ns).
     output_time_ns: Option<u64>,
 }
@@ -104,6 +106,7 @@ impl AudioProcessor {
             loop_end: init.loop_end,
             record_track: None,
             loop_pass: 0,
+            pending_jump: None,
             output_time_ns: None,
         }
     }
@@ -156,6 +159,8 @@ impl AudioProcessor {
             self.song_position(),
             (self.count_in_end - self.position_beats).max(0.0),
         );
+        self.status
+            .publish_jump(self.pending_jump.map(|j| j.at_beats));
     }
 
     /// The playhead as the song sees it: during a count-in, where the song
@@ -332,6 +337,7 @@ impl AudioProcessor {
                 }
                 EngineMessage::Stop => {
                     self.playing = false;
+                    self.pending_jump = None;
                     for t in self.tracks.iter_mut() {
                         release_sequenced(t);
                     }
@@ -344,6 +350,7 @@ impl AudioProcessor {
                 }
                 EngineMessage::Locate(beats) => {
                     self.count_in_end = f64::NEG_INFINITY;
+                    self.pending_jump = None;
                     self.seek(beats.max(0.0));
                 }
                 EngineMessage::SetTempo(bpm) => {
@@ -372,6 +379,52 @@ impl AudioProcessor {
                     self.loop_end = end_beats;
                 }
                 EngineMessage::SetRecordTrack(track) => self.record_track = track,
+                EngineMessage::FadeLayer {
+                    track_id,
+                    gain,
+                    seconds,
+                } => {
+                    let samples = seconds.max(0.0) * self.sample_rate_hz;
+                    if let Some(t) = self.track(track_id) {
+                        let target = gain.clamp(0.0, 1.0);
+                        t.layer_target = target;
+                        if samples < 1.0 {
+                            t.layer = target;
+                            t.layer_step = 0.0;
+                        } else {
+                            t.layer_step = (target - t.layer) / samples;
+                        }
+                    }
+                }
+                EngineMessage::ResetLayers => {
+                    for t in self.tracks.iter_mut() {
+                        t.layer = 1.0;
+                        t.layer_target = 1.0;
+                        t.layer_step = 0.0;
+                    }
+                }
+                EngineMessage::JumpAtNextBar {
+                    to_beats,
+                    loop_start,
+                    loop_end,
+                } => {
+                    let bar = f64::from(self.beats_per_bar.max(1));
+                    let here = self.song_position();
+                    let jump = PendingJump {
+                        // Strictly after the playhead: a bar that is
+                        // starting right now is already under way.
+                        at_beats: ((here / bar).floor() + 1.0) * bar,
+                        to_beats: to_beats.max(0.0),
+                        loop_start,
+                        loop_end,
+                    };
+                    if self.playing {
+                        self.pending_jump = Some(jump);
+                    } else {
+                        self.apply_jump(jump, 0.0);
+                    }
+                }
+                EngineMessage::CancelJump => self.pending_jump = None,
             }
         }
     }
@@ -386,6 +439,21 @@ impl AudioProcessor {
         match track_id {
             None => Some(&mut self.master_effects),
             Some(id) => self.track(id).map(|t| &mut *t.effects),
+        }
+    }
+
+    /// Makes a section change: loops the new section and moves the playhead
+    /// to `to_beats` plus however far past the bar line it already is.
+    // RT-SAFE
+    fn apply_jump(&mut self, jump: PendingJump, over: f64) {
+        self.pending_jump = None;
+        self.loop_enabled = jump.loop_end > jump.loop_start;
+        self.loop_start = jump.loop_start;
+        self.loop_end = jump.loop_end;
+        self.seek(jump.to_beats + over);
+        // Like a loop wrap: notes right on the target must still play.
+        for t in self.tracks.iter_mut() {
+            t.cursor = first_event_at(t, jump.to_beats);
         }
     }
 
@@ -425,11 +493,30 @@ impl AudioProcessor {
                     ((self.count_in_end - self.position_beats) / beats_per_sample - 1e-6).ceil();
                 end = end.min(start + (to_start as usize).max(1));
             }
+            let jump = self.pending_jump.filter(|_| self.playing);
+            if let Some(j) = jump
+                && self.position_beats < j.at_beats
+            {
+                let to_jump = ((j.at_beats - self.position_beats) / beats_per_sample - 1e-6).ceil();
+                end = end.min(start + (to_jump as usize).max(1));
+            }
             self.render_segment(start, end, beats_per_sample);
             if counting && self.position_beats >= self.count_in_end - 1e-9 {
                 self.count_in_end = f64::NEG_INFINITY;
             }
-            if looping && self.position_beats >= self.loop_end - 1e-9 {
+            if let Some(j) = jump
+                && self.position_beats >= j.at_beats - 1e-9
+            {
+                let over = self.position_beats - j.at_beats;
+                self.apply_jump(j, over);
+            } else if let Some(j) = jump
+                && looping
+                && self.position_beats >= self.loop_end - 1e-9
+            {
+                // The section ended before the bar line: change here.
+                let over = self.position_beats - self.loop_end;
+                self.apply_jump(j, over);
+            } else if looping && self.position_beats >= self.loop_end - 1e-9 {
                 self.loop_pass = self.loop_pass.wrapping_add(1);
                 let over = self.position_beats - self.loop_end;
                 self.seek(self.loop_start + over);
@@ -539,7 +626,11 @@ impl AudioProcessor {
                     .iter_mut()
                     .zip(self.right[start..end].iter_mut()),
             ) {
-                let (sl, sr) = (l * t.gain_left.next_value(), r * t.gain_right.next_value());
+                let layer = next_layer_gain(&mut t.layer, t.layer_target, &mut t.layer_step);
+                let (sl, sr) = (
+                    l * t.gain_left.next_value() * layer,
+                    r * t.gain_right.next_value() * layer,
+                );
                 *ml += sl;
                 *mr += sr;
                 peak = peak.max(sl.abs()).max(sr.abs());

@@ -1426,6 +1426,48 @@ button.tiny.power.on {
   font-size: 13px;
 }
 
+.game-preview {
+  left: 50%;
+  right: auto;
+  bottom: auto;
+  top: 58px;
+  transform: translateX(-50%);
+  width: min(560px, calc(100vw - 24px));
+}
+
+.game-preview section {
+  margin-top: 10px;
+}
+
+.game-sections,
+.game-layers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.game-sections button {
+  min-width: 90px;
+  padding: 8px 14px;
+  font-size: 14px;
+}
+
+.toggle.queued {
+  border-color: var(--accent);
+  color: var(--accent);
+  animation: queued-blink 0.6s ease-in-out infinite alternate;
+}
+
+@keyframes queued-blink {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.45;
+  }
+}
+
 .claude-panel-header {
   display: flex;
   align-items: center;

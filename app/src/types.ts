@@ -160,6 +160,19 @@ export interface Snapshot {
 
 export type CompareSide = "current" | "version";
 
+/** A part of the song between markers. */
+export interface SongSection {
+  name: string;
+  start_beats: number;
+  end_beats: number;
+}
+
+/** What the game preview can switch and fade. */
+export interface PreviewPlan {
+  sections: SongSection[];
+  layers: { track_id: number; name: string }[];
+}
+
 /** Loudness of the song and a saved version, and how they are matched. */
 export interface Comparison {
   snapshot_id: number;
@@ -401,6 +414,8 @@ export interface TransportStatus {
   struggling: boolean;
   /** A/B listening against a saved version. */
   comparing: { snapshot_id: number; side: CompareSide } | null;
+  /** Game preview: where a queued section change happens (beats). */
+  jump_at_beats?: number | null;
   /** Peak level per track, in track order. */
   track_peaks: number[];
   recording: boolean;

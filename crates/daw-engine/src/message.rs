@@ -133,6 +133,10 @@ pub struct TrackSlot {
     pub(crate) cursor: usize,
     /// Notes started by the sequence and not yet stopped (bit per pitch).
     pub(crate) sounding: u128,
+    /// Game-preview layer level: current, target, and change per sample.
+    pub(crate) layer: f32,
+    pub(crate) layer_target: f32,
+    pub(crate) layer_step: f32,
 }
 
 impl TrackSlot {
@@ -158,6 +162,9 @@ impl TrackSlot {
             gain_right: daw_dsp::Smoother::new(audible * r, 0.01, sample_rate_hz),
             cursor: 0,
             sounding: 0,
+            layer: 1.0,
+            layer_target: 1.0,
+            layer_step: 0.0,
         }
     }
 }
@@ -267,4 +274,47 @@ pub enum EngineMessage {
     },
     /// Capture live notes on this track (None stops capturing).
     SetRecordTrack(Option<TrackId>),
+    /// Game preview: fades a track ("layer") to `gain` (0.0–1.0) over
+    /// `seconds`, on top of its mixer level.
+    FadeLayer {
+        track_id: TrackId,
+        gain: f32,
+        seconds: f32,
+    },
+    /// Game preview: every layer back to full, at once.
+    ResetLayers,
+    /// Game preview: at the next bar line, jump to `to_beats` and loop
+    /// `loop_start..loop_end` (a section change, as the game will do it).
+    /// When stopped, it happens at once.
+    JumpAtNextBar {
+        to_beats: f64,
+        loop_start: f64,
+        loop_end: f64,
+    },
+    /// Forget a jump that hasn't happened yet.
+    CancelJump,
+}
+
+/// A game-preview layer level for the next sample, moving `layer` toward
+/// `target` by `step` per sample.
+// RT-SAFE
+pub(crate) fn next_layer_gain(layer: &mut f32, target: f32, step: &mut f32) -> f32 {
+    if *step != 0.0 {
+        *layer += *step;
+        let arrived = (*step > 0.0 && *layer >= target) || (*step < 0.0 && *layer <= target);
+        if arrived {
+            *layer = target;
+            *step = 0.0;
+        }
+    }
+    *layer
+}
+
+/// A section change waiting for its bar line.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct PendingJump {
+    pub at_beats: f64,
+    pub to_beats: f64,
+    pub loop_start: f64,
+    pub loop_end: f64,
 }

@@ -569,6 +569,40 @@ describe("Section markers", () => {
   });
 });
 
+describe("Game preview", () => {
+  it("switches sections and fades layers like the game will", async () => {
+    const backend = createPreviewBackend();
+    await backend.execute({ command: "add_marker", name: "Explore", start_beats: 0 });
+    await backend.execute({ command: "add_marker", name: "Combat", start_beats: 8 });
+    vi.spyOn(backend, "previewStart");
+    vi.spyOn(backend, "previewSwitch");
+    vi.spyOn(backend, "previewLayer");
+    vi.spyOn(backend, "previewStop");
+    await renderApp(backend);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Game preview/ }));
+    });
+    expect(backend.previewStart).toHaveBeenCalledWith(0);
+    const panel = await screen.findByRole("dialog", { name: "Game preview" });
+    expect(panel.textContent).toContain("Explore");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Combat" }));
+    });
+    expect(backend.previewSwitch).toHaveBeenCalledWith(1);
+    fireEvent.change(screen.getByLabelText("Layer fade length"), { target: { value: "4" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Drums" }));
+    });
+    expect(backend.previewLayer).toHaveBeenCalledWith(3, false, 4);
+    expect(screen.getByRole("button", { name: "Drums" }).getAttribute("aria-pressed")).toBe("false");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Close game preview" }));
+    });
+    expect(backend.previewStop).toHaveBeenCalled();
+    expect(screen.queryByRole("dialog", { name: "Game preview" })).toBeNull();
+  });
+});
+
 describe("Versions", () => {
   async function saveVersion(name: string) {
     fireEvent.click(screen.getByRole("button", { name: /^Versions/ }));

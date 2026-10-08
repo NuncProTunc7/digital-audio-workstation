@@ -150,6 +150,35 @@ impl Engine {
         self.send(EngineMessage::Play);
     }
 
+    /// Game preview: fades a track to `gain` (0.0–1.0) over `seconds`.
+    pub fn fade_layer(&self, track_id: TrackId, gain: f32, seconds: f32) {
+        self.send(EngineMessage::FadeLayer {
+            track_id,
+            gain,
+            seconds,
+        });
+    }
+
+    /// Game preview: every track back to full level.
+    pub fn reset_layers(&self) {
+        self.send(EngineMessage::ResetLayers);
+    }
+
+    /// Game preview: at the next bar line, jump to `to_beats` and loop
+    /// `loop_start..loop_end` from then on.
+    pub fn jump_at_next_bar(&self, to_beats: f64, loop_start: f64, loop_end: f64) {
+        self.send(EngineMessage::JumpAtNextBar {
+            to_beats,
+            loop_start,
+            loop_end,
+        });
+    }
+
+    /// Forgets a queued section change.
+    pub fn cancel_jump(&self) {
+        self.send(EngineMessage::CancelJump);
+    }
+
     /// Plays `beats` metronome clicks, then starts the song from the
     /// playhead (a count-in for recording). 0 beats plays straight away.
     pub fn play_with_count_in(&self, beats: f64) {
@@ -849,6 +878,85 @@ mod tests {
         // About half of the 64 kicks play, and not the same in every lap.
         assert!((16..=48).contains(&total), "{per_lap:?}");
         assert!(per_lap.iter().any(|&n| n != per_lap[0]), "{per_lap:?}");
+    }
+
+    #[test]
+    fn a_section_change_waits_for_the_next_bar_then_loops_the_new_section() {
+        // Kicks on every beat of bar 1, one snare at the start of bar 3.
+        let mut s = kicks_at(&[0.0, 1.0, 2.0, 3.0], 100);
+        s.execute(Command::CreateClip {
+            track_id: 3,
+            start_beats: 8.0,
+            length_beats: 4.0,
+            name: None,
+            notes: vec![NoteInput {
+                chance: 100,
+                pitch: 38,
+                start_beats: 0.0,
+                length_beats: 0.1,
+                velocity: 127,
+                id: None,
+            }],
+        })
+        .expect("snare");
+        s.execute(Command::SetLoop {
+            enabled: Some(true),
+            start_beats: Some(0.0),
+            end_beats: Some(4.0),
+        })
+        .expect("loop");
+        let (engine, mut p) = Engine::new(s.project(), SR);
+        engine.set_metronome(false);
+        engine.play();
+        render(&mut p, 1.25); // beat 2.5
+        engine.jump_at_next_bar(8.0, 8.0, 12.0);
+        render(&mut p, 0.01);
+        assert_eq!(engine.status().jump_at_beats, Some(4.0));
+        // Bar 1 finishes (beat 3 at 1.5 s), then bar 3 starts at 2.0 s.
+        let out = left(&render(&mut p, 1.24));
+        let found = onsets(&out, 0.05, 4_800);
+        // Offsets from 1.26 s: the beat-3 kick at 1.5 s, the snare at 2.0 s.
+        assert_eq!(found.len(), 2, "{found:?}");
+        assert!(found[0].abs_diff(11_520) <= 2, "{found:?}");
+        assert!(found[1].abs_diff(35_520) <= 2, "{found:?}");
+        let status = engine.status();
+        assert_eq!(status.jump_at_beats, None);
+        assert!(
+            (8.0..9.1).contains(&status.position_beats),
+            "{}",
+            status.position_beats
+        );
+        // Bar 3 now loops: two seconds later the playhead is back in it.
+        render(&mut p, 2.0);
+        let at = engine.status().position_beats;
+        assert!((8.0..12.0).contains(&at), "{at}");
+    }
+
+    #[test]
+    fn layers_fade_out_and_back_in() {
+        let starts: Vec<f64> = (0..8).map(|b| f64::from(b) * 0.5).collect();
+        let mut s = kicks_at(&starts, 100);
+        s.execute(Command::SetLoop {
+            enabled: Some(true),
+            start_beats: Some(0.0),
+            end_beats: Some(4.0),
+        })
+        .expect("loop");
+        let (engine, mut p) = Engine::new(s.project(), SR);
+        engine.set_metronome(false);
+        engine.play();
+        let loud = peak(&render(&mut p, 1.0));
+        engine.fade_layer(3, 0.0, 0.5);
+        let fading = render(&mut p, 0.5);
+        let silent = peak(&render(&mut p, 1.0));
+        assert!(loud > 0.1, "{loud}");
+        assert!(silent < 1e-4, "{silent}");
+        // The fade is gradual: the first kick in it is louder than the last.
+        let first = peak(&fading[..fading.len() / 4]);
+        let last = peak(&fading[fading.len() * 3 / 4..]);
+        assert!(first > last, "{first} vs {last}");
+        engine.reset_layers();
+        assert!(peak(&render(&mut p, 1.0)) > 0.1);
     }
 
     #[test]

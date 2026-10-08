@@ -13,6 +13,7 @@ mod client;
 pub mod compare;
 pub mod diagnostics;
 mod discovery;
+pub mod game_preview;
 mod host;
 pub mod notation;
 mod protocol;

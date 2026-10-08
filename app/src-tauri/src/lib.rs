@@ -774,6 +774,39 @@ fn set_count_in(state: State<'_, AppState>, bars: u32) -> Result<u32, String> {
     state.set_count_in_bars(bars)
 }
 
+/// Game preview: loops section `index` with every layer up.
+#[tauri::command]
+fn preview_start(
+    state: State<'_, AppState>,
+    index: usize,
+) -> Result<daw_control::game_preview::PreviewPlan, String> {
+    state.end_comparison();
+    daw_control::game_preview::start(&*state, index)
+}
+
+/// Game preview: changes to section `index` at the next bar line.
+#[tauri::command]
+fn preview_switch(state: State<'_, AppState>, index: usize) -> Result<(), String> {
+    daw_control::game_preview::switch(&*state, index)
+}
+
+/// Game preview: fades a track in or out over `fade_beats`.
+#[tauri::command]
+fn preview_layer(
+    state: State<'_, AppState>,
+    track_id: TrackId,
+    on: bool,
+    fade_beats: f64,
+) -> Result<(), String> {
+    daw_control::game_preview::fade(&*state, track_id, on, fade_beats)
+}
+
+/// Ends the game preview.
+#[tauri::command]
+fn preview_stop(state: State<'_, AppState>) -> Result<(), String> {
+    daw_control::game_preview::stop(&*state)
+}
+
 /// Measures the song and saved version `snapshot_id` and starts A/B
 /// listening on the song. Rendering takes a moment, so this runs off the
 /// main thread.
@@ -878,6 +911,8 @@ struct TransportStatus {
     struggling: bool,
     /// A/B listening: the saved version compared, and which side plays.
     comparing: Option<ComparingStatus>,
+    /// Game preview: where a queued section change happens.
+    jump_at_beats: Option<f64>,
     /// Peak level per track, in track order.
     track_peaks: Vec<f32>,
     recording: bool,
@@ -906,6 +941,7 @@ fn transport_status(state: State<'_, AppState>) -> TransportStatus {
         buffer_frames: snap.buffer_frames,
         overloads: snap.overloads,
         struggling: crackled || snap.cpu_load > BUSY_CPU_LOAD,
+        jump_at_beats: snap.jump_at_beats,
         comparing: state.comparison.lock().ok().and_then(|c| {
             c.as_ref().map(|(c, side)| ComparingStatus {
                 snapshot_id: c.snapshot_id,
@@ -1396,6 +1432,10 @@ pub fn run() {
             compare_start,
             compare_listen,
             compare_stop,
+            preview_start,
+            preview_switch,
+            preview_layer,
+            preview_stop,
             transport_status,
             audio_status,
             set_output_device,

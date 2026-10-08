@@ -190,6 +190,24 @@ fn audio_thread_never_allocates() {
     engine.stop();
     engine.play_with_count_in(1.0);
     assert_eq!(process_counting(&mut processor, &mut out), 0, "count-in");
+
+    // Game preview: layer fades and a section change at the next bar.
+    engine.fade_layer(1, 0.2, 0.3);
+    engine.fade_layer(2, 0.0, 0.0);
+    engine.jump_at_next_bar(8.0, 8.0, 12.0);
+    assert_eq!(
+        process_counting(&mut processor, &mut out),
+        0,
+        "game preview"
+    );
+    engine.jump_at_next_bar(0.0, 0.0, 4.0);
+    engine.cancel_jump();
+    engine.reset_layers();
+    assert_eq!(
+        process_counting(&mut processor, &mut out),
+        0,
+        "preview reset"
+    );
     engine.note_off(1, 60);
     engine.stop_recording();
     engine.stop();

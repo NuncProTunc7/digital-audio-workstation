@@ -312,7 +312,7 @@ The owner proposed these. Their priorities: finish items 3–4 first, then the d
 
 | # | Feature | Effort | Notes |
 |---|---|---|---|
-| E1 | **Interactive game-music preview**: Explore/Combat/Victory buttons while playing; layers fade and sections change on the beat, as Godot will | Large | Needs markers (6). Mirrors the `AudioStreamInteractive`/`Synchronized` export so what you hear is what Godot plays. |
+| E1 ✅ | **Interactive game-music preview**: Explore/Combat/Victory buttons while playing; layers fade and sections change on the beat, as Godot will | Large | Built Oct 2026. Live actions in `daw_control::game_preview`: the engine loops the section; `JumpAtNextBar` changes section on the next bar line (or at the section's end, whichever comes first) and keeps effect and release tails ringing over the cut (Godot's export crossfades 2 beats instead); `FadeLayer` ramps a track's level over N beats (`ResetLayers` ends it). 🎮 Game preview panel. |
 | E2 | **Chord track and scale highlighting**: chords above the timeline, scale notes highlighted in the piano roll, shared with Claude | Medium–large | Builds on key signature (12). |
 | E3 ✅ | **Drum step sequencer**: grid of steps per drum pad, swing, velocity, rolls, probability hits | Medium | Built Oct 2026. `StepSequencer.tsx` edits ordinary notes (a drag or a step-menu change is one `Batch`). `Note.chance` (1–100 %) is rolled on the audio thread by a hash of the note's place, track and loop lap, so renders repeat exactly. `Clip.swing` (`SetClipSwing`) warps note times on the song's step grid in `build_sequence` and MIDI export; MusicXML stays straight. |
 | E4 | **Arrangement variations**: quiet / normal / boss versions sharing material; linked clips | Large | Linked clips first. |
