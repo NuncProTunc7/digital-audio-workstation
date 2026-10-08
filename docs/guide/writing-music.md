@@ -26,6 +26,15 @@ Synth knobs, in plain terms: **Wave** is the basic tone (Sine soft, Saw bright a
 2. **+ Sampler track**, then in its panel **Load sample pack…** and choose the `.sfz` file.
 3. Big packs load in the background (the panel shows *loading…*). To save memory the app may keep only some of the pack's soft-to-loud layers; the panel tells you how many.
 
+## Section markers
+
+The strip under the bar numbers holds **section markers**: named points where a part of the song starts (Intro, Explore, Combat, Boss). A section runs from its marker to the next one.
+
+- **Double-click** the strip to add a marker at that bar; type its name and press **Enter**.
+- **Drag** a marker to move it; **double-click** it to rename; hover and click **✕** to delete.
+- A dashed line shows each marker across the tracks.
+- Godot export can turn the sections into music that switches between them in the game (see [Godot](godot.md)).
+
 ## Clips
 
 - **Double-click** an empty spot on an instrument track to add a clip. Double-click a clip to open it in the piano roll.

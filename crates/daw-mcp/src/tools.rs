@@ -340,6 +340,7 @@ fn extra_tools() -> Vec<ToolDef> {
                     "stems": { "type": "boolean", "description": "Also export each track separately (default false)." },
                     "layers": { "type": "boolean", "description": "With stems, write an AudioStreamSynchronized .tres (default true)." },
                     "sections": { "type": "array", "description": "Named sections for an AudioStreamInteractive .tres.", "items": { "type": "object", "properties": { "name": { "type": "string" }, "start_beats": { "type": "number" }, "end_beats": { "type": "number" } }, "required": ["name", "start_beats", "end_beats"] } },
+                    "sections_from_markers": { "type": "boolean", "description": "Use the song's section markers (see add_marker and get_song's sections) as the sections. Ignored when sections is given." },
                     "target_lufs": num("Loudness target (default -16)."),
                     "normalize": { "type": "boolean", "description": "False keeps the mix level as is." }
                 }),

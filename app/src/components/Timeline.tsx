@@ -1,7 +1,7 @@
 import { Fragment, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { meterPercent, snap, snapDown } from "../format";
-import type { AutomationTarget, Catalog, Clip, Command, Peaks, Project, Track } from "../types";
+import type { AutomationTarget, Catalog, Clip, Command, Marker, Peaks, Project, Track } from "../types";
 import { AUTOMATION_HEIGHT, automatableTargets, targetScale } from "../automation";
 import AutomationLaneEditor from "./AutomationLane";
 import Waveform from "./Waveform";
@@ -49,6 +49,7 @@ type Drag =
     }
   | { kind: "resize"; clip: Clip; x0: number; lastLength: number }
   | { kind: "trim"; clip: Clip; x0: number; lastStart: number }
+  | { kind: "marker"; marker: Marker; x0: number; lastStart: number }
   | { kind: "loop"; anchor: number };
 
 /** The arrangement: track headers, clip lanes, ruler, loop region, playhead. */
@@ -59,6 +60,8 @@ export default function Timeline(props: TimelineProps) {
   const lanesRef = useRef<HTMLDivElement>(null);
   const drag = useRef<Drag | null>(null);
   const [renaming, setRenaming] = useState<number | null>(null);
+  const [renamingMarker, setRenamingMarker] = useState<number | null>(null);
+  const markers = project.markers ?? [];
   // A note clip's new start while its left edge is dragged. Trimming a note
   // clip removes the notes before the start, so it's applied once, on
   // release: dragging back out must not lose them.
@@ -187,6 +190,13 @@ export default function Timeline(props: TimelineProps) {
           setTrimPreview({ clipId: d.clip.id, start });
         }
       }
+    } else if (d.kind === "marker") {
+      const start = Math.max(0, d.marker.start_beats + snap((e.clientX - d.x0) / ppb, grid));
+      const taken = markers.some((m) => m.id !== d.marker.id && Math.abs(m.start_beats - start) < 1e-9);
+      if (start !== d.lastStart && !taken) {
+        d.lastStart = start;
+        void props.onCommand({ command: "move_marker", marker_id: d.marker.id, start_beats: start });
+      }
     } else {
       const here = snap(beatAt(e.clientX), beatsPerBar);
       const [start, end] = here >= d.anchor ? [d.anchor, here] : [here, d.anchor];
@@ -229,6 +239,20 @@ export default function Timeline(props: TimelineProps) {
     if (created) props.onOpenClip(created.id);
   };
 
+  /** Adds a marker on the bar under the pointer and starts naming it. */
+  const addMarkerAt = async (clientX: number) => {
+    const start = snapDown(beatAt(clientX), beatsPerBar);
+    if (markers.some((m) => Math.abs(m.start_beats - start) < 1e-9)) return;
+    const p = await props.onCommand({
+      command: "add_marker",
+      name: `Section ${markers.length + 1}`,
+      start_beats: start,
+    });
+    props.onEndGesture();
+    const created = p?.markers?.find((m) => Math.abs(m.start_beats - start) < 1e-9);
+    if (created) setRenamingMarker(created.id);
+  };
+
   const loop = project.loop_region;
   const bars = Math.ceil(beats / beatsPerBar);
 
@@ -244,6 +268,7 @@ export default function Timeline(props: TimelineProps) {
               +
             </button>
           </div>
+          <div className="ruler-stack" style={{ width }}>
           <div
             className="ruler"
             style={{ width }}
@@ -267,6 +292,72 @@ export default function Timeline(props: TimelineProps) {
                 {i + 1}
               </span>
             ))}
+          </div>
+          <div
+            className="marker-strip"
+            role="group"
+            aria-label="Section markers"
+            title="Double-click to mark where a section starts (for example Explore, Combat). Drag a marker to move it."
+            onDoubleClick={(e) => {
+              if (e.target === e.currentTarget) void addMarkerAt(e.clientX);
+            }}
+          >
+            {markers.length === 0 && <span className="marker-hint">Double-click here to mark sections</span>}
+            {markers.map((m) => (
+              <div
+                key={m.id}
+                className="marker"
+                style={{ left: m.start_beats * ppb }}
+                onPointerDown={(e) => {
+                  if (e.button !== 0 || renamingMarker === m.id) return;
+                  e.stopPropagation();
+                  e.currentTarget.setPointerCapture?.(e.pointerId);
+                  drag.current = { kind: "marker", marker: m, x0: e.clientX, lastStart: m.start_beats };
+                }}
+                onDoubleClick={(e) => {
+                  e.stopPropagation();
+                  setRenamingMarker(m.id);
+                }}
+                title={`${m.name}: double-click to rename, drag to move`}
+              >
+                {renamingMarker === m.id ? (
+                  <input
+                    autoFocus
+                    aria-label="Marker name"
+                    defaultValue={m.name}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => {
+                      e.stopPropagation();
+                      if (e.key === "Enter") e.currentTarget.blur();
+                      if (e.key === "Escape") setRenamingMarker(null);
+                    }}
+                    onBlur={(e) => {
+                      setRenamingMarker(null);
+                      const name = e.target.value.trim();
+                      if (name && name !== m.name) {
+                        void props
+                          .onCommand({ command: "rename_marker", marker_id: m.id, name })
+                          .then(props.onEndGesture);
+                      }
+                    }}
+                  />
+                ) : (
+                  <span className="marker-name">{m.name}</span>
+                )}
+                <button
+                  className="marker-delete"
+                  aria-label={`Delete marker ${m.name}`}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void props.onCommand({ command: "remove_marker", marker_id: m.id }).then(props.onEndGesture);
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
           </div>
         </div>
 
@@ -506,6 +597,9 @@ export default function Timeline(props: TimelineProps) {
                 </div>
               )}
             </Fragment>
+            ))}
+            {markers.map((m) => (
+              <div key={m.id} className="marker-line" style={{ left: m.start_beats * ppb }} aria-hidden />
             ))}
             <div className="playhead" style={{ left: props.playheadBeats * ppb }} aria-hidden />
           </div>

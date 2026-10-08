@@ -6,6 +6,7 @@ mod automation;
 mod clips;
 mod effects;
 mod instruments;
+mod markers;
 mod notes;
 mod snapshots;
 pub use snapshots::MAX_SNAPSHOTS;
@@ -218,6 +219,21 @@ pub enum Command {
     ResizeClip { clip_id: ClipId, length_beats: f64 },
     /// Rename a clip.
     RenameClip { clip_id: ClipId, name: String },
+
+    // ---- Section markers ----
+    /// Put a named section marker on the timeline, e.g. "Explore" at beat
+    /// 0 and "Combat" at beat 32. A section runs from its marker to the
+    /// next; Godot export can turn sections into an AudioStreamInteractive.
+    /// One marker per beat.
+    AddMarker { name: String, start_beats: f64 },
+    /// Move a marker to another beat.
+    MoveMarker { marker_id: Id, start_beats: f64 },
+    /// Rename a marker (its section).
+    RenameMarker { marker_id: Id, name: String },
+    /// Delete a marker; its section joins the one before.
+    RemoveMarker { marker_id: Id },
+    /// Put back a deleted marker exactly as it was (used by undo).
+    RestoreMarker { marker: crate::project::Marker },
 
     // ---- Saved versions ----
     /// Save the song as it is now as a named version (kept in the song
@@ -536,6 +552,14 @@ impl Command {
                 length_beats,
             } => clips::resize(project, clip_id, length_beats),
             C::RenameClip { clip_id, name } => clips::rename(project, clip_id, name),
+            C::AddMarker { name, start_beats } => markers::add(project, name, start_beats),
+            C::MoveMarker {
+                marker_id,
+                start_beats,
+            } => markers::move_to(project, marker_id, start_beats),
+            C::RenameMarker { marker_id, name } => markers::rename(project, marker_id, name),
+            C::RemoveMarker { marker_id } => markers::remove(project, marker_id),
+            C::RestoreMarker { marker } => markers::restore(project, marker),
             C::TakeSnapshot { name } => snapshots::take(project, name),
             C::LoadSnapshot { snapshot_id } => snapshots::load(project, snapshot_id),
             C::RenameSnapshot { snapshot_id, name } => {
@@ -695,6 +719,7 @@ impl Command {
             ) => a == b && sa.is_some() == sb.is_some() && ta.is_some() == tb.is_some(),
             (C::ResizeClip { clip_id: a, .. }, C::ResizeClip { clip_id: b, .. }) => a == b,
             (C::SetClipSwing { clip_id: a, .. }, C::SetClipSwing { clip_id: b, .. }) => a == b,
+            (C::MoveMarker { marker_id: a, .. }, C::MoveMarker { marker_id: b, .. }) => a == b,
             (C::TrimClipStart { clip_id: a, .. }, C::TrimClipStart { clip_id: b, .. }) => a == b,
             (
                 C::SetAutomationPoints { lane_id: a, .. },

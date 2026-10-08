@@ -218,6 +218,38 @@ export function applyCommand(project: Project, command: Command): Project {
     case "rename_clip":
       clipOf(command.clip_id)[1].name = command.name;
       break;
+    case "add_marker":
+    case "restore_marker": {
+      const m =
+        command.command === "add_marker"
+          ? { id: id(), name: command.name.trim(), start_beats: command.start_beats }
+          : command.marker;
+      if (!m.name) throw new Error("marker name can't be empty");
+      if ((p.markers ?? []).some((x) => Math.abs(x.start_beats - m.start_beats) < 1e-9)) {
+        throw new Error("there is already a marker at that beat");
+      }
+      p.markers = [...(p.markers ?? []), m].sort((a, b) => a.start_beats - b.start_beats);
+      break;
+    }
+    case "move_marker": {
+      const m = (p.markers ?? []).find((x) => x.id === command.marker_id);
+      if (!m) throw new Error(`there is no marker with id ${command.marker_id}`);
+      if ((p.markers ?? []).some((x) => x.id !== m.id && Math.abs(x.start_beats - command.start_beats) < 1e-9)) {
+        throw new Error("there is already a marker at that beat");
+      }
+      m.start_beats = command.start_beats;
+      p.markers = [...(p.markers ?? [])].sort((a, b) => a.start_beats - b.start_beats);
+      break;
+    }
+    case "rename_marker": {
+      const m = (p.markers ?? []).find((x) => x.id === command.marker_id);
+      if (!m) throw new Error(`there is no marker with id ${command.marker_id}`);
+      m.name = command.name.trim();
+      break;
+    }
+    case "remove_marker":
+      p.markers = (p.markers ?? []).filter((x) => x.id !== command.marker_id);
+      break;
     case "take_snapshot": {
       const name = command.name.trim();
       if (!name) throw new Error("version name can't be empty");

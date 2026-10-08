@@ -37,6 +37,8 @@ export default function GodotExportDialog({ project, onPickFolder, onExport, onC
   const [region, setRegion] = useState<"loop" | "song">(project.loop_region.enabled ? "loop" : "song");
   const [looped, setLooped] = useState(true);
   const [intro, setIntro] = useState(false);
+  const sectionCount = project.markers?.length ?? 0;
+  const [markerSections, setMarkerSections] = useState(sectionCount > 0);
   const [stems, setStems] = useState(false);
   const [lufs, setLufs] = useState<number | null>(-16);
   const [busy, setBusy] = useState(false);
@@ -63,6 +65,7 @@ export default function GodotExportDialog({ project, onPickFolder, onExport, onC
       end_beats: useLoop ? loop.end_beats : null,
       looped,
       intro: introPossible && intro,
+      sections_from_markers: sectionCount > 0 && markerSections,
       stems,
       layers: stems,
       target_lufs: lufs,
@@ -152,6 +155,19 @@ export default function GodotExportDialog({ project, onPickFolder, onExport, onC
             onChange={(e) => setIntro(e.target.checked)}
           />
           Play from the song start, then loop the loop region (what comes before it is an intro that plays once)
+        </label>
+        <label
+          className="dialog-check"
+          title={sectionCount > 0 ? undefined : "Double-click the strip under the ruler to mark sections first"}
+        >
+          <input
+            type="checkbox"
+            checked={sectionCount > 0 && markerSections}
+            disabled={sectionCount === 0}
+            onChange={(e) => setMarkerSections(e.target.checked)}
+          />
+          Sections from markers{sectionCount > 0 ? ` (${(project.markers ?? []).map((m) => m.name).join(", ")})` : ""}: one
+          loop per section, plus an interactive resource that switches between them on the next bar
         </label>
         <label className="dialog-check">
           <input type="checkbox" checked={stems} onChange={(e) => setStems(e.target.checked)} />

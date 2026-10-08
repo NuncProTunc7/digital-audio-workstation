@@ -21,6 +21,12 @@ pub fn song_summary(project: &Project) -> Value {
             "effects": project.master.effects.iter().map(|e| json!({"id": e.id, "kind": e.kind, "enabled": e.enabled})).collect::<Vec<_>>(),
         },
         "tracks": project.tracks.iter().map(track_brief).collect::<Vec<_>>(),
+        "markers": project.markers.iter().map(|m| json!({
+            "id": m.id,
+            "name": m.name,
+            "start_beats": m.start_beats,
+        })).collect::<Vec<_>>(),
+        "sections": project.sections(),
         "versions": project.snapshots.iter().map(|s| json!({
             "id": s.id,
             "name": s.name,

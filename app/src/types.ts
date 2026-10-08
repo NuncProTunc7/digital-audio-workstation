@@ -131,6 +131,15 @@ export interface Project {
   next_id: number;
   /** Saved versions of the song. */
   snapshots?: Snapshot[];
+  /** Section markers, in time order. */
+  markers?: Marker[];
+}
+
+/** A named point where a section starts. */
+export interface Marker {
+  id: number;
+  name: string;
+  start_beats: number;
 }
 
 /** The music a saved version keeps. */
@@ -140,6 +149,7 @@ export interface SongState {
   tracks: Track[];
   master: { volume_db: number; effects: Effect[] };
   loop_region: LoopRegion;
+  markers?: Marker[];
 }
 
 export interface Snapshot {
@@ -219,6 +229,11 @@ export type Command =
   | { command: "resize_clip"; clip_id: number; length_beats: number }
   | { command: "rename_clip"; clip_id: number; name: string }
   | { command: "set_clip_swing"; clip_id: number; swing: Swing | null }
+  | { command: "add_marker"; name: string; start_beats: number }
+  | { command: "move_marker"; marker_id: number; start_beats: number }
+  | { command: "rename_marker"; marker_id: number; name: string }
+  | { command: "remove_marker"; marker_id: number }
+  | { command: "restore_marker"; marker: Marker }
   | { command: "take_snapshot"; name: string }
   | { command: "load_snapshot"; snapshot_id: number }
   | { command: "rename_snapshot"; snapshot_id: number; name: string }
@@ -445,6 +460,8 @@ export interface GodotOptions {
   looped: boolean | null;
   /** With looped: start at the song start and loop only the region (an intro). */
   intro?: boolean | null;
+  /** Export the song's marker sections as an AudioStreamInteractive. */
+  sections_from_markers?: boolean | null;
   stems: boolean | null;
   layers: boolean | null;
   target_lufs: number | null;

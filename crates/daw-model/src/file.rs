@@ -130,6 +130,13 @@ pub(crate) fn validate_project(project: &mut Project) -> Result<(), FileError> {
             }
         }
     }
+    // Markers outside the song can't be moved back by hand; drop them.
+    project.markers.retain(|m| {
+        m.start_beats.is_finite() && (0.0..=crate::project::MAX_BEATS).contains(&m.start_beats)
+    });
+    project
+        .markers
+        .sort_by(|a, b| a.start_beats.total_cmp(&b.start_beats));
     let chains = project
         .tracks
         .iter_mut()

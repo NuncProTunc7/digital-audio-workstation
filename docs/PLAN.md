@@ -274,7 +274,9 @@ Original spec: many game tracks play an intro once and then loop the body.
 - Godot: OGG `.import` gets `loop_offset=<seconds of loop start>`; WAV `smpl` chunk gets `loop_begin=<frame>`. Verify with Godot 4.6 headless as in Phase 5.
 - Done when an export test shows a seamless join at the loop start and Godot reports the offset.
 
-**6. Section markers.** Adaptive "explore/combat" export is Claude-only today.
+**6. Section markers** ✅ (built Oct 2026). `Project.markers` (also kept in saved versions) with `AddMarker`/`MoveMarker` (coalesces)/`RenameMarker`/`RemoveMarker`/`RestoreMarker`; `Project::sections()`; markers and sections appear in `get_song`. Marker strip under the ruler (double-click to add and name, drag, ✕ to delete) with dashed lines across the lanes; Godot dialog **Sections from markers** and `sections_from_markers` for `export_godot`.
+
+Original spec: adaptive "explore/combat" export was Claude-only.
 - Model: `Project.markers: Vec<Marker { id, name, start_beats }>` with Commands `AddMarker`, `MoveMarker`, `RenameMarker`, `RemoveMarker`/`RestoreMarker` (+ round-trip tests, preview.ts cases). A section runs from its marker to the next one (or the song end).
 - UI: a marker strip under the ruler (double-click to add, drag, double-click name to rename). Godot dialog: "Sections from markers" builds an `AudioStreamInteractive`.
 - Done when the dialog exports sections the user marked by hand.

@@ -523,6 +523,130 @@ fn audio_used_only_by_a_version_is_still_part_of_the_song() {
 }
 
 #[test]
+fn markers_divide_the_song_into_sections() {
+    let mut s = Session::new(fixture());
+    // The fixture's clips end at beat 8: two bars.
+    s.execute(Command::AddMarker {
+        name: "Combat".into(),
+        start_beats: 4.0,
+    })
+    .expect("combat");
+    s.execute(Command::AddMarker {
+        name: " Explore ".into(),
+        start_beats: 0.0,
+    })
+    .expect("explore");
+    let p = s.project();
+    assert_eq!(
+        p.markers
+            .iter()
+            .map(|m| m.name.as_str())
+            .collect::<Vec<_>>(),
+        ["Explore", "Combat"],
+        "kept in time order, names trimmed"
+    );
+    let sections: Vec<_> = p
+        .sections()
+        .into_iter()
+        .map(|x| (x.name, x.start_beats, x.end_beats))
+        .collect();
+    assert_eq!(
+        sections,
+        [("Explore".into(), 0.0, 4.0), ("Combat".into(), 4.0, 8.0)]
+    );
+    let summary = crate::summary::song_summary(p);
+    assert_eq!(summary["sections"][1]["name"], "Combat");
+    // One marker per beat; names can't be empty.
+    for bad in [
+        Command::AddMarker {
+            name: "Again".into(),
+            start_beats: 4.0,
+        },
+        Command::AddMarker {
+            name: "  ".into(),
+            start_beats: 2.0,
+        },
+        Command::AddMarker {
+            name: "Late".into(),
+            start_beats: -1.0,
+        },
+    ] {
+        assert!(s.execute(bad).is_err());
+    }
+}
+
+#[test]
+fn marker_commands_round_trip_undo_and_drag_as_one_step() {
+    let mut s = Session::new(fixture());
+    s.execute(Command::AddMarker {
+        name: "Boss".into(),
+        start_beats: 8.0,
+    })
+    .expect("add");
+    let id = s.project().markers[0].id;
+    let marker = s.project().markers[0].clone();
+    for command in [
+        Command::AddMarker {
+            name: "Boss".into(),
+            start_beats: 8.0,
+        },
+        Command::MoveMarker {
+            marker_id: id,
+            start_beats: 12.0,
+        },
+        Command::RenameMarker {
+            marker_id: id,
+            name: "Final boss".into(),
+        },
+        Command::RemoveMarker { marker_id: id },
+        Command::RestoreMarker {
+            marker: marker.clone(),
+        },
+    ] {
+        let json = serde_json::to_string(&command).expect("serialize");
+        assert_eq!(
+            command,
+            serde_json::from_str::<Command>(&json).expect("back"),
+            "{json}"
+        );
+    }
+    // Dragging a marker through several beats is one undo step.
+    for beat in [9.0, 10.0, 11.0, 12.0] {
+        s.execute(Command::MoveMarker {
+            marker_id: id,
+            start_beats: beat,
+        })
+        .expect("move");
+    }
+    s.end_gesture();
+    s.undo();
+    assert_eq!(s.project().markers[0].start_beats, 8.0);
+    // Removing and undoing keeps the id.
+    s.execute(Command::RemoveMarker { marker_id: id })
+        .expect("remove");
+    assert!(s.project().markers.is_empty());
+    s.undo();
+    assert_eq!(s.project().markers, vec![marker]);
+    // Saved versions keep their markers.
+    s.execute(Command::TakeSnapshot { name: "v".into() })
+        .expect("take");
+    s.execute(Command::RemoveMarker { marker_id: id })
+        .expect("remove");
+    let version = s.project().snapshots[0].id;
+    s.execute(Command::LoadSnapshot {
+        snapshot_id: version,
+    })
+    .expect("load");
+    assert_eq!(s.project().markers.len(), 1);
+    // And files keep them.
+    let json = crate::file::project_to_json(s.project());
+    assert_eq!(
+        crate::file::project_from_json(&json).expect("load").markers,
+        s.project().markers
+    );
+}
+
+#[test]
 fn swing_slider_drag_is_one_undo_step() {
     let mut s = Session::new(fixture());
     let clip = clip_id(s.project());

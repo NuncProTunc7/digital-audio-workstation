@@ -14,6 +14,7 @@ What you get:
 
 - Seamless loops: the reverb tail at the end is folded back onto the start, so the loop point has no click or gap. Godot loops them without any setup.
 - With stems, a `*_layers.tres` (`AudioStreamSynchronized`): all stems play in sync, and your game fades layers in and out (e.g. add drums when combat starts) by changing each stream's volume.
-- Claude can also export named sections (say *explore* and *combat*) as an `AudioStreamInteractive` that switches to the other section on the next bar.
+- **Sections from markers**: mark where each part of the song starts (see [section markers](writing-music.md)), then tick **Sections from markers**. Each section becomes its own seamless loop, plus a `*_sections.tres` (`AudioStreamInteractive`) that switches to another section on the next bar with a short crossfade. In Godot, call `switch_to_clip_by_name("Combat")` on the playback to change section.
+- Claude can export sections too, from your markers or ones it names itself.
 
 Using it in Godot 4.6: drag the `.ogg` (or `.tres`) onto an `AudioStreamPlayer`'s **Stream** and enable **Autoplay**, or set it from code. Re-exporting replaces the files and keeps Godot's references working.

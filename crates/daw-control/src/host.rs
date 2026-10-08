@@ -776,7 +776,19 @@ pub fn export_godot<H: Host>(
         intro: options.intro.unwrap_or(false),
         stems: options.stems.unwrap_or(false),
         layers_resource: options.layers.unwrap_or(true),
-        sections: options.sections.clone().unwrap_or_default(),
+        sections: match &options.sections {
+            Some(s) => s.clone(),
+            None if options.sections_from_markers == Some(true) => project
+                .sections()
+                .into_iter()
+                .map(|s| daw_export::Section {
+                    name: s.name,
+                    start_beats: s.start_beats,
+                    end_beats: s.end_beats,
+                })
+                .collect(),
+            None => Vec::new(),
+        },
         target_lufs: if options.normalize == Some(false) {
             None
         } else {
@@ -899,6 +911,65 @@ pub(crate) mod tests {
 
     fn ok(r: Response) -> Value {
         r.into_result().expect("request succeeded")
+    }
+
+    #[test]
+    fn godot_sections_can_come_from_the_songs_markers() {
+        let host = TestHost::default();
+        ok(execute(
+            &host,
+            Command::CreateClip {
+                track_id: 1,
+                start_beats: 0.0,
+                length_beats: 16.0,
+                name: None,
+                notes: (0..16)
+                    .map(|b| daw_model::NoteInput {
+                        chance: 100,
+                        pitch: 60,
+                        start_beats: f64::from(b),
+                        length_beats: 0.5,
+                        velocity: 100,
+                        id: None,
+                    })
+                    .collect(),
+            },
+        ));
+        for (name, beat) in [("Explore", 0.0), ("Combat", 8.0)] {
+            ok(execute(
+                &host,
+                Command::AddMarker {
+                    name: name.into(),
+                    start_beats: beat,
+                },
+            ));
+        }
+        let dir = tempfile::tempdir().expect("tmp");
+        std::fs::write(dir.path().join("project.godot"), "config_version=5\n").expect("godot");
+        let options: crate::protocol::GodotOptions = serde_json::from_value(json!({
+            "project_dir": dir.path().to_string_lossy(),
+            "name": "Dungeon",
+            "sections_from_markers": true,
+        }))
+        .expect("options");
+        let report = export_godot(&host, &options).expect("export");
+        for f in [
+            "res://music/dungeon_explore.ogg",
+            "res://music/dungeon_combat.ogg",
+            "res://music/dungeon_sections.tres",
+        ] {
+            assert!(
+                report.files.iter().any(|x| x == f),
+                "{f} in {:?}",
+                report.files
+            );
+        }
+        let tres =
+            std::fs::read_to_string(dir.path().join("music/dungeon_sections.tres")).expect("tres");
+        assert!(
+            tres.contains("clip_0/name = &\"Explore\"")
+                && tres.contains("clip_1/name = &\"Combat\"")
+        );
     }
 
     #[test]

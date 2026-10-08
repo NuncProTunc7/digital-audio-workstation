@@ -139,6 +139,10 @@ pub struct GodotOptions {
     pub layers: Option<bool>,
     #[serde(default)]
     pub sections: Option<Vec<daw_export::Section>>,
+    /// Use the song's section markers as the sections (when `sections` is
+    /// not given).
+    #[serde(default)]
+    pub sections_from_markers: Option<bool>,
     /// Loudness target in LUFS (default -16); `normalize: false` turns it off.
     #[serde(default)]
     pub target_lufs: Option<f64>,

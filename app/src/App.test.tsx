@@ -4,7 +4,11 @@ import App from "./App";
 import { createPreviewBackend } from "./backend";
 import type { Backend } from "./backend";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  // Each test starts without remembered settings (like the Godot folder).
+  window.localStorage.clear();
+});
 
 function spyBackend(): Backend {
   const b = createPreviewBackend();
@@ -506,6 +510,62 @@ describe("Drum step sequencer", () => {
     expect(document.querySelector(".roll-grid")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Steps" }));
     expect(screen.getByRole("row", { name: "Kick" })).toBeTruthy();
+  });
+});
+
+describe("Section markers", () => {
+  it("adds, names, moves and deletes markers, and exports their sections", async () => {
+    const backend = createPreviewBackend();
+    vi.spyOn(backend, "exportGodot");
+    await renderApp(backend);
+    const strip = screen.getByRole("group", { name: "Section markers" });
+    const ppb = parseFloat((document.querySelector(".ruler") as HTMLElement).style.width) / 128; // 32 empty bars
+    // Double-click on bar 3 (beat 8; the bounding box is at 0 in tests).
+    await act(async () => {
+      fireEvent.doubleClick(strip, { clientX: 8.5 * ppb });
+    });
+    const name = await screen.findByLabelText("Marker name");
+    fireEvent.change(name, { target: { value: "Combat" } });
+    await act(async () => {
+      fireEvent.blur(name);
+    });
+    let markers = (await backend.getProject()).project.markers ?? [];
+    expect(markers).toMatchObject([{ name: "Combat", start_beats: 8 }]);
+    // Drag it one bar later.
+    const marker = screen.getByTitle(/^Combat:/);
+    const timeline = document.querySelector(".timeline") as HTMLElement;
+    await act(async () => {
+      fireEvent.pointerDown(marker, { button: 0, clientX: 100 });
+      fireEvent.pointerMove(timeline, { clientX: 100 + 4 * ppb });
+      fireEvent.pointerUp(timeline);
+    });
+    markers = (await backend.getProject()).project.markers ?? [];
+    expect(markers[0].start_beats).toBe(12);
+    // A second marker at the start, then export sections to Godot.
+    await act(async () => {
+      fireEvent.doubleClick(strip, { clientX: 0.5 * ppb });
+    });
+    await act(async () => {
+      fireEvent.blur(await screen.findByLabelText("Marker name"));
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Export ▾" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "To Godot (loops, stems)…" }));
+    expect((screen.getByLabelText(/Sections from markers \(Section 2, Combat\)/) as HTMLInputElement).checked).toBe(true);
+    fireEvent.change(screen.getByLabelText("Godot project folder"), { target: { value: "C:\\Games\\MyGame" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Export" }));
+    });
+    expect(backend.exportGodot).toHaveBeenCalledWith(expect.objectContaining({ sections_from_markers: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    // Delete one; undo brings it back.
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Delete marker Combat" }));
+    });
+    expect((await backend.getProject()).project.markers?.map((m) => m.name)).toEqual(["Section 2"]);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    });
+    expect((await backend.getProject()).project.markers?.map((m) => m.name)).toEqual(["Section 2", "Combat"]);
   });
 });
 

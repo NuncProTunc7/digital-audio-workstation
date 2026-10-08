@@ -53,6 +53,28 @@ pub struct Project {
     /// mix") to go back to or compare with.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub snapshots: Vec<Snapshot>,
+    /// Section markers, in time order. A section runs from its marker to
+    /// the next one (or the end of the song).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub markers: Vec<Marker>,
+}
+
+/// A named point on the timeline where a section starts ("Explore",
+/// "Combat").
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct Marker {
+    pub id: Id,
+    pub name: String,
+    /// Where the section starts, in beats from the song start.
+    pub start_beats: f64,
+}
+
+/// A part of the song between two markers.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct SongSection {
+    pub name: String,
+    pub start_beats: f64,
+    pub end_beats: f64,
 }
 
 /// A named, saved version of the song.
@@ -74,6 +96,8 @@ pub struct SongState {
     pub master: MasterBus,
     #[serde(default)]
     pub loop_region: LoopRegion,
+    #[serde(default)]
+    pub markers: Vec<Marker>,
 }
 
 fn default_format_version() -> u32 {
@@ -93,7 +117,29 @@ impl Project {
             tracks: self.tracks.clone(),
             master: self.master.clone(),
             loop_region: self.loop_region,
+            markers: self.markers.clone(),
         }
+    }
+
+    /// The sections the markers divide the song into: each runs from its
+    /// marker to the next, the last to the end of the song (rounded up to
+    /// whole bars). Sections with nothing in them are left out.
+    pub fn sections(&self) -> Vec<SongSection> {
+        let bpb = self.beats_per_bar();
+        let song_end = (self.end_beats() / bpb).ceil() * bpb;
+        self.markers
+            .iter()
+            .enumerate()
+            .map(|(i, m)| SongSection {
+                name: m.name.clone(),
+                start_beats: m.start_beats,
+                end_beats: self
+                    .markers
+                    .get(i + 1)
+                    .map_or(song_end, |next| next.start_beats),
+            })
+            .filter(|s| s.end_beats > s.start_beats)
+            .collect()
     }
 
     /// Replaces the music with `song` (keeping the name and the saved
@@ -105,6 +151,7 @@ impl Project {
         self.tracks = song.tracks;
         self.master = song.master;
         self.loop_region = song.loop_region;
+        self.markers = song.markers;
         if let Some(max) = self.all_ids().into_iter().max() {
             self.reserve_id(max);
         }
@@ -171,6 +218,7 @@ impl Project {
     /// Whether any track, clip, note, or effect already uses `id`.
     pub fn id_in_use(&self, id: Id) -> bool {
         self.snapshots.iter().any(|s| s.id == id)
+            || self.markers.iter().any(|m| m.id == id)
             || self.master.effects.iter().any(|e| e.id == id)
             || self.tracks.iter().any(|t| {
                 t.id == id
@@ -186,6 +234,7 @@ impl Project {
     pub(crate) fn all_ids(&self) -> Vec<Id> {
         let mut ids: Vec<Id> = self.master.effects.iter().map(|e| e.id).collect();
         ids.extend(self.snapshots.iter().map(|s| s.id));
+        ids.extend(self.markers.iter().map(|m| m.id));
         for t in &self.tracks {
             ids.push(t.id);
             ids.extend(t.mixer.effects.iter().map(|e| e.id));
@@ -226,6 +275,7 @@ impl Default for Project {
             automation: Vec::new(),
         };
         Self {
+            markers: Vec::new(),
             snapshots: Vec::new(),
             format_version: FORMAT_VERSION,
             name: "Untitled".to_owned(),
