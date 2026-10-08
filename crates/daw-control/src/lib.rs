@@ -25,8 +25,8 @@ pub use client::{ClientError, ControlClient};
 pub use discovery::{APP_ID, ControlFile, control_file_path, unsaved_audio_dir};
 pub use host::{
     CalibrationResult, Host, RecordingDelay, SavedProject, begin_take, diagnostic_report, end_take,
-    export_godot, export_song_wav, handle, import_audio, load_user_preset, new_project,
-    open_project, sample_pack_status, save_project, save_user_preset,
+    export_godot, export_song_wav, handle, import_audio, inspect_export, load_user_preset,
+    new_project, open_project, sample_pack_status, save_project, save_user_preset,
 };
 pub use protocol::{GodotOptions, Request, Response};
 pub use server::ControlServer;

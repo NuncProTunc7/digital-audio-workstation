@@ -355,28 +355,15 @@ fn extra_tools() -> Vec<ToolDef> {
             false,
         ),
         tool(
+            "inspect_export",
+            "Check a Godot export before writing it, with the same options as export_godot (project_dir not needed): renders exactly what would be exported and reports, in plain words, missing recordings, clipping or hot peaks, silence, a click or level jump at the loop point, loops that aren't whole beats or bars (Godot can't beat-sync them), and stems of different lengths. Returns findings (level problem/warning/ok), loudness, peak, and length. Run it before export_godot and fix problems first.",
+            object_schema(godot_options_properties(), &[]),
+            true,
+        ),
+        tool(
             "export_godot",
             "Export music straight into the user's Godot project as seamless loops. Writes OGG (or WAV) files plus Godot .import settings so they loop as soon as Godot imports them (with BPM/beat info for beat-synced transitions). Region: the loop region if looping is on, else the whole song; with intro=true the file starts at the song start and only the region loops. Options: stems (one file per track) with an AudioStreamSynchronized layers resource for adaptive mixing; sections (named regions, e.g. explore/combat) become an AudioStreamInteractive that switches on the next bar. Loudness is normalized to -16 LUFS unless told otherwise. Ask the user for their Godot project folder if you don't know it.",
-            object_schema(
-                json!({
-                    "project_dir": { "type": "string", "description": "The Godot project folder (contains project.godot)." },
-                    "folder": { "type": "string", "description": "Folder inside the project (default \"music\")." },
-                    "name": { "type": "string", "description": "Base file name (default: the song name)." },
-                    "format": { "type": "string", "enum": ["ogg", "wav"], "description": "Default ogg." },
-                    "start_beats": num("Region start (default: loop region or song start)."),
-                    "end_beats": num("Region end."),
-                    "looped": { "type": "boolean", "description": "Seamless loop (default true). False: plays once with a ring-out." },
-                    "intro": { "type": "boolean", "description": "With looped: the file starts at the song start and Godot loops only the region (default: the loop region), so everything before it is an intro that plays once. Default false." },
-                    "stems": { "type": "boolean", "description": "Also export each track separately (default false)." },
-                    "bus_stems": { "type": "boolean", "description": "With stems: one stem per bus (the tracks playing into it) plus an \"other\" stem for tracks playing straight into the master, instead of one per track. Default false." },
-                    "layers": { "type": "boolean", "description": "With stems, write an AudioStreamSynchronized .tres (default true)." },
-                    "sections": { "type": "array", "description": "Named sections for an AudioStreamInteractive .tres.", "items": { "type": "object", "properties": { "name": { "type": "string" }, "start_beats": { "type": "number" }, "end_beats": { "type": "number" } }, "required": ["name", "start_beats", "end_beats"] } },
-                    "sections_from_markers": { "type": "boolean", "description": "Use the song's section markers (see add_marker and get_song's sections) as the sections. Ignored when sections is given." },
-                    "target_lufs": num("Loudness target (default -16)."),
-                    "normalize": { "type": "boolean", "description": "False keeps the mix level as is." }
-                }),
-                &["project_dir"],
-            ),
+            object_schema(godot_options_properties(), &["project_dir"]),
             false,
         ),
         tool(
@@ -529,6 +516,10 @@ pub fn to_request(name: &str, args: Map<String, Value>) -> Result<Request, Strin
         "import_midi" => Request::ImportMidi {
             path: get_str("path").ok_or("path is required")?,
         },
+        "inspect_export" => Request::InspectExport(
+            serde_json::from_value(Value::Object(args))
+                .map_err(|e| format!("invalid arguments for inspect_export: {e}"))?,
+        ),
         "export_godot" => Request::ExportGodot(
             serde_json::from_value(Value::Object(args))
                 .map_err(|e| format!("invalid arguments for export_godot: {e}"))?,
@@ -562,6 +553,28 @@ pub fn to_request(name: &str, args: Map<String, Value>) -> Result<Request, Strin
         }
     };
     Ok(request)
+}
+
+/// The options of export_godot (and inspect_export).
+fn godot_options_properties() -> Value {
+    let num = |d: &str| json!({ "type": "number", "description": d });
+    json!({
+        "project_dir": { "type": "string", "description": "The Godot project folder (contains project.godot)." },
+        "folder": { "type": "string", "description": "Folder inside the project (default \"music\")." },
+        "name": { "type": "string", "description": "Base file name (default: the song name)." },
+        "format": { "type": "string", "enum": ["ogg", "wav"], "description": "Default ogg." },
+        "start_beats": num("Region start (default: loop region or song start)."),
+        "end_beats": num("Region end."),
+        "looped": { "type": "boolean", "description": "Seamless loop (default true). False: plays once with a ring-out." },
+        "intro": { "type": "boolean", "description": "With looped: the file starts at the song start and Godot loops only the region (default: the loop region), so everything before it is an intro that plays once. Default false." },
+        "stems": { "type": "boolean", "description": "Also export each track separately (default false)." },
+        "bus_stems": { "type": "boolean", "description": "With stems: one stem per bus (the tracks playing into it) plus an \"other\" stem for tracks playing straight into the master, instead of one per track. Default false." },
+        "layers": { "type": "boolean", "description": "With stems, write an AudioStreamSynchronized .tres (default true)." },
+        "sections": { "type": "array", "description": "Named sections for an AudioStreamInteractive .tres.", "items": { "type": "object", "properties": { "name": { "type": "string" }, "start_beats": { "type": "number" }, "end_beats": { "type": "number" } }, "required": ["name", "start_beats", "end_beats"] } },
+        "sections_from_markers": { "type": "boolean", "description": "Use the song's section markers (see add_marker and get_song's sections) as the sections. Ignored when sections is given." },
+        "target_lufs": num("Loudness target (default -16)."),
+        "normalize": { "type": "boolean", "description": "False keeps the mix level as is." }
+    })
 }
 
 #[cfg(test)]

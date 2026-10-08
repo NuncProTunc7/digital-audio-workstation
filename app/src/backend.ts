@@ -12,6 +12,7 @@ import type {
   ClaudeStatus,
   CompareSide,
   Comparison,
+  Inspection,
   InstrumentKind,
   PreviewPlan,
   UserPreset,
@@ -88,6 +89,10 @@ export interface Backend {
   transportStatus(): Promise<TransportStatus>;
   audioStatus(): Promise<AudioStatus>;
   setOutputDevice(name: string | null): Promise<AudioStatus>;
+  /** Checks a Godot export without writing it. */
+  inspectExport(options: GodotOptions): Promise<Inspection>;
+  /** Plays the end of a loop into its start, over and over; stop() ends it. */
+  auditionSeam(startBeats: number, endBeats: number): Promise<void>;
   /** The user's own presets. */
   userPresets(): Promise<UserPreset[]>;
   /** Saves a track's sound as the user's preset `name`; returns the list. */
@@ -202,6 +207,8 @@ export const tauriBackend: Backend = {
   audioStatus: () => invoke("audio_status"),
   setOutputDevice: (name) => invoke("set_output_device", { name }),
   setBufferSize: (frames) => invoke("set_buffer_size", { frames }),
+  inspectExport: (options) => invoke("inspect_export", { options }),
+  auditionSeam: (startBeats, endBeats) => invoke("audition_seam", { startBeats, endBeats }),
   userPresets: () => invoke("user_presets"),
   savePreset: (trackId, name) => invoke("save_preset", { trackId, name }),
   deletePreset: (kind, name) => invoke("delete_preset", { kind, name }),

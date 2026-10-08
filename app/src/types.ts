@@ -581,6 +581,20 @@ export interface GodotOptions {
   normalize: boolean | null;
 }
 
+/** One thing the export check found. */
+export interface Finding {
+  level: "problem" | "warning" | "ok";
+  message: string;
+}
+
+/** What checking an export found. */
+export interface Inspection {
+  findings: Finding[];
+  integrated_lufs: number | null;
+  peak_dbfs: number;
+  seconds: number;
+}
+
 /** What a Godot export wrote. */
 export interface ExportReport {
   /** res:// paths. */

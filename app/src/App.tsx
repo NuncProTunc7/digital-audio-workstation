@@ -1224,6 +1224,8 @@ export default function App({ backend }: AppProps) {
           project={project}
           onPickFolder={() => backend.pickFolder("Choose your Godot project folder")}
           onExport={(options) => run(() => backend.exportGodot(options))}
+          onInspect={(options) => run(() => backend.inspectExport(options))}
+          onAuditionSeam={(start, end) => void run(() => backend.auditionSeam(start, end))}
           onClose={() => setGodotOpen(false)}
         />
       )}

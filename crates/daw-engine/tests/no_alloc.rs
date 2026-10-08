@@ -268,6 +268,12 @@ fn audio_thread_never_allocates() {
     );
     engine.jump_at_next_bar(0.0, 0.0, 4.0);
     engine.cancel_jump();
+    engine.audition_seam(0.0, 4.0, 1.0);
+    assert_eq!(
+        process_counting(&mut processor, &mut out),
+        0,
+        "seam audition"
+    );
     engine.reset_layers();
     assert_eq!(
         process_counting(&mut processor, &mut out),

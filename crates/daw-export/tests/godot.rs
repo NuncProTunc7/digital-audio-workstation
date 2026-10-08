@@ -220,6 +220,100 @@ fn writes_intro_loops_for_a_real_godot() {
 }
 
 #[test]
+fn the_inspector_passes_a_clean_loop_and_flags_problems() {
+    use daw_export::{Level, inspect};
+    let pool = AudioPool::in_temp_dir();
+    let dir = godot_project();
+    let mut s = spec(dir.path());
+    s.target_lufs = Some(-16.0);
+    s.stems = true;
+    let report = inspect(&song(), &pool, &s).expect("inspect");
+    assert!(report.ready(), "{:#?}", report.findings);
+    let says = |r: &daw_export::Inspection, level: Level, text: &str| {
+        r.findings
+            .iter()
+            .any(|f| f.level == level && f.message.contains(text))
+    };
+    assert!(
+        says(&report, Level::Ok, "joins smoothly"),
+        "{:#?}",
+        report.findings
+    );
+    assert!(
+        says(&report, Level::Ok, "exactly as long"),
+        "{:#?}",
+        report.findings
+    );
+
+    // Too loud with loudness matching off: it clips.
+    let mut loud = song();
+    Command::SetMasterVolume { volume_db: 6.0 }
+        .apply(&mut loud)
+        .expect("loud");
+    for t in [1, 2, 3] {
+        Command::SetTrackMixer {
+            track_id: t,
+            volume_db: Some(6.0),
+            pan: None,
+            mute: None,
+            solo: None,
+        }
+        .apply(&mut loud)
+        .expect("track");
+    }
+    s.target_lufs = None;
+    let report = inspect(&loud, &pool, &s).expect("inspect");
+    assert!(
+        says(&report, Level::Problem, "clips") || says(&report, Level::Warning, "Peaks reach"),
+        "{:#?}",
+        report.findings
+    );
+
+    // A recording that isn't there, and a region with nothing in it.
+    let mut broken = song();
+    Command::AddTrack {
+        name: "Vox".into(),
+        instrument: daw_model::InstrumentKind::Audio,
+        preset: None,
+        index: None,
+    }
+    .apply(&mut broken)
+    .expect("audio track");
+    let vox = broken.tracks[3].id;
+    Command::AddAudioClip {
+        track_id: vox,
+        start_beats: 0.0,
+        audio: daw_model::AudioRegion {
+            file: "gone.wav".into(),
+            file_seconds: 2.0,
+            offset_seconds: 0.0,
+            gain_db: 0.0,
+            fade_in_seconds: 0.0,
+            fade_out_seconds: 0.0,
+            source_bpm: None,
+        },
+        length_beats: None,
+        name: None,
+    }
+    .apply(&mut broken)
+    .expect("clip");
+    s.start_beats = Some(32.0);
+    s.end_beats = Some(40.0);
+    let report = inspect(&broken, &pool, &s).expect("inspect");
+    assert!(!report.ready());
+    assert!(
+        says(&report, Level::Problem, "gone.wav"),
+        "{:#?}",
+        report.findings
+    );
+    assert!(
+        says(&report, Level::Problem, "silent"),
+        "{:#?}",
+        report.findings
+    );
+}
+
+#[test]
 fn stems_can_be_one_per_bus() {
     let mut p = song();
     Command::AddBus {

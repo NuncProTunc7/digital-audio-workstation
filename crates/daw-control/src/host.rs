@@ -264,6 +264,9 @@ fn handle_inner<H: Host>(host: &H, request: Request) -> Result<Value, String> {
             Ok(json!({ "metronome": on }))
         }
         Request::DiagnosticReport => Ok(json!({ "report": diagnostic_report(host)? })),
+        Request::InspectExport(options) => {
+            serde_json::to_value(inspect_export(host, &options)?).map_err(|e| e.to_string())
+        }
         Request::SavePreset { track_id, name } => {
             let list = save_user_preset(host, track_id, &name)?;
             host.project_changed(&format!("Claude saved preset {}", name.trim()));
@@ -819,7 +822,25 @@ pub fn export_godot<H: Host>(
     options: &crate::protocol::GodotOptions,
 ) -> Result<daw_export::ExportReport, String> {
     let project = host.session()?.project().clone();
-    let spec = daw_export::GodotExport {
+    let spec = godot_spec(&project, options);
+    daw_export::export_to_godot(&project, &host.audio(), &spec).map_err(|e| e.to_string())
+}
+
+/// Checks what `export_godot` with `options` would write, without writing.
+pub fn inspect_export<H: Host>(
+    host: &H,
+    options: &crate::protocol::GodotOptions,
+) -> Result<daw_export::Inspection, String> {
+    let project = host.session()?.project().clone();
+    let spec = godot_spec(&project, options);
+    daw_export::inspect(&project, &host.audio(), &spec).map_err(|e| e.to_string())
+}
+
+fn godot_spec(
+    project: &Project,
+    options: &crate::protocol::GodotOptions,
+) -> daw_export::GodotExport {
+    daw_export::GodotExport {
         project_dir: PathBuf::from(&options.project_dir),
         folder: options.folder.clone().unwrap_or_else(|| "music".into()),
         name: options.name.clone().unwrap_or_else(|| project.name.clone()),
@@ -849,8 +870,7 @@ pub fn export_godot<H: Host>(
         } else {
             Some(options.target_lufs.unwrap_or(DEFAULT_GAME_LUFS))
         },
-    };
-    daw_export::export_to_godot(&project, &host.audio(), &spec).map_err(|e| e.to_string())
+    }
 }
 
 /// Renders the whole song (plus a 2 s tail) to a 24-bit WAV file. Returns

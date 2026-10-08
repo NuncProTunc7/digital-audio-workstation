@@ -774,6 +774,29 @@ fn set_count_in(state: State<'_, AppState>, bars: u32) -> Result<u32, String> {
     state.set_count_in_bars(bars)
 }
 
+/// Checks a Godot export without writing it. Renders, so off the main
+/// thread.
+#[tauri::command(async)]
+fn inspect_export(
+    state: State<'_, AppState>,
+    options: daw_control::GodotOptions,
+) -> Result<daw_export::Inspection, String> {
+    daw_control::inspect_export(&*state, &options)
+}
+
+/// Plays the end of a loop into its start, over and over (Stop ends it).
+#[tauri::command]
+fn audition_seam(
+    state: State<'_, AppState>,
+    start_beats: f64,
+    end_beats: f64,
+) -> Result<(), String> {
+    let engine = state.engine().ok_or("no audio output; check the device")?;
+    let bar = state.session()?.project().beats_per_bar();
+    engine.audition_seam(start_beats, end_beats, bar);
+    Ok(())
+}
+
 /// The user's own presets.
 #[tauri::command]
 fn user_presets(state: State<'_, AppState>) -> Vec<daw_control::presets::UserPreset> {
@@ -1472,6 +1495,8 @@ pub fn run() {
             compare_start,
             compare_listen,
             compare_stop,
+            inspect_export,
+            audition_seam,
             user_presets,
             save_preset,
             delete_preset,

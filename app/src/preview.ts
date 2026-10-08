@@ -746,6 +746,21 @@ export function createPreviewBackend(): PreviewBackend {
     }),
     audioStatus: async () => audio(),
     setOutputDevice: async () => audio(),
+    inspectExport: async () => ({
+      findings: [
+        { level: project.tracks.some((t) => t.clips.length > 0) ? "ok" : "problem", message: project.tracks.some((t) => t.clips.length > 0) ? "Something plays." : "The export would be silent: nothing plays in this part of the song." },
+        { level: "ok", message: "The loop joins smoothly where it repeats." },
+      ],
+      integrated_lufs: -16,
+      peak_dbfs: -3,
+      seconds: 8,
+    }),
+    auditionSeam: async (_start, endBeats) => {
+      // The preview just plays from a bar before the loop point.
+      startBeats = Math.max(0, endBeats - 4);
+      startedAt = performance.now();
+      playing = true;
+    },
     userPresets: async () => structuredClone(userPresets),
     savePreset: async (trackId, name) => {
       const t = project.tracks.find((x) => x.id === trackId);

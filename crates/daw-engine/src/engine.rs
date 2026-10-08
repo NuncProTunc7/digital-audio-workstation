@@ -178,6 +178,16 @@ impl Engine {
         });
     }
 
+    /// Plays the last `span_beats` of a loop into its first `span_beats`,
+    /// over and over, to judge the loop point.
+    pub fn audition_seam(&self, start_beats: f64, end_beats: f64, span_beats: f64) {
+        self.send(EngineMessage::AuditionSeam {
+            start_beats,
+            end_beats,
+            span_beats,
+        });
+    }
+
     /// Forgets a queued section change.
     pub fn cancel_jump(&self) {
         self.send(EngineMessage::CancelJump);
@@ -1087,6 +1097,32 @@ mod tests {
         engine.locate(0.0);
         let (after, before) = windows(&render(&mut p, 1.0));
         assert!(after < 0.5 * before, "ducked {after} vs {before}");
+    }
+
+    #[test]
+    fn the_loop_point_audition_plays_the_join_again_and_again() {
+        // Kicks on beats 0-3; the "loop" is beats 0..8, so the join is from
+        // beat 7 (silent) to beat 0 (a kick).
+        let s = kick_session();
+        let (engine, mut p) = Engine::new(s.project(), SR);
+        engine.set_metronome(false);
+        engine.audition_seam(0.0, 8.0, 1.0);
+        let out = left(&render(&mut p, 4.0));
+        let found = onsets(&out, 0.05, 4_800);
+        // Each lap: beat 7 (0.5 s, silent), then beat 0 (a kick at 0.5 s
+        // into the lap): kicks at 0.5, 1.5, 2.5, 3.5 s.
+        assert_eq!(found.len(), 4, "{found:?}");
+        for (n, &onset) in found.iter().enumerate() {
+            let want = 24_000 + n * 48_000;
+            // Within a sample per lap (the joins round to whole samples).
+            assert!(
+                onset.abs_diff(want) <= 2 + n,
+                "kick {n} at {onset}, wanted {want}"
+            );
+        }
+        engine.stop();
+        render(&mut p, 0.01);
+        assert!(!engine.status().playing);
     }
 
     #[test]

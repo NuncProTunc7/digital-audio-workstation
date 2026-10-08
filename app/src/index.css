@@ -1741,6 +1741,29 @@ button.tiny.power.on {
   background: rgba(94, 214, 196, 0.06);
 }
 
+.findings {
+  margin: 8px 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+
+.finding {
+  padding: 3px 0;
+}
+
+.finding.ok > span {
+  color: var(--accent-2);
+}
+
+.finding.warning > span {
+  color: var(--accent);
+}
+
+.finding.problem {
+  color: var(--danger);
+}
+
 .sidechain {
   display: flex;
   flex-direction: column;

@@ -41,6 +41,8 @@ pub enum Request {
     },
     /// Plain-text report on devices, load, the song, and recent log lines.
     DiagnosticReport,
+    /// Check a Godot export without writing it (project_dir is ignored).
+    InspectExport(GodotOptions),
     /// Save a track's instrument settings as the user's own preset.
     SavePreset {
         track_id: TrackId,
@@ -123,6 +125,7 @@ pub enum Request {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GodotOptions {
     /// The Godot project folder (the one containing project.godot).
+    #[serde(default)]
     pub project_dir: String,
     /// Folder inside the project (default "music").
     #[serde(default)]

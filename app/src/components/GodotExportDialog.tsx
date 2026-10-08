@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { ExportReport, GodotOptions, Project } from "../types";
+import type { ExportReport, GodotOptions, Inspection, Project } from "../types";
 
 const STORAGE_KEY = "npt.godotProjectDir";
 const LOUDNESS = [
@@ -25,11 +25,22 @@ interface GodotExportDialogProps {
   project: Project;
   onPickFolder: () => Promise<string | null>;
   onExport: (options: GodotOptions) => Promise<ExportReport | undefined>;
+  /** Checks what would be exported, without writing. */
+  onInspect: (options: GodotOptions) => Promise<Inspection | undefined>;
+  /** Plays the end of a loop into its start, over and over. */
+  onAuditionSeam: (startBeats: number, endBeats: number) => void;
   onClose: () => void;
 }
 
 /** Export loops (and stems) straight into a Godot project folder. */
-export default function GodotExportDialog({ project, onPickFolder, onExport, onClose }: GodotExportDialogProps) {
+export default function GodotExportDialog({
+  project,
+  onPickFolder,
+  onExport,
+  onInspect,
+  onAuditionSeam,
+  onClose,
+}: GodotExportDialogProps) {
   const [dir, setDir] = useState(rememberedDir);
   const [folder, setFolder] = useState("music");
   const [name, setName] = useState(slug(project.name));
@@ -45,20 +56,21 @@ export default function GodotExportDialog({ project, onPickFolder, onExport, onC
   const [lufs, setLufs] = useState<number | null>(-16);
   const [busy, setBusy] = useState(false);
   const [report, setReport] = useState<ExportReport | null>(null);
+  const [inspection, setInspection] = useState<Inspection | null>(null);
+  const [checking, setChecking] = useState(false);
 
   const loop = project.loop_region;
   // An intro needs a loop that starts after the song start.
   const introPossible = region === "loop" && looped && loop.enabled && loop.start_beats > 0;
-  const run = async () => {
-    setBusy(true);
-    setReport(null);
-    try {
-      window.localStorage.setItem(STORAGE_KEY, dir);
-    } catch {
-      // Remembering the folder is a convenience only.
-    }
+  // The whole song, rounded up to bars (what "Whole song" exports).
+  const songEndBeats = Math.max(
+    project.time_signature.numerator,
+    ...project.tracks.flatMap((t) => t.clips.map((c) => c.start_beats + c.length_beats)),
+  );
+  const songEndBars = Math.ceil(songEndBeats / project.time_signature.numerator);
+  const options = (): GodotOptions => {
     const useLoop = region === "loop";
-    const result = await onExport({
+    return {
       project_dir: dir,
       folder,
       name,
@@ -73,7 +85,24 @@ export default function GodotExportDialog({ project, onPickFolder, onExport, onC
       layers: stems,
       target_lufs: lufs,
       normalize: lufs !== null,
-    });
+    };
+  };
+  const check = async () => {
+    setChecking(true);
+    setInspection(null);
+    const result = await onInspect(options());
+    setChecking(false);
+    if (result) setInspection(result);
+  };
+  const run = async () => {
+    setBusy(true);
+    setReport(null);
+    try {
+      window.localStorage.setItem(STORAGE_KEY, dir);
+    } catch {
+      // Remembering the folder is a convenience only.
+    }
+    const result = await onExport(options());
     setBusy(false);
     if (result) setReport(result);
   };
@@ -182,6 +211,33 @@ export default function GodotExportDialog({ project, onPickFolder, onExport, onC
             One stem per bus ({(project.buses ?? []).map((b) => b.name).join(", ")}, plus the other tracks) instead of per
             track
           </label>
+        )}
+
+        <div className="button-row">
+          <button onClick={() => void check()} disabled={checking} title="Render what would be exported and look for problems">
+            {checking ? "Checking…" : "Check"}
+          </button>
+          {looped && (
+            <button
+              onClick={() =>
+                region === "loop" && loop.enabled
+                  ? onAuditionSeam(loop.start_beats, loop.end_beats)
+                  : onAuditionSeam(0, songEndBars * project.time_signature.numerator)
+              }
+              title="Play the last bar into the first bar, over and over, to hear the loop point. Press Stop (Space) to end."
+            >
+              Listen to the loop point
+            </button>
+          )}
+        </div>
+        {inspection && (
+          <ul className="findings" aria-label="Export check">
+            {inspection.findings.map((f) => (
+              <li key={f.message} className={`finding ${f.level}`}>
+                <span aria-hidden>{f.level === "ok" ? "✓" : f.level === "warning" ? "⚠" : "✗"}</span> {f.message}
+              </li>
+            ))}
+          </ul>
         )}
 
         <div className="button-row dialog-actions">

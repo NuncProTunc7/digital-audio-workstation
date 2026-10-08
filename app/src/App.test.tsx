@@ -926,6 +926,26 @@ describe("Import and export", () => {
     expect(dialog.textContent).toContain("res://music/untitled_layers.tres");
   });
 
+  it("checks an export and auditions the loop point", async () => {
+    const backend = createPreviewBackend();
+    vi.spyOn(backend, "inspectExport");
+    vi.spyOn(backend, "auditionSeam");
+    await backend.execute({ command: "set_loop", enabled: true, start_beats: 0, end_beats: 8 });
+    await renderApp(backend);
+    fireEvent.click(screen.getByRole("button", { name: "Export ▾" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "To Godot (loops, stems)…" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Check" }));
+    });
+    expect(backend.inspectExport).toHaveBeenCalledWith(expect.objectContaining({ looped: true, start_beats: 0, end_beats: 8 }));
+    const findings = screen.getByRole("list", { name: "Export check" });
+    expect(findings.textContent).toContain("joins smoothly");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Listen to the loop point" }));
+    });
+    expect(backend.auditionSeam).toHaveBeenCalledWith(0, 8);
+  });
+
   it("exports an intro that plays once before the loop", async () => {
     const backend = createPreviewBackend();
     vi.spyOn(backend, "exportGodot");

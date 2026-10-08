@@ -64,6 +64,10 @@ pub struct AudioProcessor {
     loop_pass: u32,
     /// A game-preview section change waiting for its bar line.
     pending_jump: Option<PendingJump>,
+    /// Loop-point audition: (loop start, loop end, span), and whether the
+    /// playhead is in the part after the join.
+    seam: Option<(f64, f64, f64)>,
+    seam_after_join: bool,
     /// When the next output buffer reaches the speakers (device clock, ns).
     output_time_ns: Option<u64>,
 }
@@ -116,6 +120,8 @@ impl AudioProcessor {
             record_track: None,
             loop_pass: 0,
             pending_jump: None,
+            seam: None,
+            seam_after_join: false,
             output_time_ns: None,
         }
     }
@@ -352,6 +358,7 @@ impl AudioProcessor {
                 EngineMessage::Stop => {
                     self.playing = false;
                     self.pending_jump = None;
+                    self.seam = None;
                     for t in self.tracks.iter_mut() {
                         release_sequenced(t);
                     }
@@ -365,6 +372,7 @@ impl AudioProcessor {
                 EngineMessage::Locate(beats) => {
                     self.count_in_end = f64::NEG_INFINITY;
                     self.pending_jump = None;
+                    self.seam = None;
                     self.seek(beats.max(0.0));
                 }
                 EngineMessage::SetTempo(bpm) => {
@@ -444,6 +452,24 @@ impl AudioProcessor {
                     }
                 }
                 EngineMessage::CancelJump => self.pending_jump = None,
+                EngineMessage::AuditionSeam {
+                    start_beats,
+                    end_beats,
+                    span_beats,
+                } => {
+                    let span = span_beats.min(end_beats - start_beats).max(0.0);
+                    if span > 0.0 {
+                        self.pending_jump = None;
+                        self.loop_enabled = false;
+                        self.seam = Some((start_beats, end_beats, span));
+                        self.seam_after_join = false;
+                        self.seek(end_beats - span);
+                        if !self.playing {
+                            self.playing = true;
+                            self.loop_pass = 0;
+                        }
+                    }
+                }
                 EngineMessage::ReplaceBuses(buses) => {
                     let old = std::mem::replace(&mut self.buses, buses);
                     self.throw_away(Garbage::Buses(old));
@@ -536,6 +562,16 @@ impl AudioProcessor {
                     ((self.count_in_end - self.position_beats) / beats_per_sample - 1e-6).ceil();
                 end = end.min(start + (to_start as usize).max(1));
             }
+            // Loop-point audition: stop each part at its boundary.
+            let seam_edge = self.seam.filter(|_| self.playing).map(|(s, e, span)| {
+                if self.seam_after_join { s + span } else { e }
+            });
+            if let Some(edge) = seam_edge
+                && self.position_beats < edge
+            {
+                let to_edge = ((edge - self.position_beats) / beats_per_sample - 1e-6).ceil();
+                end = end.min(start + (to_edge as usize).max(1));
+            }
             let jump = self.pending_jump.filter(|_| self.playing);
             if let Some(j) = jump
                 && self.position_beats < j.at_beats
@@ -547,7 +583,18 @@ impl AudioProcessor {
             if counting && self.position_beats >= self.count_in_end - 1e-9 {
                 self.count_in_end = f64::NEG_INFINITY;
             }
-            if let Some(j) = jump
+            if let (Some(edge), Some((s, e, span))) = (seam_edge, self.seam)
+                && self.position_beats >= edge - 1e-9
+            {
+                let over = self.position_beats - edge;
+                // Across the join, or back to just before it.
+                let to = if self.seam_after_join { e - span } else { s };
+                self.seam_after_join = !self.seam_after_join;
+                self.seek(to + over);
+                for t in self.tracks.iter_mut() {
+                    t.cursor = first_event_at(t, to);
+                }
+            } else if let Some(j) = jump
                 && self.position_beats >= j.at_beats - 1e-9
             {
                 let over = self.position_beats - j.at_beats;

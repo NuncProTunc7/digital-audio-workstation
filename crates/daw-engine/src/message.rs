@@ -362,6 +362,14 @@ pub enum EngineMessage {
     },
     /// Forget a jump that hasn't happened yet.
     CancelJump,
+    /// Audition a loop point: play `end - span .. end`, then
+    /// `start .. start + span`, and repeat, so the join can be heard again
+    /// and again. Stop or Locate ends it.
+    AuditionSeam {
+        start_beats: f64,
+        end_beats: f64,
+        span_beats: f64,
+    },
     /// Swaps in a new set of buses (send with ReplaceTracks, whose routing
     /// points into it). The old set is sent back to be freed.
     ReplaceBuses(Box<[BusSlot]>),
