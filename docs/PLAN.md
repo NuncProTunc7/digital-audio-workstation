@@ -290,7 +290,7 @@ Original spec: adaptive "explore/combat" export was Claude-only.
 - Engine: `BusSlot`s with preallocated buffers, processed after the tracks and before the master; track output and sends (post-fader, or pre-fader respecting mute) per sample; bus peaks in the status. Routing changes rebuild tracks (and buses only when their layout changes); levels are live messages. `no_alloc.rs` covers buses and sends.
 - UI: bus strips (pan, mute, rename, delete, members), **+ Bus**, per-track **Out** and **→ Bus** sends. Godot `bus_stems`: one stem per bus plus "other".
 
-**9. Tempo changes mid-song** (low priority). A tempo map (`Vec<(beats, bpm)>`), beats↔seconds conversion everywhere that assumes one tempo (engine, recording alignment, export, analysis, MIDI/MusicXML tempo events).
+**9. Tempo changes mid-song** (future; owner agreed Oct 2026 to leave it for later). A tempo map (`Vec<(beats, bpm)>`), beats↔seconds conversion everywhere that assumes one tempo (engine, recording alignment, export, analysis, MIDI/MusicXML tempo events).
 
 ### C. Smaller
 
@@ -304,8 +304,8 @@ Owner requests (Oct 2026), done:
 
 ### D. Getting builds to the owner
 
-**13. Releases and auto-update.** Releases ✅ (built Oct 2026): `.github/workflows/release.yml` publishes the installer for `v*` tags; `scripts/set-version.mjs` sets the version. Auto-update ✅ (built Oct 2026): `tauri-plugin-updater` checks `releases/latest/download/latest.json` 5 s after launch; a banner offers **Update and restart** (saving the song first). The public key is in `tauri.conf.json`; the private key was generated on the owner's PC (`%USERPROFILE%\.tauri\nunc-pro-tune-updater.key`, no password) and must be added as the `TAURI_SIGNING_PRIVATE_KEY` repository secret; without it, releases still publish but without update files. Original plan: A tag (`v0.x.y`) builds the installer and publishes a GitHub Release (no login needed, doesn't expire). Add `tauri-plugin-updater` with a signing key in repository secrets; the app checks on launch and offers "Update and restart". Unsaved work is protected by item 1.
-**14. Code signing** (optional, costs money: certificate ~$100–400/yr or Azure Trusted Signing [Confidence: Med]). Removes the SmartScreen warning. Owner decides.
+**13. Releases and auto-update.** Releases ✅ (built Oct 2026): `.github/workflows/release.yml` publishes the installer for `v*` tags; `scripts/set-version.mjs` sets the version. Auto-update ✅ (built Oct 2026): `tauri-plugin-updater` checks `releases/latest/download/latest.json` 5 s after launch; a banner offers **Update and restart** (saving the song first). The public key is in `tauri.conf.json`; the private key was generated on the owner's PC (`%USERPROFILE%\.tauri\nunc-pro-tune-updater.key`, no password) and is stored as the `TAURI_SIGNING_PRIVATE_KEY` repository secret (added Oct 2026), so releases carry update files. Original plan: A tag (`v0.x.y`) builds the installer and publishes a GitHub Release (no login needed, doesn't expire). Add `tauri-plugin-updater` with a signing key in repository secrets; the app checks on launch and offers "Update and restart". Unsaved work is protected by item 1.
+**14. Code signing** (optional, costs money: certificate ~$100–400/yr or Azure Trusted Signing [Confidence: Med]). Removes the SmartScreen warning. **Decided Oct 2026: not doing it**; the release page tells users to click More info → Run anyway.
 
 ### E. Owner's recommendations (Oct 2026)
 
