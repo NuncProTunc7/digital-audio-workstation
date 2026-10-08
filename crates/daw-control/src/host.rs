@@ -58,6 +58,20 @@ pub trait Host: Send + Sync {
     fn presets_path(&self) -> PathBuf {
         crate::presets::presets_path()
     }
+    /// Where the list of installed plugins is remembered.
+    fn plugin_cache_path(&self) -> PathBuf {
+        crate::plugins::cache_path()
+    }
+    /// The folders plugins are installed in.
+    fn plugin_folders(&self) -> Vec<PathBuf> {
+        daw_plugins::scan::default_folders()
+    }
+    /// A program that answers `--scan-vst3 <path>` (the app itself), so
+    /// plugins are first opened in a separate process. None opens them
+    /// here.
+    fn plugin_scanner(&self) -> Option<PathBuf> {
+        None
+    }
     /// Where downloaded library instruments are kept.
     fn library_dir(&self) -> PathBuf {
         crate::library::library_dir()
@@ -154,6 +168,8 @@ const FREEZE_SAMPLE_RATE_HZ: u32 = 48_000;
 /// else playing) for the whole song, saves it in the project's audio
 /// folder, and freezes the track to it (one undo step).
 pub fn freeze_track<H: Host>(host: &H, track_id: TrackId) -> Result<(), String> {
+    // Plugins: render what is playing, not the last save.
+    crate::plugins::store_states(host);
     let project = host.session()?.project().clone();
     let track = project
         .track(track_id)
@@ -359,6 +375,27 @@ fn handle_inner<H: Host>(host: &H, request: Request) -> Result<Value, String> {
             host.project_changed(&format!("Claude: load preset {name}"));
             Ok(json!({ "track_id": track_id, "preset": name }))
         }
+        Request::Plugins { rescan } => {
+            let cache = if rescan {
+                crate::plugins::rescan(host)
+            } else {
+                crate::plugins::load_cache(&host.plugin_cache_path())
+            };
+            let failures: Vec<Value> = cache
+                .failures()
+                .into_iter()
+                .map(|(path, error)| json!({ "path": path, "error": error }))
+                .collect();
+            Ok(json!({ "plugins": cache.plugins(), "could_not_use": failures }))
+        }
+        Request::LoadPlugin { track_id, uid } => {
+            let info = crate::plugins::load_plugin(host, track_id, &uid)?;
+            Ok(json!({ "track_id": track_id, "plugin": info.name }))
+        }
+        Request::PluginParams { track_id } => {
+            let params = crate::plugins::params(host, track_id)?;
+            Ok(json!({ "track_id": track_id, "params": params }))
+        }
         Request::SampleLibrary => {
             let dir = host.library_dir();
             let session = host.session()?;
@@ -413,6 +450,8 @@ fn handle_inner<H: Host>(host: &H, request: Request) -> Result<Value, String> {
         } => {
             // Snapshot, then render without holding the lock (rendering can
             // take a few seconds and the UI must stay responsive).
+            // Plugins: render what is playing, not the last save.
+            crate::plugins::store_states(host);
             let project = host.session()?.project().clone();
             let options = daw_analysis::AnalyzeOptions {
                 start_beats,
@@ -434,6 +473,8 @@ fn handle_inner<H: Host>(host: &H, request: Request) -> Result<Value, String> {
             end_beats,
             tail_seconds,
         } => {
+            // Plugins: render what is playing, not the last save.
+            crate::plugins::store_states(host);
             let project = host.session()?.project().clone();
             let path = PathBuf::from(path);
             let seconds = export_wav(
@@ -844,6 +885,8 @@ pub struct SavedProject {
 /// Saves to `path` (adding `.nptune` if missing) or to the current file,
 /// and copies the project's audio into the "<Song> Audio" folder beside it.
 pub fn save_project<H: Host>(host: &H, path: Option<&Path>) -> Result<SavedProject, String> {
+    // The file keeps each plugin's own settings as they are now.
+    crate::plugins::store_states(host);
     let target = match path {
         Some(p) => with_extension(p),
         None => host
@@ -922,6 +965,8 @@ pub fn export_godot<H: Host>(
     host: &H,
     options: &crate::protocol::GodotOptions,
 ) -> Result<daw_export::ExportReport, String> {
+    // Plugins: render what is playing, not the last save.
+    crate::plugins::store_states(host);
     let project = host.session()?.project().clone();
     let spec = godot_spec(&project, options);
     daw_export::export_to_godot(&project, &host.audio(), &spec).map_err(|e| e.to_string())
@@ -932,6 +977,8 @@ pub fn inspect_export<H: Host>(
     host: &H,
     options: &crate::protocol::GodotOptions,
 ) -> Result<daw_export::Inspection, String> {
+    // Plugins: render what is playing, not the last save.
+    crate::plugins::store_states(host);
     let project = host.session()?.project().clone();
     let spec = godot_spec(&project, options);
     daw_export::inspect(&project, &host.audio(), &spec).map_err(|e| e.to_string())
@@ -977,6 +1024,8 @@ fn godot_spec(
 /// Renders the whole song (plus a 2 s tail) to a 24-bit WAV file. Returns
 /// its length in seconds.
 pub fn export_song_wav<H: Host>(host: &H, path: &Path) -> Result<f64, String> {
+    // Plugins: render what is playing, not the last save.
+    crate::plugins::store_states(host);
     let project = host.session()?.project().clone();
     export_wav(&project, &host.audio(), path, None, None, None)
 }
@@ -1084,6 +1133,12 @@ pub(crate) mod tests {
         fn library_dir(&self) -> PathBuf {
             self.presets.with_file_name("library")
         }
+        fn plugin_cache_path(&self) -> PathBuf {
+            self.presets.with_file_name("plugins.json")
+        }
+        fn plugin_folders(&self) -> Vec<PathBuf> {
+            vec![self.presets.with_file_name("VST3")]
+        }
         fn note_claude_edit(&self) -> Option<Option<std::time::Instant>> {
             if !self.keep_versions {
                 return None;
@@ -1188,6 +1243,73 @@ pub(crate) mod tests {
             handle(&host, Request::FreezeTrack { track_id: vox })
                 .into_result()
                 .is_err()
+        );
+    }
+
+    #[test]
+    fn installed_plugins_are_listed_and_loaded_onto_tracks() {
+        let host = TestHost::default();
+        // An installed plugin described by its moduleinfo.json.
+        let res = host
+            .plugin_folders()
+            .remove(0)
+            .join("Acme Strings.vst3")
+            .join("Contents")
+            .join("Resources");
+        std::fs::create_dir_all(&res).expect("dirs");
+        std::fs::write(
+            res.join("moduleinfo.json"),
+            r#"{ "Factory Info": { "Vendor": "Acme" }, "Classes": [
+                { "CID": "0123456789ABCDEF0123456789ABCDEF", "Category": "Audio Module Class",
+                  "Name": "Acme Strings", "Sub Categories": ["Instrument", "Sampler"] },
+                { "CID": "FEDCBA9876543210FEDCBA9876543210", "Category": "Audio Module Class",
+                  "Name": "Acme Hall", "Sub Categories": ["Fx", "Reverb"] } ] }"#,
+        )
+        .expect("write");
+        let listed = ok(handle(&host, Request::Plugins { rescan: true }));
+        assert_eq!(listed["plugins"].as_array().map(Vec::len), Some(2));
+        // Remembered without rescanning.
+        let again = ok(handle(&host, Request::Plugins { rescan: false }));
+        assert_eq!(again["plugins"], listed["plugins"]);
+
+        ok(handle(
+            &host,
+            Request::LoadPlugin {
+                track_id: 1,
+                uid: "0123456789abcdef0123456789abcdef".into(),
+            },
+        ));
+        {
+            let s = host.session.lock().expect("session");
+            let inst = &s.project().track(1).expect("track").instrument;
+            assert_eq!(inst.kind, InstrumentKind::Plugin);
+            assert_eq!(
+                inst.plugin.as_ref().map(|p| p.name.as_str()),
+                Some("Acme Strings")
+            );
+        }
+        // Effects aren't instruments; unknown ids are explained.
+        for uid in [
+            "FEDCBA9876543210FEDCBA9876543210",
+            "00000000000000000000000000000000",
+        ] {
+            let r = handle(
+                &host,
+                Request::LoadPlugin {
+                    track_id: 2,
+                    uid: uid.into(),
+                },
+            );
+            assert!(!r.ok, "{uid}");
+        }
+        // Without audio running there's no live plugin to ask.
+        assert!(!handle(&host, Request::PluginParams { track_id: 1 }).ok);
+        // Loading is one undo step.
+        ok(handle(&host, Request::Undo));
+        let s = host.session.lock().expect("session");
+        assert_eq!(
+            s.project().track(1).expect("t").instrument.kind,
+            InstrumentKind::Synth
         );
     }
 

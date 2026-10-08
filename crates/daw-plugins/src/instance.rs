@@ -387,6 +387,11 @@ impl Instance {
         Ok(())
     }
 
+    /// Every parameter's current value, hidden ones included. Main thread.
+    pub fn values(&self) -> Result<Vec<(u32, f64)>, String> {
+        self.params_including_hidden()
+    }
+
     #[allow(unsafe_code)]
     fn params_including_hidden(&self) -> Result<Vec<(u32, f64)>, String> {
         let me = self.clone();

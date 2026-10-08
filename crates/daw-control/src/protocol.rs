@@ -59,6 +59,20 @@ pub enum Request {
         track_id: TrackId,
         name: String,
     },
+    /// Installed VST3 plugins (rescan: look through the plugin folders
+    /// again first).
+    Plugins {
+        rescan: bool,
+    },
+    /// Give a track an installed plugin instrument.
+    LoadPlugin {
+        track_id: TrackId,
+        uid: String,
+    },
+    /// A plugin track's parameters (names, values, display text).
+    PluginParams {
+        track_id: TrackId,
+    },
     /// Free instruments the app can download, and which are installed.
     SampleLibrary,
     /// Start downloading a library instrument in the background.

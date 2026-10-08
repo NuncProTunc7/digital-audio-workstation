@@ -262,6 +262,33 @@ fn extra_tools() -> Vec<ToolDef> {
             false,
         ),
         tool(
+            "plugins",
+            "The user's installed VST3 plugins: id (uid), name, vendor, kind (instrument or effect), categories. Also plugins that couldn't be used, with the reason. Set rescan to look through the plugin folders again (after the user installs one; can take a while the first time). Load an instrument with load_plugin.",
+            object_schema(
+                json!({ "rescan": { "type": "boolean", "description": "Look for newly installed plugins first." } }),
+                &[],
+            ),
+            true,
+        ),
+        tool(
+            "load_plugin",
+            "Give a track one of the user's installed plugin instruments (uid from plugins), replacing its instrument (one undo step). Then read its controls with plugin_params and change them with set_plugin_params. The user can also open the plugin's own window from the track's instrument panel.",
+            object_schema(
+                json!({
+                    "track_id": { "type": "integer" },
+                    "uid": { "type": "string", "description": "The plugin's id from plugins." }
+                }),
+                &["track_id", "uid"],
+            ),
+            false,
+        ),
+        tool(
+            "plugin_params",
+            "A plugin track's parameters: id, name, units, current value (0-1), default, what the plugin shows for the value (display, e.g. \"-6.0 dB\" or \"Saw\"), steps (0 = continuous). Change them with set_plugin_params using these ids and 0-1 values; check display afterwards to confirm the value means what you intended.",
+            object_schema(json!({ "track_id": { "type": "integer" } }), &["track_id"]),
+            true,
+        ),
+        tool(
             "sample_library",
             "Free sampled instruments the app can download for sampler tracks: Salamander and Headroom grand pianos, cello, double bass, flute, war tuba. Each entry has id, name, description, license, credit, megabytes, installed (the playable programs as [name, .sfz path] once downloaded, else null) and job (download progress, unpacking, or a failure). Also lists the credit lines this song needs (CC-BY packs must be credited in the game). To use one: download_sample_pack, wait until installed, then add a sampler track and load_sample_pack with a program's path.",
             object_schema(json!({}), &[]),
@@ -503,6 +530,16 @@ pub fn to_request(name: &str, args: Map<String, Value>) -> Result<Request, Strin
         "load_user_preset" => Request::LoadUserPreset {
             track_id: get_id("track_id")?,
             name: get_str("name").ok_or("name is required")?,
+        },
+        "plugins" => Request::Plugins {
+            rescan: get_bool("rescan").unwrap_or(false),
+        },
+        "load_plugin" => Request::LoadPlugin {
+            track_id: get_id("track_id")?,
+            uid: get_str("uid").ok_or("uid is required")?,
+        },
+        "plugin_params" => Request::PluginParams {
+            track_id: get_id("track_id")?,
         },
         "sample_library" => Request::SampleLibrary,
         "download_sample_pack" => Request::DownloadSamplePack {

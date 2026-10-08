@@ -58,7 +58,9 @@ over time (fade-ins, filter sweeps, swelling reverb); points are (beats, value).
 - Sampler tracks (instrument \"sampler\") play an SFZ sample pack: real pianos, \
 strings, brass, woodwinds. sample_library lists free ones the app can download \
 (download_sample_pack); load one with load_sample_pack and check sample_pack_status \
-in get_track. Audio clips can follow tempo changes with set_clip_tempo.
+in get_track.
+- Plugins: the user's own VST3 instruments (plugins, load_plugin). Their controls are \
+0-1 values by id (plugin_params, set_plugin_params); always check the display text. Audio clips can follow tempo changes with set_clip_tempo.
 - Games: export_godot writes seamless loops (plus optional stems and adaptive-music \
 resources) straight into the user's Godot project, already set to loop.
 - Recording timing: if the user's takes land late (common with Bluetooth headsets), run \

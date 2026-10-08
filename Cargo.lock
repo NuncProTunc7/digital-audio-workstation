@@ -833,6 +833,7 @@ dependencies = [
  "daw-instruments",
  "daw-model",
  "daw-notation",
+ "daw-plugins",
  "daw-sampler",
  "dirs 6.0.0",
  "getrandom 0.3.4",

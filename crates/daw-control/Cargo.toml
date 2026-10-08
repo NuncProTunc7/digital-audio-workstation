@@ -9,6 +9,7 @@ authors.workspace = true
 
 [dependencies]
 base64 = "0.22"
+daw-plugins = { path = "../daw-plugins" }
 daw-audio.workspace = true
 daw-analysis = { path = "../daw-analysis" }
 daw-engine = { workspace = true }
