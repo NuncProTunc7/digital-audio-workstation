@@ -547,7 +547,8 @@ impl Instance {
         }
     }
 
-    /// The controller, for opening the plugin's window.
+    /// The controller, for opening the plugin's window (Windows only so far).
+    #[cfg_attr(not(windows), allow(dead_code))]
     pub(crate) fn controller(&self) -> Option<ComPtr<IEditController>> {
         self.parts().ok()?.controller.as_ref().map(|c| c.0.clone())
     }
