@@ -532,11 +532,35 @@ fn audio_thread_never_allocates() {
     }
     session
         .execute(Command::SetPluginParams {
-            track_id: strings,
+            track_id: Some(strings),
             effect_id: None,
             params: [(0, 0.9)].into_iter().collect(),
         })
         .expect("param");
+    session
+        .execute(Command::AddPluginEffect {
+            track_id: Some(strings),
+            plugin: Box::new(daw_model::plugin::PluginRef {
+                uid: "4E5054314741494E0000000000000001".into(),
+                name: "NPT Test Gain".into(),
+                vendor: "Nunc Pro Tune".into(),
+                path: path.into(),
+                params: [(0, 0.5)].into_iter().collect(),
+                state: None,
+            }),
+            index: None,
+        })
+        .expect("plugin effect");
+    engine.sync(session.project());
+    process_counting(&mut processor, &mut out);
+    let fx = session.project().tracks.last().expect("t").mixer.effects[0].id;
+    session
+        .execute(Command::SetPluginParams {
+            track_id: Some(strings),
+            effect_id: Some(fx),
+            params: [(0, 0.7)].into_iter().collect(),
+        })
+        .expect("effect param");
     engine.sync(session.project());
     engine.send(EngineMessage::SetTempo(97.0));
     for n in 0..40 {

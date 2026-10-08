@@ -109,7 +109,7 @@ fn a_plugin_track_plays_and_keeps_its_plugin_when_the_song_changes() {
     // heard and shown in the plugin.
     session
         .execute(Command::SetPluginParams {
-            track_id: id,
+            track_id: Some(id),
             effect_id: None,
             params: [(0, 1.0)].into_iter().collect(),
         })
@@ -140,4 +140,68 @@ fn offline_renders_use_the_songs_plugin_settings() {
     let pk = |x: &[f32]| x.iter().fold(0.0f32, |m, s| m.max(s.abs()));
     assert!(pk(&quiet) > 0.05);
     assert!(pk(&loud) > pk(&quiet) * 1.6);
+}
+
+#[test]
+fn a_plugin_effect_shapes_the_sound_and_keeps_running_across_edits() {
+    let (mut session, id) = plugin_song();
+    // The gain plugin after the synth plugin: 0.5 = unchanged, 1.0 = double.
+    session
+        .execute(Command::AddPluginEffect {
+            track_id: Some(id),
+            plugin: Box::new(PluginRef {
+                uid: "4E5054314741494E0000000000000001".into(),
+                name: "NPT Test Gain".into(),
+                vendor: "Nunc Pro Tune".into(),
+                path: PATH.into(),
+                params: [(0, 0.5)].into_iter().collect(),
+                state: None,
+            }),
+            index: None,
+        })
+        .expect("effect");
+    let fx = session.project().track(id).expect("t").mixer.effects[0].id;
+    let (engine, mut processor) = Engine::new(session.project(), SR);
+    engine.set_metronome(false);
+    let first = engine.plugin(fx).expect("effect plugin").expect("loaded");
+    engine.play();
+    let a = peak(&mut processor, 0.3);
+    assert!((a - 0.25).abs() < 0.01, "unchanged at 0.5: {a}");
+
+    session
+        .execute(Command::SetPluginParams {
+            track_id: Some(id),
+            effect_id: Some(fx),
+            params: [(0, 1.0)].into_iter().collect(),
+        })
+        .expect("gain");
+    // Another edit that rebuilds the track's chain.
+    session
+        .execute(Command::AddEffect {
+            track_id: Some(id),
+            kind: daw_model::EffectKind::Eq,
+            index: None,
+        })
+        .expect("eq");
+    engine.sync(session.project());
+    assert!(
+        engine
+            .plugin(fx)
+            .expect("still")
+            .expect("loaded")
+            .same_as(&first)
+    );
+    engine.locate(0.0);
+    let b = peak(&mut processor, 0.3);
+    assert!(b > a * 1.8, "doubled: {b} vs {a}");
+
+    // Removing the effect releases its plugin.
+    session
+        .execute(Command::RemoveEffect {
+            track_id: Some(id),
+            effect_id: fx,
+        })
+        .expect("remove");
+    engine.sync(session.project());
+    assert!(engine.plugin(fx).is_none());
 }

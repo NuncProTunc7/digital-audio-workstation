@@ -882,19 +882,32 @@ fn load_plugin(
     Ok(view(&state, &session))
 }
 
-/// A plugin track's parameters with names, values and display text.
+/// Adds an installed plugin effect to a track's, bus's, or (None) the
+/// master's chain (one undo step).
+#[tauri::command]
+fn add_plugin_effect(
+    state: State<'_, AppState>,
+    track_id: Option<TrackId>,
+    uid: String,
+) -> Result<ProjectView, String> {
+    daw_control::plugins::add_plugin_effect(&*state, track_id, &uid)?;
+    let session = state.session()?;
+    Ok(view(&state, &session))
+}
+
+/// A plugin's parameters (a plugin track's id, or a plugin effect's id).
 #[tauri::command]
 fn plugin_params(
     state: State<'_, AppState>,
-    track_id: TrackId,
+    id: daw_model::Id,
 ) -> Result<Vec<daw_plugins::ParamInfo>, String> {
-    daw_control::plugins::params(&*state, track_id)
+    daw_control::plugins::params(&*state, id)
 }
 
-/// Whether a track's plugin is loading, ready, or failed (and why).
+/// Whether a plugin is loading, ready, or failed (and why).
 #[tauri::command]
-fn plugin_status(state: State<'_, AppState>, track_id: TrackId) -> serde_json::Value {
-    match state.engine().and_then(|e| e.plugin(track_id)) {
+fn plugin_status(state: State<'_, AppState>, id: daw_model::Id) -> serde_json::Value {
+    match state.engine().and_then(|e| e.plugin(id)) {
         None => serde_json::json!({ "state": "none" }),
         Some(Ok(_)) => serde_json::json!({ "state": "ready" }),
         Some(Err(e)) if e == daw_engine::PLUGIN_LOADING => {
@@ -904,21 +917,32 @@ fn plugin_status(state: State<'_, AppState>, track_id: TrackId) -> serde_json::V
     }
 }
 
-/// Opens (or brings forward) a plugin track's own window.
+/// Opens (or brings forward) a plugin's own window (a plugin track's id,
+/// or a plugin effect's id).
 #[tauri::command]
 fn open_plugin_window(
     app: AppHandle,
     state: State<'_, AppState>,
-    track_id: TrackId,
+    id: daw_model::Id,
 ) -> Result<(), String> {
-    let instance = daw_control::plugins::live(&*state, track_id)?;
-    let track_name = state
-        .session()?
-        .project()
-        .track(track_id)
-        .map(|t| t.name.clone())
-        .unwrap_or_default();
-    let title = format!("{} – {}", instance.info().name, track_name);
+    let instance = daw_control::plugins::live(&*state, id)?;
+    // Name the window after the track (or bus) it's on.
+    let place = {
+        let session = state.session()?;
+        let p = session.project();
+        p.tracks
+            .iter()
+            .find(|t| t.id == id || t.mixer.effects.iter().any(|e| e.id == id))
+            .map(|t| t.name.clone())
+            .or_else(|| {
+                p.buses
+                    .iter()
+                    .find(|b| b.mixer.effects.iter().any(|e| e.id == id))
+                    .map(|b| b.name.clone())
+            })
+            .unwrap_or_else(|| "Master".to_owned())
+    };
+    let title = format!("{} – {}", instance.info().name, place);
     #[cfg(windows)]
     let owner = app
         .get_webview_window("main")
@@ -929,7 +953,7 @@ fn open_plugin_window(
         let _ = &app;
         None
     };
-    daw_plugins::editor::open(&instance, u64::from(track_id), &title, owner)
+    daw_plugins::editor::open(&instance, u64::from(id), &title, owner)
 }
 
 /// Free instruments the app can download, and which are installed.
@@ -1684,6 +1708,7 @@ pub fn run() {
             load_plugin,
             plugin_params,
             plugin_status,
+            add_plugin_effect,
             open_plugin_window,
             sample_library,
             download_sample_pack,

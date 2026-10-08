@@ -165,11 +165,13 @@ export interface Backend {
   plugins(rescan: boolean): Promise<PluginList>;
   /** Gives a track an installed plugin instrument (one undo step). */
   loadPlugin(trackId: number, uid: string): Promise<ProjectView>;
-  /** A plugin track's parameters with what each value means. */
-  pluginParams(trackId: number): Promise<PluginParam[]>;
-  pluginStatus(trackId: number): Promise<PluginStatus>;
+  /** Adds an installed plugin effect to a track's, bus's, or (null) the master's chain. */
+  addPluginEffect(trackId: number | null, uid: string): Promise<ProjectView>;
+  /** A plugin's parameters with what each value means (a plugin track's id, or a plugin effect's id). */
+  pluginParams(id: number): Promise<PluginParam[]>;
+  pluginStatus(id: number): Promise<PluginStatus>;
   /** Opens the plugin's own window. */
-  openPluginWindow(trackId: number): Promise<void>;
+  openPluginWindow(id: number): Promise<void>;
   /** Starts downloading a library instrument in the background. */
   downloadSamplePack(id: string): Promise<void>;
   /** Shows a folder picker; null if cancelled. */
@@ -304,9 +306,10 @@ export const tauriBackend: Backend = {
   sampleLibrary: () => invoke("sample_library"),
   plugins: (rescan) => invoke("plugins", { rescan }),
   loadPlugin: (trackId, uid) => invoke("load_plugin", { trackId, uid }),
-  pluginParams: (trackId) => invoke("plugin_params", { trackId }),
-  pluginStatus: (trackId) => invoke("plugin_status", { trackId }),
-  openPluginWindow: (trackId) => invoke("open_plugin_window", { trackId }),
+  addPluginEffect: (trackId, uid) => invoke("add_plugin_effect", { trackId, uid }),
+  pluginParams: (id) => invoke("plugin_params", { id }),
+  pluginStatus: (id) => invoke("plugin_status", { id }),
+  openPluginWindow: (id) => invoke("open_plugin_window", { id }),
   downloadSamplePack: (id) => invoke("download_sample_pack", { id }),
   pickFolder: async (title) => {
     const picked = await open({ directory: true, multiple: false, title });

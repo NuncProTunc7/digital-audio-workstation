@@ -1303,6 +1303,15 @@ export default function App({ backend }: AppProps) {
               onSelectTrack={selectTrack}
               onCommand={execute}
               onEndGesture={endGesture}
+              plugins={{
+                list: backend.plugins,
+                add: (trackId, uid) =>
+                  void run(() => backend.addPluginEffect(trackId, uid)).then((v) => {
+                    applyView(v);
+                    endGesture();
+                  }),
+                openWindow: (id) => void run(() => backend.openPluginWindow(id)),
+              }}
             />
           )}
         </div>

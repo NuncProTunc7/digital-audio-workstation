@@ -183,6 +183,17 @@ export function applyCommand(project: Project, command: Command): Project {
       c.splice(command.index ?? c.length, 0, { id: id(), kind: command.kind, enabled: true, params });
       break;
     }
+    case "add_plugin_effect": {
+      const c = chain(command.track_id);
+      c.splice(command.index ?? c.length, 0, {
+        id: id(),
+        kind: "plugin",
+        enabled: true,
+        params: {},
+        plugin: structuredClone(command.plugin),
+      });
+      break;
+    }
     case "remove_effect": {
       effect(command.track_id, command.effect_id);
       const c = chain(command.track_id);
@@ -1039,9 +1050,29 @@ export function createPreviewBackend(): PreviewBackend {
       });
       return view();
     },
-    pluginParams: async (trackId) => {
-      const p = project.tracks.find((x) => x.id === trackId)?.instrument.plugin;
-      if (!p) throw new Error("that track doesn't play a plugin");
+    addPluginEffect: async (trackId, uid) => {
+      const p = previewPlugins.find((x) => x.uid === uid);
+      if (!p) throw new Error(`no installed plugin has id ${uid}`);
+      if (p.kind !== "effect") throw new Error(`${p.name} is an instrument`);
+      undoStack.push(project);
+      redoStack.length = 0;
+      project = applyCommand(project, {
+        command: "add_plugin_effect",
+        track_id: trackId,
+        index: null,
+        plugin: { uid: p.uid, name: p.name, vendor: p.vendor, path: p.path, params: { "0": 0.5 } },
+      });
+      return view();
+    },
+    pluginParams: async (pluginId) => {
+      const all = [
+        ...project.tracks.map((t) => (t.id === pluginId ? t.instrument.plugin : null)),
+        ...[...project.tracks.map((t) => t.mixer), ...(project.buses ?? []).map((b) => b.mixer), project.master]
+          .flatMap((m) => m.effects)
+          .map((e) => (e.id === pluginId ? e.plugin : null)),
+      ];
+      const p = all.find((x) => x);
+      if (!p) throw new Error("there's no plugin with that id");
       const names = ["Level", "Brightness"];
       return Object.entries(p.params).map(
         ([id, value]): PluginParam => ({
@@ -1056,8 +1087,7 @@ export function createPreviewBackend(): PreviewBackend {
         }),
       );
     },
-    pluginStatus: async (trackId) =>
-      project.tracks.find((x) => x.id === trackId)?.instrument.plugin ? { state: "ready" } : { state: "none" },
+    pluginStatus: async () => ({ state: "ready" }),
     openPluginWindow: async () => {
       throw new Error("Plugin windows need the desktop app");
     },

@@ -7,7 +7,7 @@ export interface TimeSignature {
 }
 
 export type InstrumentKind = "synth" | "drums" | "audio" | "sampler" | "plugin";
-export type EffectKind = "eq" | "compressor" | "reverb" | "delay" | "chorus" | "distortion" | "limiter";
+export type EffectKind = "eq" | "compressor" | "reverb" | "delay" | "chorus" | "distortion" | "limiter" | "plugin";
 
 export interface Instrument {
   kind: InstrumentKind;
@@ -48,6 +48,8 @@ export interface Effect {
   params: Record<string, number>;
   /** Compressors: the track whose sound drives it (sidechain). */
   sidechain?: number | null;
+  /** Plugin effects: which VST3 plugin, and its settings. */
+  plugin?: PluginRef | null;
 }
 
 export interface Mixer {
@@ -374,6 +376,7 @@ export type Command =
   | { command: "load_preset"; track_id: number; preset: string }
   | { command: "set_instrument"; track_id: number; instrument: Instrument }
   | { command: "add_effect"; track_id: Opt<number>; kind: EffectKind; index: Opt<number> }
+  | { command: "add_plugin_effect"; track_id: Opt<number>; plugin: PluginRef; index: Opt<number> }
   | { command: "remove_effect"; track_id: Opt<number>; effect_id: number }
   | { command: "set_effect_param"; track_id: Opt<number>; effect_id: number; param: string; value: number }
   | { command: "set_effect_enabled"; track_id: Opt<number>; effect_id: number; enabled: boolean }

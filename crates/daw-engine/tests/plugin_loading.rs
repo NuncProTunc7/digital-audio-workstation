@@ -69,7 +69,7 @@ fn a_plugin_loads_in_the_background_and_then_plays() {
     assert!(matches!(engine.plugin(id), Some(Err(e)) if e == PLUGIN_LOADING));
     // A louder setting made while it loads isn't lost.
     s.execute(Command::SetPluginParams {
-        track_id: id,
+        track_id: Some(id),
         effect_id: None,
         params: [(0, 1.0)].into_iter().collect(),
     })

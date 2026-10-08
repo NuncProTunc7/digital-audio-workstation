@@ -10,7 +10,10 @@ mod delay;
 mod distortion;
 mod eq;
 mod limiter;
+mod plugin;
 mod reverb;
+
+pub use plugin::{create_plugin, passthrough};
 
 use daw_model::effect::{Effect, EffectKind, effect_params};
 
@@ -25,6 +28,10 @@ pub trait EffectProcessor: Send {
     /// Clears internal state (echo and reverb tails).
     // RT-SAFE
     fn reset(&mut self);
+    /// Sets a plugin effect's parameter `id` (0–1). Built-in effects
+    /// ignore it.
+    // RT-SAFE
+    fn set_plugin_param(&mut self, _id: u32, _value: f64) {}
     // RT-SAFE
     fn process(&mut self, left: &mut [f32], right: &mut [f32]);
     /// Like `process`, but listening to another signal (the "key", e.g. a
@@ -54,6 +61,8 @@ pub fn create(effect: &Effect, sample_rate_hz: f32) -> Box<dyn EffectProcessor> 
         EffectKind::Chorus => Box::new(chorus::Chorus::new(sr)),
         EffectKind::Distortion => Box::new(distortion::Distortion::new(sr)),
         EffectKind::Limiter => Box::new(limiter::Limiter::new(sr)),
+        // Offline renders get their own copy, from the song's settings.
+        EffectKind::Plugin => return create_plugin(effect, sr, None).0,
     };
     for (index, spec) in effect_params(effect.kind).iter().enumerate() {
         processor.set_param(index, effect.value(spec.id).unwrap_or(spec.default) as f32);

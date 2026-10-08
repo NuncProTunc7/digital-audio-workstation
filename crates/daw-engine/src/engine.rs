@@ -39,6 +39,8 @@ type LoadedHook = Arc<Mutex<Option<Arc<dyn Fn(TrackId) + Send + Sync>>>>;
 /// What building tracks needs to create plugins.
 struct PluginCtx {
     plugins: LivePlugins,
+    /// Plugin effects, by effect id.
+    effects: LivePlugins,
     producer: Producer,
     synced: Arc<Mutex<Project>>,
     loaded: LoadedHook,
@@ -54,6 +56,114 @@ fn next_ticket() -> u64 {
 }
 
 impl PluginCtx {
+    /// The processor for a plugin effect: the running plugin (same state),
+    /// a pass-through stand-in while it loads, or a new instance.
+    fn effect_processor(
+        &self,
+        owner: Option<TrackId>,
+        e: &Effect,
+    ) -> Box<dyn daw_effects::EffectProcessor> {
+        let sr = self.sample_rate_hz;
+        let Some(key) = e.plugin.as_ref().map(|p| (p.uid.clone(), p.path.clone())) else {
+            return daw_effects::passthrough();
+        };
+        let Ok(mut map) = self.effects.lock() else {
+            return daw_effects::passthrough();
+        };
+        if let Some(p) = map.get(&e.id).filter(|p| p.key == key) {
+            match &p.load {
+                Ok(instance) => return daw_effects::create_plugin(e, sr, Some(instance)).0,
+                Err(msg) if msg == PLUGIN_LOADING => return daw_effects::passthrough(),
+                Err(_) => {}
+            }
+        }
+        let ticket = next_ticket();
+        if self.later {
+            map.insert(
+                e.id,
+                LivePlugin {
+                    key: key.clone(),
+                    load: Err(PLUGIN_LOADING.into()),
+                    ticket,
+                },
+            );
+            drop(map);
+            self.load_effect_later(owner, e.id, key, ticket);
+            return daw_effects::passthrough();
+        }
+        drop(map);
+        let (processor, load) = daw_effects::create_plugin(e, sr, None);
+        if let (Some(load), Ok(mut m)) = (load, self.effects.lock()) {
+            m.insert(e.id, LivePlugin { key, load, ticket });
+        }
+        processor
+    }
+
+    /// Loads a plugin effect on the main thread, then swaps it into its
+    /// chain (using the song as it is by then).
+    fn load_effect_later(
+        &self,
+        owner: Option<TrackId>,
+        effect_id: daw_model::EffectId,
+        key: (String, String),
+        ticket: u64,
+    ) {
+        let (effects, producer, synced, loaded) = (
+            Arc::clone(&self.effects),
+            Arc::clone(&self.producer),
+            Arc::clone(&self.synced),
+            Arc::clone(&self.loaded),
+        );
+        let sr = self.sample_rate_hz;
+        daw_plugins::main_thread::post_later(move || {
+            let current = synced.lock().ok().and_then(|p| {
+                let e = p
+                    .tracks
+                    .iter()
+                    .map(|t| &t.mixer.effects)
+                    .chain(p.buses.iter().map(|b| &b.mixer.effects))
+                    .chain(std::iter::once(&p.master.effects))
+                    .flat_map(|c| c.iter())
+                    .find(|e| e.id == effect_id)?;
+                let same =
+                    e.plugin.as_ref().map(|x| (x.uid.clone(), x.path.clone())) == Some(key.clone());
+                same.then(|| (e.clone(), p.tempo_bpm))
+            });
+            let Some((effect, tempo)) = current else {
+                return;
+            };
+            let wanted = |m: &HashMap<daw_model::Id, LivePlugin>| {
+                m.get(&effect_id).is_some_and(|e| e.ticket == ticket)
+            };
+            if !effects.lock().is_ok_and(|m| wanted(&m)) {
+                return;
+            }
+            let (mut processor, load) = daw_effects::create_plugin(&effect, sr, None);
+            processor.set_tempo(tempo as f32);
+            let Ok(mut map) = effects.lock() else {
+                return;
+            };
+            if !wanted(&map) {
+                return;
+            }
+            if let (Some(entry), Some(load)) = (map.get_mut(&effect_id), load) {
+                entry.load = load;
+            }
+            drop(map);
+            if let Ok(mut p) = producer.lock() {
+                let _ = p.push(EngineMessage::ReplaceEffect {
+                    track_id: owner,
+                    effect_id,
+                    processor,
+                });
+            }
+            let hook = loaded.lock().ok().and_then(|h| h.clone());
+            if let Some(hook) = hook {
+                hook(effect_id);
+            }
+        });
+    }
+
     /// Loads `track_id`'s plugin on the main thread, then swaps it in. Uses
     /// the song as it is by then, so edits made meanwhile aren't lost.
     fn load_later(&self, track_id: TrackId, key: (String, String), ticket: u64) {
@@ -131,6 +241,7 @@ pub struct Engine {
     // The project as last sent to the processor, for diffing.
     synced: Arc<Mutex<Project>>,
     plugins: LivePlugins,
+    effect_plugins: LivePlugins,
     plugin_loaded: LoadedHook,
 }
 
@@ -159,6 +270,7 @@ impl Engine {
         let synced = Arc::new(Mutex::new(project.clone()));
         let ctx = PluginCtx {
             plugins: LivePlugins::default(),
+            effects: LivePlugins::default(),
             producer: Arc::clone(&producer),
             synced: Arc::clone(&synced),
             loaded: LoadedHook::default(),
@@ -175,12 +287,13 @@ impl Engine {
             Arc::clone(&status),
             ProcessorInit {
                 tracks: build_tracks(project, &audio, &ctx),
-                buses: build_buses(project, sample_rate),
+                buses: build_buses(project, &ctx),
                 master_effects: build_chain(
                     &project.tracks,
                     &project.master.effects,
                     project.tempo_bpm,
-                    sample_rate,
+                    None,
+                    &ctx,
                 ),
                 master_gain: db_to_fader_gain(project.master.volume_db),
                 tempo_bpm: project.tempo_bpm,
@@ -199,6 +312,7 @@ impl Engine {
             audio,
             synced,
             plugins: ctx.plugins,
+            effect_plugins: ctx.effects,
             plugin_loaded: ctx.loaded,
         };
         (engine, processor)
@@ -211,9 +325,25 @@ impl Engine {
     /// The plugin a track plays (to open its window or read its settings),
     /// or why it couldn't load ([`PLUGIN_LOADING`] while it starts). None
     /// for tracks without a plugin.
-    pub fn plugin(&self, track_id: TrackId) -> Option<daw_instruments::PluginLoad> {
-        let map = self.plugins.lock().ok()?;
-        map.get(&track_id).map(|p| p.load.clone())
+    pub fn plugin(&self, id: daw_model::Id) -> Option<daw_instruments::PluginLoad> {
+        let found = self.plugins.lock().ok()?.get(&id).map(|p| p.load.clone());
+        found.or_else(|| {
+            let map = self.effect_plugins.lock().ok()?;
+            map.get(&id).map(|p| p.load.clone())
+        })
+    }
+
+    /// What building tracks and chains needs to create plugins.
+    fn ctx(&self) -> PluginCtx {
+        PluginCtx {
+            plugins: Arc::clone(&self.plugins),
+            effects: Arc::clone(&self.effect_plugins),
+            producer: Arc::clone(&self.producer),
+            synced: Arc::clone(&self.synced),
+            loaded: Arc::clone(&self.plugin_loaded),
+            sample_rate_hz: self.sample_rate_hz,
+            later: daw_plugins::main_thread::has_runner(),
+        }
     }
 
     /// Calls `hook` (on the main thread, holding no locks) whenever a
@@ -391,7 +521,6 @@ impl Engine {
         let Ok(mut synced) = self.synced.lock() else {
             return;
         };
-        let sr = self.sample_rate_hz;
         if synced.tempo_bpm != project.tempo_bpm {
             self.send(EngineMessage::SetTempo(project.tempo_bpm));
         }
@@ -485,7 +614,10 @@ impl Engine {
             // Sidechains point at track positions, which may have moved.
             let keyed = |effects: &[Effect]| effects.iter().any(|e| e.sidechain.is_some());
             if !same_buses || project.buses.iter().any(|b| keyed(&b.mixer.effects)) {
-                self.send(EngineMessage::ReplaceBuses(build_buses(project, sr)));
+                self.send(EngineMessage::ReplaceBuses(build_buses(
+                    project,
+                    &self.ctx(),
+                )));
             }
             if keyed(&project.master.effects) {
                 self.send(EngineMessage::ReplaceEffects {
@@ -494,25 +626,24 @@ impl Engine {
                         &project.tracks,
                         &project.master.effects,
                         project.tempo_bpm,
-                        sr,
+                        None,
+                        &self.ctx(),
                     ),
                 });
             }
-            let ctx = PluginCtx {
-                plugins: Arc::clone(&self.plugins),
-                producer: Arc::clone(&self.producer),
-                synced: Arc::clone(&self.synced),
-                loaded: Arc::clone(&self.plugin_loaded),
-                sample_rate_hz: sr,
-                later: daw_plugins::main_thread::has_runner(),
-            };
             self.send(EngineMessage::ReplaceTracks(build_tracks(
                 project,
                 &self.audio,
-                &ctx,
+                &self.ctx(),
             )));
         }
+        // After any rebuilds above, so rebuilt chains get them too.
+        self.sync_plugin_params(&synced, project);
         *synced = project.clone();
+        // Plugin effects that left the song are released here.
+        if let Ok(mut m) = self.effect_plugins.lock() {
+            m.retain(|id, _| project.plugin(*id).is_some());
+        }
     }
 
     fn sync_track(&self, project: &Project, old: &Track, new: &Track, tempo_changed: bool) {
@@ -525,22 +656,6 @@ impl Engine {
                     index,
                     value: value.unwrap_or(spec.default) as f32,
                 });
-            }
-        }
-        if let (Some(op), Some(np)) = (&old.instrument.plugin, &new.instrument.plugin) {
-            let live = self.plugin(new.id).and_then(Result::ok);
-            for (id, value) in &np.params {
-                if op.params.get(id) != Some(value) {
-                    self.send(EngineMessage::SetPluginParam {
-                        track_id: new.id,
-                        id: *id,
-                        value: *value,
-                    });
-                    // Edits from Claude or undo show in the plugin's window.
-                    if let Some(instance) = &live {
-                        instance.show_param(*id, *value);
-                    }
-                }
             }
         }
         let (os, ns) = (&old.mixer, &new.mixer);
@@ -610,18 +725,22 @@ impl Engine {
         new: &[Effect],
         tempo: f64,
     ) {
+        let plugin_key = |e: &Effect| e.plugin.as_ref().map(|p| (p.uid.clone(), p.path.clone()));
         let same_shape = old.len() == new.len()
-            && old
-                .iter()
-                .zip(new)
-                .all(|(a, b)| a.id == b.id && a.kind == b.kind && a.sidechain == b.sidechain);
+            && old.iter().zip(new).all(|(a, b)| {
+                a.id == b.id
+                    && a.kind == b.kind
+                    && a.sidechain == b.sidechain
+                    && plugin_key(a) == plugin_key(b)
+            });
         if !same_shape {
             self.send(EngineMessage::ReplaceEffects {
                 track_id,
-                chain: build_chain(tracks, new, tempo, self.sample_rate_hz),
+                chain: build_chain(tracks, new, tempo, track_id, &self.ctx()),
             });
             return;
         }
+
         for (a, b) in old.iter().zip(new) {
             if a.enabled != b.enabled {
                 self.send(EngineMessage::SetEffectEnabled {
@@ -644,6 +763,67 @@ impl Engine {
         }
     }
 
+    /// Sends plugin parameters that changed (by Claude, undo, or the
+    /// plugin's own window) to the running plugins, and shows them in the
+    /// plugins' windows. Plugins are matched by id, so this works whether
+    /// or not their track or chain was rebuilt.
+    fn sync_plugin_params(&self, old: &Project, new: &Project) {
+        let changed = |id: daw_model::Id, np: &daw_model::plugin::PluginRef| {
+            // A plugin that just appeared started with the song's values.
+            let Some(before) = old.plugin(id).filter(|b| b.uid == np.uid) else {
+                return Vec::new();
+            };
+            let diffs: Vec<(u32, f64)> = np
+                .params
+                .iter()
+                .filter(|(k, v)| before.params.get(k) != Some(*v))
+                .map(|(k, v)| (*k, *v))
+                .collect();
+            diffs
+        };
+        let show = |id: daw_model::Id, diffs: &[(u32, f64)]| {
+            if let Some(Ok(instance)) = self.plugin(id) {
+                for (k, v) in diffs {
+                    instance.show_param(*k, *v);
+                }
+            }
+        };
+        for t in &new.tracks {
+            if let Some(np) = &t.instrument.plugin {
+                let diffs = changed(t.id, np);
+                for &(id, value) in &diffs {
+                    self.send(EngineMessage::SetPluginParam {
+                        track_id: t.id,
+                        id,
+                        value,
+                    });
+                }
+                show(t.id, &diffs);
+            }
+        }
+        let chains = new
+            .tracks
+            .iter()
+            .map(|t| (Some(t.id), &t.mixer.effects))
+            .chain(new.buses.iter().map(|b| (Some(b.id), &b.mixer.effects)))
+            .chain(std::iter::once((None, &new.master.effects)));
+        for (owner, effects) in chains {
+            for e in effects {
+                let Some(np) = &e.plugin else { continue };
+                let diffs = changed(e.id, np);
+                for &(id, value) in &diffs {
+                    self.send(EngineMessage::SetEffectPluginParam {
+                        track_id: owner,
+                        effect_id: e.id,
+                        id,
+                        value,
+                    });
+                }
+                show(e.id, &diffs);
+            }
+        }
+    }
+
     /// Frees things the audio thread has swapped out.
     fn collect_garbage(&self) {
         if let Ok(mut g) = self.garbage.lock() {
@@ -658,13 +838,18 @@ fn build_chain(
     tracks: &[Track],
     effects: &[Effect],
     tempo_bpm: f64,
-    sample_rate_hz: f32,
+    owner: Option<TrackId>,
+    ctx: &PluginCtx,
 ) -> Box<EffectChain> {
     Box::new(EffectChain {
         effects: effects
             .iter()
             .map(|e| {
-                let mut processor = daw_effects::create(e, sample_rate_hz);
+                let mut processor = if e.plugin.is_some() {
+                    ctx.effect_processor(owner, e)
+                } else {
+                    daw_effects::create(e, ctx.sample_rate_hz)
+                };
                 processor.set_tempo(tempo_bpm as f32);
                 EffectSlot {
                     id: e.id,
@@ -679,7 +864,8 @@ fn build_chain(
     })
 }
 
-fn build_buses(project: &Project, sample_rate_hz: f32) -> Box<[BusSlot]> {
+fn build_buses(project: &Project, ctx: &PluginCtx) -> Box<[BusSlot]> {
+    let sample_rate_hz = ctx.sample_rate_hz;
     project
         .buses
         .iter()
@@ -690,7 +876,8 @@ fn build_buses(project: &Project, sample_rate_hz: f32) -> Box<[BusSlot]> {
                     &project.tracks,
                     &b.mixer.effects,
                     project.tempo_bpm,
-                    sample_rate_hz,
+                    Some(b.id),
+                    ctx,
                 ),
                 strip_settings(&b.mixer),
                 sample_rate_hz,
@@ -781,7 +968,8 @@ fn build_tracks(project: &Project, audio: &AudioPool, ctx: &PluginCtx) -> Box<[T
                     &project.tracks,
                     if frozen { &[] } else { &t.mixer.effects },
                     project.tempo_bpm,
-                    sample_rate_hz,
+                    Some(t.id),
+                    ctx,
                 ),
                 Box::new(track_sequence(project, t, audio, sample_rate_hz as u32)),
                 strip_settings(&t.mixer),

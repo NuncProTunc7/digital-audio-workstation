@@ -9,8 +9,9 @@ mod plugin;
 mod sampler;
 mod synth;
 
+pub use daw_plugins::song::PluginLoad;
 pub use drums::{DRUM_PADS, DrumGroup, DrumMachine, DrumPad};
-pub use plugin::{PluginLoad, create_plugin, plugin_info};
+pub use plugin::create_plugin;
 pub use synth::Synth;
 
 use daw_model::{Instrument, InstrumentKind, instrument::param_specs};

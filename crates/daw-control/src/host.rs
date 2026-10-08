@@ -395,9 +395,19 @@ fn handle_inner<H: Host>(host: &H, request: Request) -> Result<Value, String> {
             let info = crate::plugins::load_plugin(host, track_id, &uid)?;
             Ok(json!({ "track_id": track_id, "plugin": info.name }))
         }
-        Request::PluginParams { track_id } => {
-            let params = crate::plugins::params(host, track_id)?;
-            Ok(json!({ "track_id": track_id, "params": params }))
+        Request::PluginParams {
+            track_id,
+            effect_id,
+        } => {
+            let id = effect_id
+                .or(track_id)
+                .ok_or("give the plugin track's track_id or the plugin effect's effect_id")?;
+            let params = crate::plugins::params(host, id)?;
+            Ok(json!({ "track_id": track_id, "effect_id": effect_id, "params": params }))
+        }
+        Request::AddPluginEffect { track_id, uid } => {
+            let (effect_id, info) = crate::plugins::add_plugin_effect(host, track_id, &uid)?;
+            Ok(json!({ "track_id": track_id, "effect_id": effect_id, "plugin": info.name }))
         }
         Request::SampleLibrary => {
             let dir = host.library_dir();
@@ -1306,7 +1316,36 @@ pub(crate) mod tests {
             assert!(!r.ok, "{uid}");
         }
         // Without audio running there's no live plugin to ask.
-        assert!(!handle(&host, Request::PluginParams { track_id: 1 }).ok);
+        assert!(
+            !handle(
+                &host,
+                Request::PluginParams {
+                    track_id: Some(1),
+                    effect_id: None
+                }
+            )
+            .ok
+        );
+        // The effect plugin goes into chains, not onto tracks.
+        let added = ok(handle(
+            &host,
+            Request::AddPluginEffect {
+                track_id: None,
+                uid: "FEDCBA9876543210FEDCBA9876543210".into(),
+            },
+        ));
+        assert_eq!(added["plugin"], "Acme Hall");
+        ok(handle(&host, Request::Undo));
+        assert!(
+            !handle(
+                &host,
+                Request::AddPluginEffect {
+                    track_id: Some(1),
+                    uid: "0123456789ABCDEF0123456789ABCDEF".into(),
+                },
+            )
+            .ok
+        );
         // Loading is one undo step.
         ok(handle(&host, Request::Undo));
         let s = host.session.lock().expect("session");

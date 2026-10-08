@@ -5,7 +5,7 @@ use crate::project::{EffectId, Project, TrackId};
 /// Maximum effects per chain; keeps chains understandable and cheap.
 pub const MAX_EFFECTS_PER_CHAIN: usize = 16;
 
-fn chain_mut(
+pub(super) fn chain_mut(
     project: &mut Project,
     track_id: Option<TrackId>,
 ) -> Result<&mut Vec<Effect>, CommandError> {
@@ -38,6 +38,41 @@ pub(super) fn add(
     kind: EffectKind,
     index: Option<usize>,
 ) -> Result<Command, CommandError> {
+    if kind == EffectKind::Plugin {
+        return Err(super::invalid(
+            "effect",
+            "plugin effects are added with add_plugin_effect",
+        ));
+    }
+    insert(project, track_id, index, |id| Effect::new(id, kind))
+}
+
+pub(super) fn add_plugin(
+    project: &mut Project,
+    track_id: Option<TrackId>,
+    plugin: crate::plugin::PluginRef,
+    index: Option<usize>,
+) -> Result<Command, CommandError> {
+    if plugin.uid.len() != 32 || plugin.path.is_empty() {
+        return Err(super::invalid(
+            "plugin",
+            "needs an installed plugin's uid and path (use add_plugin_effect)",
+        ));
+    }
+    insert(project, track_id, index, |id| Effect {
+        plugin: Some(Box::new(plugin)),
+        params: Default::default(),
+        ..Effect::new(id, EffectKind::Plugin)
+    })
+}
+
+/// Adds a new effect (made from its new id) to a chain.
+fn insert(
+    project: &mut Project,
+    track_id: Option<TrackId>,
+    index: Option<usize>,
+    make: impl FnOnce(crate::project::Id) -> Effect,
+) -> Result<Command, CommandError> {
     // Check the target exists before spending an id.
     if chain_mut(project, track_id)?.len() >= MAX_EFFECTS_PER_CHAIN {
         return Err(super::invalid(
@@ -48,7 +83,7 @@ pub(super) fn add(
     let id = project.allocate_id();
     let chain = chain_mut(project, track_id)?;
     let index = index.unwrap_or(chain.len()).min(chain.len());
-    chain.insert(index, Effect::new(id, kind));
+    chain.insert(index, make(id));
     Ok(Command::RemoveEffect {
         track_id,
         effect_id: id,

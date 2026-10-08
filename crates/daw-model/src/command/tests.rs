@@ -336,13 +336,18 @@ fn sample_commands(p: &Project) -> Vec<Command> {
             path: Some("C:\\Samples\\Salamander\\SalamanderGrandPiano.sfz".into()),
         },
         Command::SetPluginParams {
-            track_id: PLUGIN_TRACK,
+            track_id: Some(PLUGIN_TRACK),
             effect_id: None,
             params: [(7, 0.25)].into_iter().collect(),
         },
         Command::SetInstrument {
             track_id: 13,
             instrument: plugin_instrument(),
+        },
+        Command::AddPluginEffect {
+            track_id: None,
+            plugin: plugin_instrument().plugin.expect("plugin"),
+            index: Some(0),
         },
         Command::RemoveAutomationLane {
             track_id: 1,
@@ -1904,7 +1909,7 @@ fn plugin_params_must_exist_and_stay_between_0_and_1() {
     for (track_id, params) in bad {
         let mut p = base.clone();
         let r = Command::SetPluginParams {
-            track_id,
+            track_id: Some(track_id),
             effect_id: None,
             params: params.into_iter().collect(),
         }
@@ -1937,7 +1942,7 @@ fn plugin_params_must_exist_and_stay_between_0_and_1() {
     let mut s = Session::new(base);
     for v in [0.1, 0.2, 0.3] {
         s.execute(Command::SetPluginParams {
-            track_id: PLUGIN_TRACK,
+            track_id: Some(PLUGIN_TRACK),
             effect_id: None,
             params: [(0, v)].into_iter().collect(),
         })
@@ -1950,6 +1955,50 @@ fn plugin_params_must_exist_and_stay_between_0_and_1() {
         .track(PLUGIN_TRACK)
         .and_then(|t| t.instrument.plugin.clone());
     assert_eq!(plugin.expect("plugin").params[&0], 0.5);
+}
+
+#[test]
+fn plugin_effects_are_added_set_and_removed() {
+    let mut p = fixture();
+    // Built-in kinds only through add_effect.
+    assert!(
+        Command::AddEffect {
+            track_id: Some(1),
+            kind: EffectKind::Plugin,
+            index: None,
+        }
+        .apply(&mut p)
+        .is_err()
+    );
+    let undo_add = Command::AddPluginEffect {
+        track_id: Some(1),
+        plugin: plugin_instrument().plugin.expect("plugin"),
+        index: None,
+    }
+    .apply(&mut p)
+    .expect("add");
+    let fx = p.track(1).expect("t").mixer.effects.last().expect("fx").id;
+    assert_eq!(
+        p.plugin(fx).map(|x| x.name.as_str()),
+        Some("NPT Test Synth")
+    );
+    let set = |p: &mut Project, track_id, v: f64| {
+        Command::SetPluginParams {
+            track_id,
+            effect_id: Some(fx),
+            params: [(0, v)].into_iter().collect(),
+        }
+        .apply(p)
+    };
+    // The effect is found on its own track only.
+    assert!(set(&mut p, Some(2), 0.9).is_err());
+    assert!(set(&mut p, None, 0.9).is_err());
+    let undo = set(&mut p, Some(1), 0.9).expect("set");
+    assert_eq!(p.plugin(fx).expect("p").params[&0], 0.9);
+    undo.apply(&mut p).expect("undo");
+    assert_eq!(p.plugin(fx).expect("p").params[&0], 0.5);
+    undo_add.apply(&mut p).expect("remove");
+    assert!(p.plugin(fx).is_none());
 }
 
 #[test]

@@ -118,25 +118,34 @@ fn check_plugin_values(params: &BTreeMap<u32, f64>) -> Result<(), CommandError> 
 
 pub(super) fn set_plugin_params(
     project: &mut Project,
-    track_id: TrackId,
+    track_id: Option<TrackId>,
     effect_id: Option<EffectId>,
     params: BTreeMap<u32, f64>,
 ) -> Result<Command, CommandError> {
-    let track = project
-        .track_mut(track_id)
-        .ok_or(CommandError::UnknownTrack(track_id))?;
-    if effect_id.is_some() {
-        return Err(super::invalid(
-            "effect",
-            "plugin effects aren't supported yet",
-        ));
-    }
-    let name = track.name.clone();
-    let plugin = track
-        .instrument
-        .plugin
-        .as_mut()
-        .ok_or_else(|| super::invalid("track", format!("\"{name}\" doesn't play a plugin")))?;
+    let plugin = match effect_id {
+        Some(effect_id) => {
+            let chain = super::effects::chain_mut(project, track_id)?;
+            chain
+                .iter_mut()
+                .find(|e| e.id == effect_id)
+                .ok_or(CommandError::UnknownEffect(effect_id))?
+                .plugin
+                .as_deref_mut()
+                .ok_or_else(|| super::invalid("effect", "isn't a plugin effect"))?
+        }
+        None => {
+            let track_id = track_id.ok_or_else(|| {
+                super::invalid("track_id", "give the plugin track (or an effect_id)")
+            })?;
+            let track = project
+                .track_mut(track_id)
+                .ok_or(CommandError::UnknownTrack(track_id))?;
+            let name = track.name.clone();
+            track.instrument.plugin.as_deref_mut().ok_or_else(|| {
+                super::invalid("track", format!("\"{name}\" doesn't play a plugin"))
+            })?
+        }
+    };
     if params.is_empty() {
         return Err(super::invalid("params", "give at least one parameter"));
     }

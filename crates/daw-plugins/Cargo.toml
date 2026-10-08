@@ -10,6 +10,8 @@ authors.workspace = true
 [dependencies]
 vst3 = "0.3.0"
 libloading = "0.8"
+base64 = "0.22"
+daw-model.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 

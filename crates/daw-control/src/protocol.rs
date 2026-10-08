@@ -69,9 +69,17 @@ pub enum Request {
         track_id: TrackId,
         uid: String,
     },
-    /// A plugin track's parameters (names, values, display text).
+    /// A plugin's parameters (names, values, display text): a plugin
+    /// track's (track_id), or a plugin effect's (effect_id).
     PluginParams {
-        track_id: TrackId,
+        track_id: Option<TrackId>,
+        effect_id: Option<daw_model::EffectId>,
+    },
+    /// Add an installed plugin effect to a track's, bus's, or (None) the
+    /// master's chain.
+    AddPluginEffect {
+        track_id: Option<TrackId>,
+        uid: String,
     },
     /// Free instruments the app can download, and which are installed.
     SampleLibrary,

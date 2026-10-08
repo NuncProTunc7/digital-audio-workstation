@@ -27,6 +27,9 @@ pub enum EffectKind {
     Distortion,
     /// Stops the signal from going over a ceiling. Best last on the master.
     Limiter,
+    /// A third-party VST3 effect installed on this computer. Add one with
+    /// add_plugin_effect; its controls are in plugin_params.
+    Plugin,
 }
 
 impl EffectKind {
@@ -49,6 +52,7 @@ impl EffectKind {
             EffectKind::Chorus => "Chorus",
             EffectKind::Distortion => "Distortion",
             EffectKind::Limiter => "Limiter",
+            EffectKind::Plugin => "Plugin",
         }
     }
 }
@@ -66,6 +70,9 @@ pub struct Effect {
     /// (sidechain), e.g. the kick ducking a bass. None = its own input.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sidechain: Option<crate::project::TrackId>,
+    /// Plugin effects: which plugin, and its settings.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plugin: Option<Box<crate::plugin::PluginRef>>,
 }
 
 impl Effect {
@@ -73,6 +80,7 @@ impl Effect {
     pub fn new(id: Id, kind: EffectKind) -> Self {
         Self {
             sidechain: None,
+            plugin: None,
             id,
             kind,
             enabled: true,
@@ -444,6 +452,7 @@ pub fn effect_params(kind: EffectKind) -> &'static [ParamSpec] {
         EffectKind::Chorus => CHORUS_PARAMS,
         EffectKind::Distortion => DISTORTION_PARAMS,
         EffectKind::Limiter => LIMITER_PARAMS,
+        EffectKind::Plugin => &[],
     }
 }
 
@@ -474,6 +483,7 @@ pub fn describe_effects() -> Vec<EffectDescription> {
                 EffectKind::Chorus => "Thickens and widens with moving copies.",
                 EffectKind::Distortion => "Warm saturation to hard fuzz.",
                 EffectKind::Limiter => "Keeps peaks under a ceiling. Use last on the master.",
+                EffectKind::Plugin => "A VST3 effect you installed.",
             },
             params: effect_params(kind),
         })

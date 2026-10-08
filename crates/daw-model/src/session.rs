@@ -57,22 +57,19 @@ impl Session {
         &self.project
     }
 
-    /// Records what a track's plugin reports about itself: parameters the
-    /// song doesn't list yet (after loading it), and its saved settings
-    /// (before saving the song). These mirror the plugin rather than edit
-    /// it, so there's no undo step and the song doesn't become unsaved.
-    /// Returns false if the track has no plugin.
+    /// Records what a plugin (a track's instrument by track id, or an
+    /// effect by effect id) reports about itself: parameters the song
+    /// doesn't list yet (after loading it), and its saved settings (before
+    /// saving the song). These mirror the plugin rather than edit it, so
+    /// there's no undo step and the song doesn't become unsaved. Returns
+    /// false if there's no such plugin.
     pub fn note_plugin(
         &mut self,
-        track_id: crate::TrackId,
+        id: crate::Id,
         new_params: &std::collections::BTreeMap<u32, f64>,
         state: Option<String>,
     ) -> bool {
-        let Some(plugin) = self
-            .project
-            .track_mut(track_id)
-            .and_then(|t| t.instrument.plugin.as_mut())
-        else {
+        let Some(plugin) = self.project.plugin_mut(id) else {
             return false;
         };
         for (id, v) in new_params {

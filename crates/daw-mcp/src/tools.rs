@@ -23,7 +23,7 @@ const HIDDEN_COMMANDS: &[&str] = &[
 
 /// Commands whose tool does more than the Command (freeze_track renders
 /// the track first), so the generated tool of that name is left out.
-const REPLACED_COMMANDS: &[&str] = &["freeze_track"];
+const REPLACED_COMMANDS: &[&str] = &["freeze_track", "add_plugin_effect"];
 
 /// The tool that reads the built-in user guide (answered by the bridge itself).
 pub const READ_GUIDE: &str = "read_guide";
@@ -284,9 +284,27 @@ fn extra_tools() -> Vec<ToolDef> {
         ),
         tool(
             "plugin_params",
-            "A plugin track's parameters: id, name, units, current value (0-1), default, what the plugin shows for the value (display, e.g. \"-6.0 dB\" or \"Saw\"), steps (0 = continuous). Change them with set_plugin_params using these ids and 0-1 values; check display afterwards to confirm the value means what you intended.",
-            object_schema(json!({ "track_id": { "type": "integer" } }), &["track_id"]),
+            "A plugin's parameters: a plugin track's (track_id) or a plugin effect's (effect_id). Each has id, name, units, current value (0-1), default, what the plugin shows for the value (display, e.g. \"-6.0 dB\" or \"Saw\"), steps (0 = continuous). Change them with set_plugin_params using these ids and 0-1 values (for an effect give its effect_id and the track or bus it's on); check display afterwards to confirm the value means what you intended.",
+            object_schema(
+                json!({
+                    "track_id": { "type": "integer", "description": "A plugin track." },
+                    "effect_id": { "type": "integer", "description": "A plugin effect (from get_track or get_song)." }
+                }),
+                &[],
+            ),
             true,
+        ),
+        tool(
+            "add_plugin_effect",
+            "Add one of the user's installed plugin effects (uid from plugins, kind effect) at the end of a chain: a track's (track_id), a bus's (its id as track_id), or the master's (omit track_id). One undo step. Returns its effect_id; read its controls with plugin_params.",
+            object_schema(
+                json!({
+                    "track_id": { "type": "integer" },
+                    "uid": { "type": "string", "description": "The plugin's id from plugins." }
+                }),
+                &["uid"],
+            ),
+            false,
         ),
         tool(
             "sample_library",
@@ -539,7 +557,12 @@ pub fn to_request(name: &str, args: Map<String, Value>) -> Result<Request, Strin
             uid: get_str("uid").ok_or("uid is required")?,
         },
         "plugin_params" => Request::PluginParams {
-            track_id: get_id("track_id")?,
+            track_id: get_id("track_id").ok(),
+            effect_id: get_id("effect_id").ok(),
+        },
+        "add_plugin_effect" => Request::AddPluginEffect {
+            track_id: get_id("track_id").ok(),
+            uid: get_str("uid").ok_or("uid is required")?,
         },
         "sample_library" => Request::SampleLibrary,
         "download_sample_pack" => Request::DownloadSamplePack {

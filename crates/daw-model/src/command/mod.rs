@@ -244,6 +244,15 @@ pub enum Command {
     },
 
     // ---- Effects ----
+    /// Add an installed plugin effect (from plugins) to a chain: a track's,
+    /// a bus's (its id as track_id), or the master's (track_id omitted).
+    /// Use the add_plugin_effect tool, which fills in the plugin.
+    AddPluginEffect {
+        track_id: Option<TrackId>,
+        plugin: Box<crate::plugin::PluginRef>,
+        /// Position in the chain (default: last).
+        index: Option<usize>,
+    },
     /// Add an effect to a track's chain, or to the master bus if `track_id`
     /// is omitted. Use `describe_effects` for kinds and parameters.
     AddEffect {
@@ -458,14 +467,14 @@ pub enum Command {
         path: Option<String>,
     },
 
-    /// Set parameters of a track's plugin instrument, by the parameter ids
-    /// plugin_params lists. Values are 0–1 on the plugin's own scale
-    /// (plugin_params shows what each value means, e.g. 0.5 = "-6 dB").
-    /// Fails if the track isn't a plugin track or an id isn't one of the
-    /// plugin's parameters.
+    /// Set parameters of a plugin, by the parameter ids plugin_params
+    /// lists: a track's plugin instrument (track_id, no effect_id) or a
+    /// plugin effect (effect_id, with track_id = the track or bus it's on;
+    /// leave track_id out for the master). Values are 0–1 on the plugin's
+    /// own scale (plugin_params shows what each means, e.g. 0.5 = "-6 dB").
+    /// Fails if there's no such plugin or an id isn't one of its parameters.
     SetPluginParams {
-        track_id: TrackId,
-        /// Leave out: plugin effects aren't supported yet.
+        track_id: Option<TrackId>,
         effect_id: Option<EffectId>,
         /// Parameter id → value (0–1).
         #[serde(deserialize_with = "crate::plugin::id_map::deserialize")]
@@ -790,6 +799,11 @@ impl Command {
                 kind,
                 index,
             } => effects::add(project, track_id, kind, index),
+            C::AddPluginEffect {
+                track_id,
+                plugin,
+                index,
+            } => effects::add_plugin(project, track_id, *plugin, index),
             C::RemoveEffect {
                 track_id,
                 effect_id,

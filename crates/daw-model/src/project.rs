@@ -289,6 +289,43 @@ impl Project {
         files
     }
 
+    /// The plugin with this id: a track's plugin instrument (track id), or
+    /// a plugin effect anywhere (effect id).
+    pub fn plugin_mut(&mut self, id: Id) -> Option<&mut crate::plugin::PluginRef> {
+        if self.tracks.iter().any(|t| t.id == id) {
+            return self
+                .track_mut(id)
+                .and_then(|t| t.instrument.plugin.as_deref_mut());
+        }
+        let chains = self
+            .tracks
+            .iter_mut()
+            .map(|t| &mut t.mixer.effects)
+            .chain(self.buses.iter_mut().map(|b| &mut b.mixer.effects))
+            .chain(std::iter::once(&mut self.master.effects));
+        for chain in chains {
+            if let Some(e) = chain.iter_mut().find(|e| e.id == id) {
+                return e.plugin.as_deref_mut();
+            }
+        }
+        None
+    }
+
+    /// Read-only [`plugin_mut`](Self::plugin_mut).
+    pub fn plugin(&self, id: Id) -> Option<&crate::plugin::PluginRef> {
+        if let Some(t) = self.tracks.iter().find(|t| t.id == id) {
+            return t.instrument.plugin.as_deref();
+        }
+        self.tracks
+            .iter()
+            .map(|t| &t.mixer.effects)
+            .chain(self.buses.iter().map(|b| &b.mixer.effects))
+            .chain(std::iter::once(&self.master.effects))
+            .flat_map(|c| c.iter())
+            .find(|e| e.id == id)
+            .and_then(|e| e.plugin.as_deref())
+    }
+
     pub fn track_mut(&mut self, id: TrackId) -> Option<&mut Track> {
         self.tracks.iter_mut().find(|t| t.id == id)
     }

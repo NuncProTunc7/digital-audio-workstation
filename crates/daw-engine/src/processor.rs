@@ -276,6 +276,33 @@ impl AudioProcessor {
                     }
                 }
                 EngineMessage::SetMasterGain(gain) => self.master_gain.set_target(gain),
+                EngineMessage::ReplaceEffect {
+                    track_id,
+                    effect_id,
+                    processor,
+                } => {
+                    let spare = match self
+                        .chain(track_id)
+                        .and_then(|chain| chain.effects.iter_mut().find(|e| e.id == effect_id))
+                    {
+                        Some(e) => std::mem::replace(&mut e.processor, processor),
+                        // The effect went away meanwhile.
+                        None => processor,
+                    };
+                    self.throw_away(Garbage::Effect(spare));
+                }
+                EngineMessage::SetEffectPluginParam {
+                    track_id,
+                    effect_id,
+                    id,
+                    value,
+                } => {
+                    if let Some(chain) = self.chain(track_id)
+                        && let Some(e) = chain.effects.iter_mut().find(|e| e.id == effect_id)
+                    {
+                        e.processor.set_plugin_param(id, value);
+                    }
+                }
                 EngineMessage::SetEffectParam {
                     track_id,
                     effect_id,
@@ -339,13 +366,16 @@ impl AudioProcessor {
                     track_id,
                     instrument,
                 } => {
-                    let old = self.track(track_id).map(|t| {
-                        t.instrument.all_notes_off();
-                        std::mem::replace(&mut t.instrument, instrument)
-                    });
-                    if let Some(old) = old {
-                        self.throw_away(Garbage::Instrument(old));
-                    }
+                    // Whichever is left over (the old one, or the new one
+                    // if its track went away) is freed off this thread.
+                    let spare = match self.track(track_id) {
+                        Some(t) => {
+                            t.instrument.all_notes_off();
+                            std::mem::replace(&mut t.instrument, instrument)
+                        }
+                        None => instrument,
+                    };
+                    self.throw_away(Garbage::Instrument(spare));
                 }
                 EngineMessage::ReplaceTracks(new_tracks) => {
                     let old = std::mem::replace(&mut self.tracks, new_tracks);

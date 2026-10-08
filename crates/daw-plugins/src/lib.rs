@@ -16,6 +16,7 @@ pub mod instance;
 pub mod main_thread;
 pub mod module;
 pub mod scan;
+pub mod song;
 
 pub use com::Edit;
 pub use instance::{Instance, ParamInfo, PluginProcessor};

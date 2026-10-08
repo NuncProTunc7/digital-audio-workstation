@@ -1,6 +1,6 @@
 # Plugins (VST3)
 
-Plugins are instruments and effects made by other companies that work in many music apps. Lots of great ones are free. Nunc Pro Tune plays **VST3 instruments** on tracks; plugin effects come later.
+Plugins are instruments and effects made by other companies that work in many music apps. Lots of great ones are free. Nunc Pro Tune plays **VST3** plugins: instruments on tracks, and effects in any track's, bus's or the master's effect chain.
 
 ## Getting plugins
 
@@ -8,6 +8,7 @@ Plugins are instruments and effects made by other companies that work in many mu
    - **Spitfire LABS**: orchestral, piano and atmospheric sounds (install the Spitfire app, then the LABS sounds you want).
    - **Surge XT**: a big free synthesizer.
    - **Vital**: a modern free synthesizer.
+   - **Valhalla Supermassive**: a free, huge, dreamy reverb and echo (an effect).
 2. Installers put VST3 plugins in `C:\Program Files\Common Files\VST3`, where Nunc Pro Tune looks. Some ask where to install: choose that folder.
 3. Nunc Pro Tune looks for new plugins each time it starts. Already running? Choose **Look for new plugins…** in the **Plugin** menu (below).
 
@@ -23,6 +24,12 @@ The first look can take a minute if you have many plugins: each one is opened in
 
 Every change, in the plugin window or on the sliders, is undoable, and a whole knob turn is one undo step. Picking one of the plugin's own presets is one undo step too.
 
+## Plugin effects
+
+1. Open the **Mixer**. On a track (or a bus, or the master), open **+ Add effect…**; installed effects are listed under **Plugins**.
+2. Click the effect's name to open its card, then **Open plugin window** for its controls.
+3. The ⏻ switch bypasses it and ✕ removes it, like the built-in effects. Everything is undoable.
+
 ## Saving and sharing
 
 - The song saves each plugin's settings, so it sounds the same when you open it again.
@@ -31,7 +38,7 @@ Every change, in the plugin window or on the sliders, is undoable, and a whole k
 
 ## Claude and plugins
 
-Claude can list your plugins, put one on a track, and change its controls: "put Surge XT on the bass track and make it darker". It reads the same control names and values you see. Claude can't see the plugin's window, so for picking sounds by ear, open the window yourself (or ask Claude which control to try).
+Claude can list your plugins, put one on a track or in an effect chain, and change its controls: "put Surge XT on the bass track and make it darker", "add Supermassive to the pad and make it a long shimmer". It reads the same control names and values you see. Claude can't see the plugin's window, so for picking sounds by ear, open the window yourself (or ask Claude which control to try).
 
 ## If something goes wrong
 

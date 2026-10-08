@@ -12,7 +12,7 @@ daw-dsp = { path = "../daw-dsp" }
 daw-model.workspace = true
 daw-sampler = { path = "../daw-sampler" }
 daw-plugins = { path = "../daw-plugins" }
-base64 = "0.22"
+
 serde.workspace = true
 
 [lints]

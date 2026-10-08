@@ -10,6 +10,7 @@ authors.workspace = true
 [dependencies]
 daw-dsp = { path = "../daw-dsp" }
 daw-model.workspace = true
+daw-plugins = { path = "../daw-plugins" }
 
 [lints]
 workspace = true

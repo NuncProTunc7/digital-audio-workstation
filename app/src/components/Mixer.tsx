@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { formatDb, meterPercent } from "../format";
-import type { Bus, Catalog, Command, Effect, EffectKind, Project, Track } from "../types";
+import type { Bus, Catalog, Command, Effect, EffectKind, PluginInfo, PluginList, Project, Track } from "../types";
 import Fader from "./Fader";
 import ParamControl from "./ParamControl";
 
@@ -14,7 +14,23 @@ interface MixerProps {
   onSelectTrack: (id: number) => void;
   onCommand: (command: Command) => Promise<unknown>;
   onEndGesture: () => void;
+  /** Third-party plugin effects; omitted where they can't be used. */
+  plugins?: {
+    list: (rescan: boolean) => Promise<PluginList>;
+    /** Adds a plugin effect to a track's, bus's or (null) the master's chain. */
+    add: (trackId: number | null, uid: string) => void;
+    openWindow: (effectId: number) => void;
+  };
 }
+
+/** Plugin effects the strips and effect cards offer. */
+const PluginEffects = createContext<{
+  effects: PluginInfo[];
+  add: (trackId: number | null, uid: string) => void;
+  openWindow: (effectId: number) => void;
+} | null>(null);
+
+const PLUGIN = "plugin:";
 
 /** Where a track plays, and what it sends to other buses. */
 function Routing({ track, buses, onCommand, onEndGesture }: {
@@ -101,7 +117,16 @@ export default function Mixer(props: MixerProps) {
   const { project } = props;
   const buses = project.buses ?? [];
   const send = (command: Command) => void props.onCommand(command);
-  return (
+  const [pluginEffects, setPluginEffects] = useState<PluginInfo[]>([]);
+  const list = props.plugins?.list;
+  useEffect(() => {
+    if (!list) return;
+    void list(false)
+      .then((l) => setPluginEffects(l.plugins.filter((p) => p.kind === "effect")))
+      .catch(() => {});
+  }, [list]);
+  const plugins = props.plugins ? { effects: pluginEffects, add: props.plugins.add, openWindow: props.plugins.openWindow } : null;
+  const mixer = (
     <div className="mixer">
       {project.tracks.map((t, i) => (
         <Strip
@@ -269,6 +294,7 @@ export default function Mixer(props: MixerProps) {
       />
     </div>
   );
+  return <PluginEffects.Provider value={plugins}>{mixer}</PluginEffects.Provider>;
 }
 
 interface StripProps {
@@ -295,6 +321,7 @@ interface StripProps {
 function Strip(props: StripProps) {
   const [open, setOpen] = useState<number | null>(null);
   const [renaming, setRenaming] = useState(false);
+  const plugins = useContext(PluginEffects);
   return (
     <section
       className={`strip${props.master ? " master" : ""}${props.bus ? " bus" : ""}${props.selected ? " selected" : ""}`}
@@ -347,19 +374,34 @@ function Strip(props: StripProps) {
           aria-label={`Add effect to ${props.name}`}
           value=""
           onChange={(e) => {
-            const kind = e.target.value as EffectKind;
+            const v = e.target.value;
             e.currentTarget.blur();
+            if (v.startsWith(PLUGIN)) {
+              plugins?.add(props.trackId, v.slice(PLUGIN.length));
+              return;
+            }
             void props
-              .onCommand({ command: "add_effect", track_id: props.trackId, kind, index: null })
+              .onCommand({ command: "add_effect", track_id: props.trackId, kind: v as EffectKind, index: null })
               .then(props.onEndGesture);
           }}
         >
           <option value="">+ Add effect…</option>
-          {props.catalog.effects.map((d) => (
-            <option key={d.kind} value={d.kind} title={d.description}>
-              {d.name}
-            </option>
-          ))}
+          <optgroup label="Built-in">
+            {props.catalog.effects.map((d) => (
+              <option key={d.kind} value={d.kind} title={d.description}>
+                {d.name}
+              </option>
+            ))}
+          </optgroup>
+          {plugins && plugins.effects.length > 0 && (
+            <optgroup label="Plugins">
+              {plugins.effects.map((p) => (
+                <option key={p.uid} value={PLUGIN + p.uid} title={p.categories}>
+                  {p.name} ({p.vendor})
+                </option>
+              ))}
+            </optgroup>
+          )}
         </select>
       </div>
 
@@ -396,7 +438,9 @@ interface EffectCardProps {
 }
 
 function EffectCard({ tracks, effect, trackId, catalog, open, onToggleOpen, onCommand, onEndGesture }: EffectCardProps) {
-  const description = catalog.effects.find((d) => d.kind === effect.kind);
+  const plugins = useContext(PluginEffects);
+  const builtIn = catalog.effects.find((d) => d.kind === effect.kind);
+  const description = effect.plugin ? { name: effect.plugin.name, params: [] } : builtIn;
   return (
     <div className={`effect${effect.enabled ? "" : " bypassed"}`}>
       <div className="effect-header">
@@ -428,6 +472,19 @@ function EffectCard({ tracks, effect, trackId, catalog, open, onToggleOpen, onCo
           ✕
         </button>
       </div>
+      {open && effect.plugin && (
+        <div className="effect-params">
+          <button
+            className="small"
+            disabled={!plugins}
+            onClick={() => plugins?.openWindow(effect.id)}
+            title={plugins ? "Show the plugin's own controls" : "Plugins need the desktop app"}
+          >
+            Open plugin window
+          </button>
+          <span className="muted hint">{effect.plugin.vendor}</span>
+        </div>
+      )}
       {open && effect.kind === "compressor" && (
         <label className="sidechain" title="Duck this track whenever another one plays, e.g. the bass under the kick">
           <span>Listens to</span>

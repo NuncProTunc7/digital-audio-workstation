@@ -332,6 +332,22 @@ impl Instance {
         &self.0.info
     }
 
+    /// Starts a plugin as a song saved it: its settings (base64, from
+    /// [`Instance::state`]) and then its parameter values on top.
+    pub fn start(
+        info: &PluginInfo,
+        setup: Setup,
+        state_base64: Option<&str>,
+        params: &[(u32, f64)],
+    ) -> Result<(Instance, PluginProcessor), String> {
+        use base64::Engine as _;
+        let state =
+            state_base64.and_then(|s| base64::engine::general_purpose::STANDARD.decode(s).ok());
+        let (instance, mut rt) = Instance::create(info, setup, state)?;
+        instance.apply_params(&mut rt, params)?;
+        Ok((instance, rt))
+    }
+
     /// Whether two handles are the very same running plugin.
     pub fn same_as(&self, other: &Instance) -> bool {
         Arc::ptr_eq(&self.0, &other.0)

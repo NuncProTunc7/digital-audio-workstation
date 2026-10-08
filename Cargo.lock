@@ -857,6 +857,7 @@ version = "0.2.0"
 dependencies = [
  "daw-dsp",
  "daw-model",
+ "daw-plugins",
 ]
 
 [[package]]
@@ -896,7 +897,6 @@ dependencies = [
 name = "daw-instruments"
 version = "0.2.0"
 dependencies = [
- "base64 0.22.1",
  "daw-audio",
  "daw-dsp",
  "daw-model",
@@ -944,6 +944,8 @@ dependencies = [
 name = "daw-plugins"
 version = "0.2.0"
 dependencies = [
+ "base64 0.22.1",
+ "daw-model",
  "daw-test-plugin",
  "libloading 0.8.9",
  "serde",
