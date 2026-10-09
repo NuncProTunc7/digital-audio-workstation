@@ -311,6 +311,27 @@ describe("Audio", () => {
     await waitFor(() => expect(backend.monitorInput).toHaveBeenCalledWith(false));
   });
 
+  it("imports onto a selected empty audio track instead of making a new one", async () => {
+    // Found 2026-10-09: the file went to a new track, leaving the selected
+    // empty one unused.
+    const backend = createPreviewBackend();
+    vi.spyOn(backend, "pickImportFiles").mockResolvedValue(["C:/Desktop/flute.flac", "C:/Desktop/drums.wav"]);
+    vi.spyOn(backend, "importAudio");
+    await renderApp(backend);
+    await act(async () => {
+      fireEvent.click(screen.getByText("+ Audio track"));
+    });
+    fireEvent.click(trackHeader("Audio"));
+    const audioId = (await backend.getProject()).project.tracks[3].id;
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Import…" }));
+    });
+    await waitFor(() => expect(backend.importAudio).toHaveBeenCalledTimes(2));
+    // The first file fills the empty track; the next gets a track of its own.
+    expect(vi.mocked(backend.importAudio).mock.calls[0][1]).toBe(audioId);
+    expect(vi.mocked(backend.importAudio).mock.calls[1][1]).toBeNull();
+  });
+
   it("looks for microphones again with Refresh", async () => {
     const backend = createPreviewBackend();
     vi.spyOn(backend, "refreshInput").mockResolvedValue({

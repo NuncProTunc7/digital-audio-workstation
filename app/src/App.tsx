@@ -336,13 +336,21 @@ export default function App({ backend }: AppProps) {
         setError("Only audio (WAV, MP3, M4A, FLAC, OGG), MIDI, and sheet music (MusicXML) files can be imported");
       }
       let latest: Project | undefined;
+      // With no target track, the first audio file fills a selected audio
+      // track that is still empty, rather than making another track.
+      let fillEmpty = trackId === null && selectedTrack?.instrument.kind === "audio" && selectedTrack.clips.length === 0
+        ? selectedTrack.id
+        : null;
       for (const path of usable) {
+        const audioTrack = trackId ?? fillEmpty;
+        const isAudio = !MIDI_EXTENSIONS.includes(ext(path)) && !MUSICXML_EXTENSIONS.includes(ext(path));
+        if (isAudio) fillEmpty = null;
         const v = await run(() =>
           MIDI_EXTENSIONS.includes(ext(path))
             ? backend.importMidi(path)
             : MUSICXML_EXTENSIONS.includes(ext(path))
               ? backend.importMusicXml(path)
-              : backend.importAudio(path, trackId, beats),
+              : backend.importAudio(path, audioTrack, beats),
         );
         if (!v) break;
         latest = applyView(v);
@@ -357,7 +365,7 @@ export default function App({ backend }: AppProps) {
         setTab("instrument");
       }
     },
-    [backend, run, applyView],
+    [backend, run, applyView, selectedTrack],
   );
 
   const [exportOpen, setExportOpen] = useState(false);

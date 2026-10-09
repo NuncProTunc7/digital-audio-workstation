@@ -3,7 +3,7 @@
 ## Bring in a phone recording
 
 1. Send the file to your PC (email, OneDrive, USB...).
-2. Drag it onto the timeline, or **Import…** and pick it. Voice memos (m4a), mp3, wav, flac and ogg all work.
+2. Drag it onto the timeline, or **Import…** and pick it. Voice memos (m4a), mp3, wav, flac and ogg all work. If an empty audio track is selected, the file goes onto it; otherwise it gets a new track named after the file.
 3. It lands on an audio track as a clip with its waveform.
 
 ## Record with your mic or headset
