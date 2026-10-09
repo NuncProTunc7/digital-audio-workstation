@@ -116,6 +116,23 @@ describe("App", () => {
     expect(await screen.findByDisplayValue("Pluck")).toBeTruthy();
   });
 
+  it("types an exact parameter value into the readout", async () => {
+    const backend = await renderApp(spyBackend());
+    vi.spyOn(backend, "endGesture");
+    fireEvent.doubleClick(screen.getAllByLabelText("Cutoff value")[0]);
+    const box = screen.getByLabelText("Type Cutoff");
+    fireEvent.change(box, { target: { value: "2.5k" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    await waitFor(() =>
+      expect(backend.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ command: "set_instrument_param", param: "filter.cutoff_hz", value: 2500 }),
+      ),
+    );
+    // One typed value is one undo step.
+    expect(backend.endGesture).toHaveBeenCalled();
+    expect(screen.queryByLabelText("Type Cutoff")).toBeNull();
+  });
+
   it("starts playback with the space bar", async () => {
     const backend = await renderApp(spyBackend());
     await act(async () => {
@@ -646,11 +663,11 @@ describe("Buses", () => {
     });
     // A new send starts audible, and its level is shown, not just hovered.
     expect((screen.getByLabelText("Keys send to Reverb") as HTMLInputElement).value).toBe("-12");
-    expect(screen.getByLabelText("Keys send level").textContent).toBe("-12.0 dB");
+    expect(screen.getByLabelText("Keys send level value").textContent).toBe("-12.0 dB");
     await act(async () => {
       fireEvent.change(screen.getByLabelText("Keys send to Reverb"), { target: { value: "-8.5" } });
     });
-    expect(screen.getByLabelText("Keys send level").textContent).toBe("-8.5 dB");
+    expect(screen.getByLabelText("Keys send level value").textContent).toBe("-8.5 dB");
     let p = (await backend.getProject()).project;
     expect(p.tracks[2].output).toBe(bus?.id);
     expect(p.tracks[0].sends).toEqual([{ bus_id: bus?.id, level_db: -8.5, pre_fader: false }]);
@@ -662,6 +679,49 @@ describe("Buses", () => {
     p = (await backend.getProject()).project;
     expect(p.buses).toEqual([]);
     expect(p.tracks[2].output).toBeNull();
+  });
+});
+
+describe("Typed mixer values", () => {
+  it("types levels, pan and send amounts, and refuses values out of range", async () => {
+    const backend = createPreviewBackend();
+    vi.spyOn(backend, "execute");
+    await renderApp(backend);
+    fireEvent.click(screen.getByRole("tab", { name: /Mixer/ }));
+    const typeInto = async (readout: string, box: string, text: string) => {
+      fireEvent.doubleClick(screen.getByLabelText(readout));
+      const input = screen.getByLabelText(box);
+      fireEvent.change(input, { target: { value: text } });
+      await act(async () => {
+        fireEvent.keyDown(input, { key: "Enter" });
+      });
+    };
+
+    await typeInto("Keys volume value", "Type Keys volume", "-3.5");
+    expect(backend.execute).toHaveBeenCalledWith(expect.objectContaining({ command: "set_track_mixer", track_id: 1, volume_db: -3.5 }));
+    expect(screen.getByLabelText("Keys volume value").textContent).toBe("-3.5 dB");
+
+    await typeInto("Keys pan value", "Type Keys pan", "30L");
+    expect(backend.execute).toHaveBeenCalledWith(expect.objectContaining({ command: "set_track_mixer", track_id: 1, pan: -0.3 }));
+
+    // Out of range: nothing changes, the box stays open and says why.
+    vi.mocked(backend.execute).mockClear();
+    await typeInto("Bass volume value", "Type Bass volume", "20");
+    expect(backend.execute).not.toHaveBeenCalled();
+    const box = screen.getByLabelText("Type Bass volume");
+    expect(box.getAttribute("aria-invalid")).toBe("true");
+    expect(screen.getByRole("alert").textContent).toContain("-60 to +6 dB");
+    fireEvent.keyDown(box, { key: "Escape" });
+    expect(screen.queryByLabelText("Type Bass volume")).toBeNull();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "+ Bus" }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText("Send Keys to Reverb"));
+    });
+    await typeInto("Keys send level value", "Type Keys send level", "-20");
+    expect((await backend.getProject()).project.tracks[0].sends?.[0].level_db).toBe(-20);
   });
 });
 

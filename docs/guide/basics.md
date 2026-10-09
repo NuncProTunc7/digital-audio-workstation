@@ -43,7 +43,7 @@ Versions are named copies of your song kept inside the song file: try something 
 
 ## Undo
 
-Everything, including what Claude does, can be undone: **Ctrl+Z** undo, **Ctrl+Y** (or Ctrl+Shift+Z) redo. A slider drag or a clip drag counts as one step. The History buttons in the top bar do the same.
+Everything, including what Claude does, can be undone: **Ctrl+Z** undo, **Ctrl+Y** (or Ctrl+Shift+Z) redo. A slider drag, a typed value, or a clip drag counts as one step. The History buttons in the top bar do the same.
 
 ## All keyboard shortcuts
 

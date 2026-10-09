@@ -1,8 +1,9 @@
 import { createContext, useContext, useEffect, useState } from "react";
-import { formatDb, meterPercent } from "../format";
+import { formatDb, meterPercent, parseDb, parsePan } from "../format";
 import type { Bus, Catalog, Command, Effect, EffectKind, PluginInfo, PluginList, Project, Track } from "../types";
 import Fader from "./Fader";
 import ParamControl from "./ParamControl";
+import ValueEntry from "./ValueEntry";
 
 interface MixerProps {
   project: Project;
@@ -31,6 +32,27 @@ const PluginEffects = createContext<{
 } | null>(null);
 
 const PLUGIN = "plugin:";
+
+/** "C", "30L" or "45R". */
+function formatPan(pan: number): string {
+  return pan === 0 ? "C" : `${Math.round(Math.abs(pan) * 100)}${pan < 0 ? "L" : "R"}`;
+}
+
+/** A pan readout you can type into ("30L", "C"). */
+function PanEntry({ name, pan, onSet }: { name: string; pan: number; onSet: (pan: number) => void }) {
+  return (
+    <ValueEntry
+      className="param-value"
+      text={formatPan(pan)}
+      name={`${name} pan`}
+      parse={parsePan}
+      min={-1}
+      max={1}
+      rangeText="100L to 100R (C is centre)"
+      onSet={onSet}
+    />
+  );
+}
 
 /** Where a track plays, and what it sends to other buses. */
 function Routing({ track, buses, onCommand, onEndGesture }: {
@@ -84,9 +106,16 @@ function Routing({ track, buses, onCommand, onEndGesture }: {
                 <span>→ {b.name}</span>
               </label>
               {s && (
-                <span className="send-db" aria-label={`${track.name} send level`}>
-                  {s.level_db.toFixed(1)} dB
-                </span>
+                <ValueEntry
+                  className="send-db"
+                  text={`${s.level_db.toFixed(1)} dB`}
+                  name={`${track.name} send level`}
+                  parse={parseDb}
+                  min={-60}
+                  max={6}
+                  rangeText="-60 to +6 dB"
+                  onSet={(v) => run({ command: "set_send", track_id: track.id, bus_id: b.id, level_db: v, pre_fader: null })}
+                />
               )}
               {s && (
                 <input
@@ -175,9 +204,15 @@ export default function Mixer(props: MixerProps) {
                 props.onEndGesture();
               }}
             />
-            <span className="param-value">
-              {t.mixer.pan === 0 ? "C" : `${Math.round(Math.abs(t.mixer.pan) * 100)}${t.mixer.pan < 0 ? "L" : "R"}`}
-            </span>
+            <PanEntry
+              name={t.name}
+              pan={t.mixer.pan}
+              onSet={(pan) =>
+                void props
+                  .onCommand({ command: "set_track_mixer", track_id: t.id, volume_db: null, pan, mute: null, solo: null })
+                  .then(props.onEndGesture)
+              }
+            />
           </label>
           <div className="strip-buttons">
             <button
@@ -240,6 +275,15 @@ export default function Mixer(props: MixerProps) {
                 send({ command: "set_bus_mixer", bus_id: b.id, volume_db: null, pan: 0, mute: null });
                 props.onEndGesture();
               }}
+            />
+            <PanEntry
+              name={b.name}
+              pan={b.mixer.pan}
+              onSet={(pan) =>
+                void props
+                  .onCommand({ command: "set_bus_mixer", bus_id: b.id, volume_db: null, pan, mute: null })
+                  .then(props.onEndGesture)
+              }
             />
           </label>
           <div className="strip-buttons">
@@ -426,7 +470,19 @@ function Strip(props: StripProps) {
           <div style={{ height: `${meterPercent(props.peak)}%` }} className={props.peak > 0.9 ? "hot" : ""} />
         </div>
       </div>
-      <div className="strip-db">{formatDb(props.volumeDb)}</div>
+      <ValueEntry
+        className="strip-db"
+        text={formatDb(props.volumeDb)}
+        name={`${props.name} volume`}
+        parse={parseDb}
+        min={-60}
+        max={6}
+        rangeText="-60 to +6 dB"
+        onSet={(v) => {
+          props.onVolume(v);
+          props.onEndGesture();
+        }}
+      />
     </section>
   );
 }

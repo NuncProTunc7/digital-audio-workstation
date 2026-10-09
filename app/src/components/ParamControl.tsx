@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { formatParam, fromSlider, SLIDER_STEPS, toSlider } from "../format";
+import { formatParam, fromSlider, parseParam, SLIDER_STEPS, toSlider } from "../format";
 import type { ParamSpec } from "../types";
+import ValueEntry from "./ValueEntry";
 
 interface ParamControlProps {
   spec: ParamSpec;
@@ -12,7 +13,8 @@ interface ParamControlProps {
 
 /**
  * One instrument parameter: a slider (log-scaled where it helps) or, for
- * choices, a row of buttons. Double-click a slider to reset it.
+ * choices, a row of buttons. Double-click a slider to reset it, or its
+ * value to type one.
  */
 export default function ParamControl({ spec, value, onChange, onCommit }: ParamControlProps) {
   // While dragging, show the local value so the slider never lags the engine.
@@ -72,7 +74,19 @@ export default function ParamControl({ spec, value, onChange, onCommit }: ParamC
           onCommit();
         }}
       />
-      <span className="param-value">{formatParam(spec, shown)}</span>
+      <ValueEntry
+        className="param-value"
+        text={formatParam(spec, shown)}
+        name={spec.name}
+        parse={(text) => parseParam(spec, text, shown)}
+        min={spec.min}
+        max={spec.max}
+        rangeText={`${formatParam(spec, spec.min)} to ${formatParam(spec, spec.max)}`}
+        onSet={(v) => {
+          onChange(v);
+          onCommit();
+        }}
+      />
     </label>
   );
 }

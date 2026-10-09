@@ -68,6 +68,66 @@ export function fromSlider(spec: ParamSpec, position: number): number {
 
 export { SLIDER_STEPS };
 
+/** A number with an optional unit after it: "2.5 kHz" → [2.5, "khz"]. */
+function splitNumber(text: string): [number, string] | null {
+  const m = /^([+-]?(?:\d+\.?\d*|\.\d+))\s*([a-z%:×]*1?)$/.exec(text.trim().toLowerCase().replace("−", "-"));
+  if (!m) return null;
+  const n = Number(m[1]);
+  return Number.isFinite(n) ? [n, m[2]] : null;
+}
+
+/**
+ * A typed parameter value, in the units its readout uses ("2.5k", "120 ms",
+ * "35%"). A bare number is read in the unit the readout shows for `current`.
+ * Null when the text isn't a number in a unit this parameter understands.
+ */
+export function parseParam(spec: ParamSpec, text: string, current: number): number | null {
+  const parsed = splitNumber(text);
+  if (!parsed) return null;
+  const [n, unit] = parsed;
+  const one = (...units: string[]) => (units.includes(unit) ? n : null);
+  switch (spec.unit) {
+    case "hertz":
+      return unit === "k" || unit === "khz" ? n * 1000 : one("", "hz");
+    case "seconds":
+      if (unit === "ms") return n / 1000;
+      if (unit === "s") return n;
+      return unit === "" ? (current < 1 ? n / 1000 : n) : null;
+    case "decibels":
+      return one("", "db");
+    case "semitones":
+      return unit === "" || unit === "st" ? Math.round(n) : null;
+    case "cents":
+      return unit === "" || unit === "ct" ? Math.round(n) : null;
+    case "percent":
+      return unit === "" || unit === "%" ? n / 100 : null;
+    case "ratio":
+      return one("", ":1");
+    case "none":
+      return one("", "x", "×");
+  }
+}
+
+/** A typed fader level in dB; "-inf" or "−∞" is the bottom (-60). */
+export function parseDb(text: string): number | null {
+  const t = text.trim().toLowerCase().replace(/\s*db$/, "");
+  if (/^[-−]?(inf|∞)$/.test(t)) return -60;
+  const parsed = splitNumber(t);
+  return parsed && parsed[1] === "" ? parsed[0] : null;
+}
+
+/** A typed pan position (-1 left to 1 right): "C", "30L", "45R", or -20. */
+export function parsePan(text: string): number | null {
+  const t = text.trim().toLowerCase();
+  if (t === "c" || t === "center" || t === "centre") return 0;
+  const parsed = splitNumber(t);
+  if (!parsed) return null;
+  const [n, side] = parsed;
+  if (side === "l") return -Math.abs(n) / 100;
+  if (side === "r") return Math.abs(n) / 100;
+  return side === "" ? n / 100 : null;
+}
+
 /** "Bar 3 · Beat 2" from a position in beats. */
 export function formatPosition(beats: number, beatsPerBar: number): string {
   const whole = Math.floor(beats + 1e-9);

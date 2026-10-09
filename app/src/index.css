@@ -2212,3 +2212,58 @@ button.tiny.power.on {
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
+
+/* A value readout you can double-click to type into (ValueEntry). */
+.value-entry {
+  position: relative;
+  cursor: text;
+  border-radius: 3px;
+}
+
+.value-entry:not(.editing):hover,
+.value-entry:not(.editing):focus-visible {
+  outline: 1px dashed var(--muted);
+  outline-offset: 1px;
+}
+
+.value-entry.editing input {
+  width: 100%;
+  min-width: 48px;
+  box-sizing: border-box;
+  padding: 0 3px;
+  font: inherit;
+  text-align: inherit;
+}
+
+.value-entry.editing input[aria-invalid="true"] {
+  border-color: var(--danger);
+  outline: 1px solid var(--danger);
+}
+
+.value-entry-error {
+  position: absolute;
+  top: calc(100% + 2px);
+  right: 0;
+  z-index: 20;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 11px;
+  width: max-content;
+  max-width: 160px;
+  text-align: left;
+}
+
+/* The fader readout fills its strip, centred, like the old label. */
+.value-entry.strip-db {
+  display: block;
+}
+
+/* Fader readouts sit at the bottom of the panel: show the message above. */
+.value-entry.strip-db .value-entry-error {
+  top: auto;
+  bottom: calc(100% + 2px);
+  left: 0;
+  right: auto;
+}
