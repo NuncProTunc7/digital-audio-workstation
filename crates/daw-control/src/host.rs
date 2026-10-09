@@ -916,6 +916,8 @@ pub struct SavedProject {
 
 /// Saves to `path` (adding `.nptune` if missing) or to the current file,
 /// and copies the project's audio into the "<Song> Audio" folder beside it.
+/// A song still called "Untitled" takes the file's name (as an ordinary,
+/// undoable rename), so exports aren't called "untitled".
 pub fn save_project<H: Host>(host: &H, path: Option<&Path>) -> Result<SavedProject, String> {
     // The file keeps each plugin's own settings as they are now.
     crate::plugins::store_states(host);
@@ -926,6 +928,18 @@ pub fn save_project<H: Host>(host: &H, path: Option<&Path>) -> Result<SavedProje
             .ok_or_else(|| "the project has not been saved yet; give a file path".to_owned())?,
     };
     let mut session = host.session()?;
+    if path.is_some() && session.project().name == UNTITLED {
+        let stem = target
+            .file_stem()
+            .map(|s| s.to_string_lossy().trim().to_owned())
+            .unwrap_or_default();
+        if !stem.is_empty() {
+            session
+                .execute(Command::RenameProject { name: stem })
+                .map_err(|e| e.to_string())?;
+            session.end_gesture();
+        }
+    }
     // Saved versions keep their recordings too.
     let files = session.project().audio_files();
     let audio = host.audio();
@@ -948,6 +962,9 @@ pub fn save_project<H: Host>(host: &H, path: Option<&Path>) -> Result<SavedProje
         missing_audio,
     })
 }
+
+/// The name of a new song (`Project::default`).
+const UNTITLED: &str = "Untitled";
 
 /// How many earlier saves are kept beside a song (`Song.nptune.bak1` is the
 /// most recent).
@@ -1567,6 +1584,31 @@ pub(crate) mod tests {
         assert_eq!(tempo(&bak(2)), 103.0);
         assert_eq!(tempo(&bak(3)), 102.0);
         assert!(!bak(4).exists());
+    }
+
+    #[test]
+    fn saving_an_untitled_song_names_it_after_the_file() {
+        // Found 2026-10-09: saved as "tutorial loop.nptune", the song stayed
+        // "Untitled", so Godot exports were called untitled.ogg.
+        let dir = tempfile::tempdir().expect("tmp");
+        let host = TestHost::default();
+        save_project(&host, Some(&dir.path().join("tutorial loop.nptune"))).expect("save");
+        let name = |host: &TestHost| host.session.lock().expect("session").project().name.clone();
+        assert_eq!(name(&host), "tutorial loop");
+        let saved =
+            daw_model::load_project(&dir.path().join("tutorial loop.nptune")).expect("load");
+        assert_eq!(saved.name, "tutorial loop");
+        assert!(!host.session.lock().expect("session").is_dirty());
+
+        // A song that already has a name keeps it under a new file name.
+        ok(execute(
+            &host,
+            Command::RenameProject {
+                name: "Boss Theme".into(),
+            },
+        ));
+        save_project(&host, Some(&dir.path().join("boss v2"))).expect("save as");
+        assert_eq!(name(&host), "Boss Theme");
     }
 
     #[test]

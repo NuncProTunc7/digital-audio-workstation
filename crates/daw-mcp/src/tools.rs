@@ -368,7 +368,7 @@ fn extra_tools() -> Vec<ToolDef> {
         ),
         tool(
             "save_project",
-            "Save the project. Without a path, saves to the file it was opened from or last saved to.",
+            "Save the project. Without a path, saves to the file it was opened from or last saved to. With a path, a song still named \"Untitled\" is renamed after the file (undoable).",
             object_schema(
                 json!({ "path": { "type": "string", "description": "Absolute path; .nptune is added if missing." } }),
                 &[],

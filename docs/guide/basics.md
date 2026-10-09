@@ -26,7 +26,7 @@
 
 ## Saving
 
-- **Ctrl+S** saves; **Ctrl+Shift+S** saves under a new name. **Ctrl+O** opens, **Ctrl+N** starts a new song.
+- **Ctrl+S** saves; **Ctrl+Shift+S** saves under a new name. A song still called *Untitled* takes the file's name when you save it (so a Godot export of "tutorial loop.nptune" is called `tutorial_loop`); rename it any time in the song-name box in the top bar. **Ctrl+O** opens, **Ctrl+N** starts a new song.
 - A song is a `.nptune` file. If it has recordings, they live in a `<Song name> Audio` folder next to it. Move or back up both together.
 - **Autosave:** while you have unsaved changes, the app keeps a hidden copy, updated every 30 seconds. If the app or your PC crashes, the next time you open Nunc Pro Tune it asks whether to recover them. Say **Yes**, then save.
 - **Backups:** each save keeps the previous three versions beside your song as `Song.nptune.bak1` (newest) to `.bak3`. To go back to one, rename it to end in `.nptune` and open it.
