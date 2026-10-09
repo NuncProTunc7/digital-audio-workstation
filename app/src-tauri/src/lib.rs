@@ -29,6 +29,9 @@ use daw_model::{ClipId, Command, InstrumentKind, Project, Session, TrackId};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 
+/// Input names, the default input, and when they were listed.
+type InputList = (Instant, Vec<String>, Option<String>);
+
 /// The engine currently driving the sound card, shared with the MIDI thread.
 type EngineSlot = Arc<RwLock<Option<Arc<Engine>>>>;
 
@@ -57,6 +60,12 @@ struct AppState {
     audio: Arc<AudioPool>,
     /// Microphone, open while an audio track is selected or recording.
     input: Mutex<Option<AudioInput>>,
+    /// Held while a microphone opens, so two opens don't race; `input`
+    /// itself is only locked briefly (the meter reads it while one opens).
+    input_opening: Mutex<()>,
+    /// Input names and the default, and when they were listed (listing
+    /// devices is slow, and the meter asks several times a second).
+    input_devices: Mutex<Option<InputList>>,
     recorder: Mutex<Option<AudioRecorder>>,
     /// Chosen input (None = system default).
     input_device: Mutex<Option<String>>,
@@ -110,6 +119,8 @@ impl Default for AppState {
             recording_track: Mutex::new(None),
             audio: Arc::new(AudioPool::new(daw_control::unsaved_audio_dir())),
             input: Mutex::new(None),
+            input_opening: Mutex::new(()),
+            input_devices: Mutex::new(None),
             recorder: Mutex::new(None),
             input_device: Mutex::new(None),
             input_error: Mutex::new(None),
@@ -447,14 +458,15 @@ impl AppState {
 
     /// Opens the chosen microphone if it isn't open yet.
     fn ensure_input(&self) -> Result<(), String> {
-        let mut input = self
-            .input
+        let _opening = self
+            .input_opening
             .lock()
             .map_err(|_| "input state is unavailable")?;
-        if input.is_some() {
+        if self.input.lock().is_ok_and(|i| i.is_some()) {
             return Ok(());
         }
         let name = self.input_device.lock().ok().and_then(|n| n.clone());
+        // Opening can take seconds (or time out); the meter doesn't wait.
         let result = AudioInput::start(name.as_deref());
         let mut error = self
             .input_error
@@ -462,6 +474,10 @@ impl AppState {
             .map_err(|_| "input state is unavailable")?;
         match result {
             Ok((stream, recorder)) => {
+                let mut input = self
+                    .input
+                    .lock()
+                    .map_err(|_| "input state is unavailable")?;
                 diagnostics::log(&format!(
                     "Microphone open: {}, {} Hz",
                     stream.device_name(),
@@ -870,8 +886,9 @@ async fn plugins(state: State<'_, AppState>, rescan: bool) -> Result<serde_json:
     daw_control::handle(&*state, daw_control::Request::Plugins { rescan }).into_result()
 }
 
-/// Gives a track an installed plugin instrument (one undo step).
-#[tauri::command]
+/// Gives a track an installed plugin instrument (one undo step). Off the
+/// main thread, which loads the plugin once this has let go of the song.
+#[tauri::command(async)]
 fn load_plugin(
     state: State<'_, AppState>,
     track_id: TrackId,
@@ -883,8 +900,8 @@ fn load_plugin(
 }
 
 /// Adds an installed plugin effect to a track's, bus's, or (None) the
-/// master's chain (one undo step).
-#[tauri::command]
+/// master's chain (one undo step). Off the main thread, like `load_plugin`.
+#[tauri::command(async)]
 fn add_plugin_effect(
     state: State<'_, AppState>,
     track_id: Option<TrackId>,
@@ -896,7 +913,8 @@ fn add_plugin_effect(
 }
 
 /// A plugin's parameters (a plugin track's id, or a plugin effect's id).
-#[tauri::command]
+/// Off the main thread, which asks the plugin.
+#[tauri::command(async)]
 fn plugin_params(
     state: State<'_, AppState>,
     id: daw_model::Id,
@@ -1291,15 +1309,31 @@ struct InputStatus {
     delay: Option<RecordingDelay>,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn input_status(state: State<'_, AppState>) -> InputStatus {
-    let input = state.input.lock().ok();
-    let input = input.as_ref().and_then(|i| i.as_ref());
+    input_status_of(&state)
+}
+
+/// How long the list of inputs is reused before asking Windows again.
+const INPUT_LIST_FOR: std::time::Duration = std::time::Duration::from_secs(3);
+
+fn input_status_of(state: &AppState) -> InputStatus {
+    // Read and let go: `recording_delay` below locks `input` again.
+    let (active, sample_rate_hz) = state
+        .input
+        .lock()
+        .ok()
+        .and_then(|i| {
+            i.as_ref()
+                .map(|i| (Some(i.device_name().to_owned()), Some(i.sample_rate_hz())))
+        })
+        .unwrap_or((None, None));
+    let (devices, default_device) = input_devices(state);
     InputStatus {
-        devices: device::input_device_names(),
-        default_device: device::default_input_device_name(),
-        active: input.map(|i| i.device_name().to_owned()),
-        sample_rate_hz: input.map(AudioInput::sample_rate_hz),
+        devices,
+        default_device,
+        active,
+        sample_rate_hz,
         level: state
             .recorder
             .lock()
@@ -1309,6 +1343,22 @@ fn input_status(state: State<'_, AppState>) -> InputStatus {
         error: state.input_error.lock().ok().and_then(|e| e.clone()),
         delay: state.recording_delay(None).ok(),
     }
+}
+
+/// The inputs and the default one, listed at most every few seconds.
+fn input_devices(state: &AppState) -> (Vec<String>, Option<String>) {
+    if let Ok(cache) = state.input_devices.lock()
+        && let Some((at, names, default)) = cache.as_ref()
+        && at.elapsed() < INPUT_LIST_FOR
+    {
+        return (names.clone(), default.clone());
+    }
+    let names = device::input_device_names();
+    let default = device::default_input_device_name();
+    if let Ok(mut cache) = state.input_devices.lock() {
+        *cache = Some((Instant::now(), names.clone(), default.clone()));
+    }
+    (names, default)
 }
 
 /// Sets how late the current microphone's recordings arrive (ms).
@@ -1324,7 +1374,8 @@ fn calibrate_recording(state: State<'_, AppState>) -> Result<CalibrationResult, 
 }
 
 /// Opens (true) or closes (false) the microphone, for the input meter.
-#[tauri::command]
+/// Off the main thread: opening a microphone can take seconds.
+#[tauri::command(async)]
 fn monitor_input(state: State<'_, AppState>, on: bool) -> InputStatus {
     if on {
         // Errors show up in the returned status.
@@ -1332,11 +1383,11 @@ fn monitor_input(state: State<'_, AppState>, on: bool) -> InputStatus {
     } else {
         state.close_input();
     }
-    input_status(state)
+    input_status_of(&state)
 }
 
 /// Switches microphone (`None` = system default).
-#[tauri::command]
+#[tauri::command(async)]
 fn set_input_device(state: State<'_, AppState>, name: Option<String>) -> InputStatus {
     if let Ok(mut n) = state.input_device.lock() {
         *n = name;
@@ -1346,7 +1397,7 @@ fn set_input_device(state: State<'_, AppState>, name: Option<String>) -> InputSt
     if was_open {
         let _ = state.ensure_input();
     }
-    input_status(state)
+    input_status_of(&state)
 }
 
 #[derive(Serialize)]
@@ -1385,13 +1436,14 @@ fn audio_status_of(state: &AppState) -> AudioStatus {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn audio_status(state: State<'_, AppState>) -> AudioStatus {
     audio_status_of(&state)
 }
 
-/// Switches to another output device (`None` = system default).
-#[tauri::command]
+/// Switches to another output device (`None` = system default). Off the
+/// main thread: opening a device can take seconds.
+#[tauri::command(async)]
 fn set_output_device(state: State<'_, AppState>, name: Option<String>) -> AudioStatus {
     // The error, if any, is reported in the returned status.
     let _ = state.start_audio(name.as_deref());
@@ -1400,7 +1452,7 @@ fn set_output_device(state: State<'_, AppState>, name: Option<String>) -> AudioS
 
 /// Changes the sound card buffer size (`None` = the device's default) and
 /// restarts audio with it. Refused while recording.
-#[tauri::command]
+#[tauri::command(async)]
 fn set_buffer_size(state: State<'_, AppState>, frames: Option<u32>) -> Result<AudioStatus, String> {
     let recording = state.recording_track.lock().is_ok_and(|r| r.is_some())
         || state.audio_take.lock().is_ok_and(|t| t.is_some());
@@ -1427,7 +1479,7 @@ fn set_buffer_size(state: State<'_, AppState>, frames: Option<u32>) -> Result<Au
 }
 
 /// Reconnects to MIDI keyboards (after plugging one in).
-#[tauri::command]
+#[tauri::command(async)]
 fn refresh_midi(app: AppHandle, state: State<'_, AppState>) -> AudioStatus {
     connect_midi(&app, &state);
     audio_status_of(&state)
@@ -1591,6 +1643,46 @@ fn start_control(app: &AppHandle) {
     }
 }
 
+/// The command the window thread is running right now (for the watchdog).
+fn current_command() -> &'static Mutex<Option<String>> {
+    static C: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+    C.get_or_init(|| Mutex::new(None))
+}
+
+/// What a frozen window is busy with, in the watchdog's words.
+fn window_busy_with() -> Option<String> {
+    if let Some(plugin) = daw_plugins::guard::starting() {
+        return Some(format!(
+            "{plugin} starting (if you close the app now, {plugin} will be switched off next time)"
+        ));
+    }
+    current_command()
+        .lock()
+        .ok()
+        .and_then(|c| c.clone())
+        .map(|c| format!("\"{c}\""))
+}
+
+/// Watches the window thread from another thread, logging when it stops
+/// answering (and what it was doing) so a freeze shows up in the report
+/// and in the log kept for the next run.
+fn start_watchdog(app: &AppHandle) {
+    let app = app.clone();
+    let dog = Arc::new(diagnostics::Watchdog::default());
+    let _ = std::thread::Builder::new()
+        .name("npt-watchdog".into())
+        .spawn(move || {
+            loop {
+                let beat = Arc::clone(&dog);
+                // Posted from this thread, so it waits its turn on the
+                // window thread: it runs only while that thread answers.
+                let _ = app.run_on_main_thread(move || beat.beat());
+                std::thread::sleep(std::time::Duration::from_secs(1));
+                dog.check(window_busy_with().as_deref());
+            }
+        });
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // `--scan-vst3 <path>`: describe one plugin for the main app and exit,
@@ -1598,91 +1690,16 @@ pub fn run() {
     if let Some(code) = daw_plugins::scan::child_main(&std::env::args().collect::<Vec<_>>()) {
         std::process::exit(code);
     }
-    let result = tauri::Builder::default()
-        .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_process::init())
-        .manage(AppState::default())
-        .setup(|app| {
-            let state = app.state::<AppState>();
-            let _ = state.app.set(app.handle().clone());
-            // A plugin that closed the app last time stays off for now.
-            let guard_dir = daw_control::plugins::cache_path()
-                .parent()
-                .map(Path::to_path_buf)
-                .unwrap_or_else(std::env::temp_dir);
-            if let Some(name) = daw_plugins::guard::init(&guard_dir) {
-                diagnostics::log_error(&format!(
-                    "{name} closed the app the last time it started, so it is switched off"
-                ));
-            }
-            // Plugins are created and shown on this, the main thread.
-            let main = app.handle().clone();
-            daw_plugins::main_thread::install(move |job| {
-                let _ = main.run_on_main_thread(job);
-            });
-            let (edits_tx, edits_rx) = std::sync::mpsc::channel::<(TrackId, daw_plugins::Edit)>();
-            let _ = state.plugin_edits.set(edits_tx);
-            let edits_app = app.handle().clone();
-            let _ = std::thread::Builder::new()
-                .name("npt-plugin-edits".into())
-                .spawn(move || {
-                    for (track_id, edit) in edits_rx {
-                        let state = edits_app.state::<AppState>();
-                        if let Err(e) = daw_control::plugins::apply_edit(&*state, track_id, edit) {
-                            diagnostics::log_error(&format!("plugin window edit: {e}"));
-                        }
-                    }
-                });
-            // Look for newly installed plugins in the background.
-            let scan_app = app.handle().clone();
-            let _ = std::thread::Builder::new()
-                .name("npt-plugin-scan".into())
-                .spawn(move || {
-                    let state = scan_app.state::<AppState>();
-                    daw_control::plugins::rescan(&*state);
-                    let _ = scan_app.emit("plugins-changed", ());
-                });
-            if let Ok(slot) = state.autosave.lock()
-                && let Ok(mut r) = state.recoverable.lock()
-            {
-                *r = autosave::find_recoverable(&slot);
-            }
-            let handle = app.handle().clone();
-            let _ = std::thread::Builder::new()
-                .name("npt-autosave".into())
-                .spawn(move || {
-                    loop {
-                        std::thread::sleep(autosave::AUTOSAVE_INTERVAL);
-                        handle.state::<AppState>().autosave();
-                    }
-                });
-            start_control(app.handle());
-            // Sound problems are shown in the status bar, not fatal.
-            let _ = state.start_audio(None);
-            connect_midi(app.handle(), &state);
-            // A project file passed on the command line (or by double-clicking
-            // it, once file associations exist) opens at startup.
-            if let Some(path) = std::env::args_os().nth(1).map(PathBuf::from).filter(|p| {
-                p.extension()
-                    .is_some_and(|e| e == daw_model::PROJECT_EXTENSION)
-            }) && let Err(e) = daw_control::open_project(&*state, &path)
-            {
-                eprintln!("could not open {}: {e}", path.display());
-            }
-            // Keep the first track's kind sensible for MIDI routing.
-            if let Ok(session) = state.session()
-                && let Some(first) = session
-                    .project()
-                    .tracks
-                    .iter()
-                    .find(|t| t.instrument.kind == InstrumentKind::Synth)
-            {
-                state.selected_track.store(first.id, Ordering::Relaxed);
-            }
-            Ok(())
-        })
-        .invoke_handler(tauri::generate_handler![
+    diagnostics::start_log_file(
+        &diagnostics::log_dir(),
+        &format!(
+            "Nunc Pro Tune {} on {}",
+            env!("CARGO_PKG_VERSION"),
+            os_version()
+        ),
+    );
+    let commands: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> =
+        Box::new(tauri::generate_handler![
             app_info,
             get_project,
             new_project,
@@ -1752,7 +1769,105 @@ pub fn run() {
             recovery_resolve,
             set_recording_offset,
             calibrate_recording
-        ])
+        ]);
+    let result = tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
+        .manage(AppState::default())
+        .setup(|app| {
+            let state = app.state::<AppState>();
+            let _ = state.app.set(app.handle().clone());
+            // A plugin that closed the app last time stays off for now.
+            let guard_dir = daw_control::plugins::cache_path()
+                .parent()
+                .map(Path::to_path_buf)
+                .unwrap_or_else(std::env::temp_dir);
+            if let Some(name) = daw_plugins::guard::init(&guard_dir) {
+                diagnostics::log_error(&format!(
+                    "{name} closed or froze the app the last time it started, so it is switched off"
+                ));
+            }
+            // Plugins are created and shown on this, the main thread.
+            let main = app.handle().clone();
+            daw_plugins::main_thread::install(move |job| {
+                let _ = main.run_on_main_thread(job);
+            });
+            let (edits_tx, edits_rx) = std::sync::mpsc::channel::<(TrackId, daw_plugins::Edit)>();
+            let _ = state.plugin_edits.set(edits_tx);
+            let edits_app = app.handle().clone();
+            let _ = std::thread::Builder::new()
+                .name("npt-plugin-edits".into())
+                .spawn(move || {
+                    for (track_id, edit) in edits_rx {
+                        let state = edits_app.state::<AppState>();
+                        if let Err(e) = daw_control::plugins::apply_edit(&*state, track_id, edit) {
+                            diagnostics::log_error(&format!("plugin window edit: {e}"));
+                        }
+                    }
+                });
+            // Look for newly installed plugins in the background.
+            let scan_app = app.handle().clone();
+            let _ = std::thread::Builder::new()
+                .name("npt-plugin-scan".into())
+                .spawn(move || {
+                    let state = scan_app.state::<AppState>();
+                    daw_control::plugins::rescan(&*state);
+                    let _ = scan_app.emit("plugins-changed", ());
+                });
+            if let Ok(slot) = state.autosave.lock()
+                && let Ok(mut r) = state.recoverable.lock()
+            {
+                *r = autosave::find_recoverable(&slot);
+            }
+            let handle = app.handle().clone();
+            let _ = std::thread::Builder::new()
+                .name("npt-autosave".into())
+                .spawn(move || {
+                    loop {
+                        std::thread::sleep(autosave::AUTOSAVE_INTERVAL);
+                        handle.state::<AppState>().autosave();
+                    }
+                });
+            start_control(app.handle());
+            start_watchdog(app.handle());
+            // Sound problems are shown in the status bar, not fatal.
+            let _ = state.start_audio(None);
+            connect_midi(app.handle(), &state);
+            // A project file passed on the command line (or by double-clicking
+            // it, once file associations exist) opens at startup.
+            if let Some(path) = std::env::args_os().nth(1).map(PathBuf::from).filter(|p| {
+                p.extension()
+                    .is_some_and(|e| e == daw_model::PROJECT_EXTENSION)
+            }) && let Err(e) = daw_control::open_project(&*state, &path)
+            {
+                eprintln!("could not open {}: {e}", path.display());
+            }
+            // Keep the first track's kind sensible for MIDI routing.
+            if let Ok(session) = state.session()
+                && let Some(first) = session
+                    .project()
+                    .tracks
+                    .iter()
+                    .find(|t| t.instrument.kind == InstrumentKind::Synth)
+            {
+                state.selected_track.store(first.id, Ordering::Relaxed);
+            }
+            Ok(())
+        })
+        .invoke_handler(move |invoke| {
+            // Commands arrive on the window thread; plain ones also run
+            // there, so remember which one in case it doesn't come back.
+            let name = invoke.message.command().to_owned();
+            if let Ok(mut c) = current_command().lock() {
+                *c = Some(name);
+            }
+            let handled = commands(invoke);
+            if let Ok(mut c) = current_command().lock() {
+                *c = None;
+            }
+            handled
+        })
         .build(tauri::generate_context!());
     match result {
         Ok(app) => app.run(|handle, event| {
@@ -1760,11 +1875,38 @@ pub fn run() {
             // chose to save or discard).
             if let tauri::RunEvent::Exit = event {
                 handle.state::<AppState>().discard_autosave();
+                diagnostics::end_log_file();
             }
         }),
         Err(e) => {
             eprintln!("Nunc Pro Tune failed to start: {e}");
             std::process::exit(1);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    /// Runs `f` on its own thread; fails if it doesn't finish in time
+    /// (a freeze), instead of hanging the test run.
+    fn finishes<T: Send + 'static>(what: &str, f: impl FnOnce() -> T + Send + 'static) -> T {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(f());
+        });
+        rx.recv_timeout(Duration::from_secs(20))
+            .unwrap_or_else(|_| panic!("{what} froze"))
+    }
+
+    #[test]
+    fn the_microphone_meter_does_not_freeze() {
+        // Selecting an audio track asks for the input status (found
+        // 2026-10-09: it waited on a lock it already held).
+        let state = Arc::new(AppState::default());
+        let s = Arc::clone(&state);
+        finishes("input status", move || input_status_of(&s));
     }
 }

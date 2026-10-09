@@ -71,6 +71,14 @@ Use lock-free queues (`rtrb`) to talk to the audio thread. Pre-allocate buffers.
 
 The microphone callback follows the same rules: it only converts, meters, and pushes into a ring; files are written by the recorder's thread. Audio buffers reach the audio thread inside `Arc`s held by sequences, so they are freed when the old sequence comes back as garbage.
 
+### 1b. The window (main) thread
+Plain `#[tauri::command]`s run on the window thread; while one waits, the window shows "Not Responding".
+- Anything that opens a device, lists devices, loads or asks a plugin, touches files, or can wait on a lock held elsewhere must be `#[tauri::command(async)]`.
+- Never take a `Mutex` you may already hold (e.g. keep a guard alive and call a helper that locks it again): `std` mutexes deadlock on re-entry. Read what you need and let go.
+- Tauri's `run_on_main_thread` runs a job *immediately* when called on the main thread. Use `daw_plugins::main_thread::post_later` for "after I've let go of my locks".
+- Device opens go through `open_on_thread` in `daw-engine/src/device.rs`, which gives up after `OPEN_TIMEOUT` with a plain-language error.
+- A freeze is logged by the watchdog (`diagnostics::Watchdog`) to the log kept between runs (`diagnostics::start_log_file`). Test freezes with a helper that fails after a timeout instead of hanging (see `finishes` in `app/src-tauri/src/lib.rs`).
+
 ### 2. Commands are the only way to change a project
 - All edits — from UI, shortcuts, or MCP — go through a `Command` in `daw-model`.
 - Live actions (notes, play/stop, metronome, device choice) are not project edits: they go straight to the `Engine` and are not undoable. Don't use them to change saved state.
