@@ -70,10 +70,16 @@ pub enum Request {
         uid: String,
     },
     /// A plugin's parameters (names, values, display text): a plugin
-    /// track's (track_id), or a plugin effect's (effect_id).
+    /// track's (track_id), or a plugin effect's (effect_id). `search` keeps
+    /// those whose name holds every word; at most `limit` are returned
+    /// (default 50).
     PluginParams {
         track_id: Option<TrackId>,
         effect_id: Option<daw_model::EffectId>,
+        #[serde(default)]
+        search: Option<String>,
+        #[serde(default)]
+        limit: Option<usize>,
     },
     /// Add an installed plugin effect to a track's, bus's, or (None) the
     /// master's chain.

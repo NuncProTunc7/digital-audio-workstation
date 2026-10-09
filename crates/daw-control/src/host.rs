@@ -398,12 +398,31 @@ fn handle_inner<H: Host>(host: &H, request: Request) -> Result<Value, String> {
         Request::PluginParams {
             track_id,
             effect_id,
+            search,
+            limit,
         } => {
             let id = effect_id
                 .or(track_id)
                 .ok_or("give the plugin track's track_id or the plugin effect's effect_id")?;
-            let params = crate::plugins::params(host, id)?;
-            Ok(json!({ "track_id": track_id, "effect_id": effect_id, "params": params }))
+            let all = crate::plugins::params(host, id)?;
+            let total = all.len();
+            let (params, matching) = crate::plugins::filter_params(all, search.as_deref(), limit);
+            let mut out = json!({
+                "track_id": track_id,
+                "effect_id": effect_id,
+                "total_params": total,
+                "matching": matching,
+                "params": params,
+            });
+            if matching > params.len() {
+                out["note"] = json!(format!(
+                    "Showing {} of {matching}. Narrow it with search (a word from the parameter name, e.g. \"cutoff\").",
+                    params.len()
+                ));
+            } else if matching == 0 && total > 0 {
+                out["note"] = json!("No parameter name holds every search word; try one word.");
+            }
+            Ok(out)
         }
         Request::AddPluginEffect { track_id, uid } => {
             let (effect_id, info) = crate::plugins::add_plugin_effect(host, track_id, &uid)?;
@@ -1321,7 +1340,9 @@ pub(crate) mod tests {
                 &host,
                 Request::PluginParams {
                     track_id: Some(1),
-                    effect_id: None
+                    effect_id: None,
+                    search: None,
+                    limit: None,
                 }
             )
             .ok

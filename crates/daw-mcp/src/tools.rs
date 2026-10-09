@@ -284,11 +284,13 @@ fn extra_tools() -> Vec<ToolDef> {
         ),
         tool(
             "plugin_params",
-            "A plugin's parameters: a plugin track's (track_id) or a plugin effect's (effect_id). Each has id, name, units, current value (0-1), default, what the plugin shows for the value (display, e.g. \"-6.0 dB\" or \"Saw\"), steps (0 = continuous). Change them with set_plugin_params using these ids and 0-1 values (for an effect give its effect_id and the track or bus it's on); check display afterwards to confirm the value means what you intended.",
+            "A plugin's parameters: a plugin track's (track_id) or a plugin effect's (effect_id). Big synths have thousands, so pass search (words from the parameter name, e.g. \"cutoff\" or \"filter 1 resonance\"); at most limit are returned (default 50, max 500), with matching = how many matched and total_params = how many the plugin has. Each has id, name, units, current value (0-1), default (the plugin's own reset value for that parameter, which can differ from where its starting sound sets it), what the plugin shows for the value (display, e.g. \"-6.0 dB\" or \"Saw\"), steps (0 = continuous). Change them with set_plugin_params using these ids and 0-1 values (for an effect give its effect_id and the track or bus it's on); check display afterwards to confirm the value means what you intended.",
             object_schema(
                 json!({
                     "track_id": { "type": "integer", "description": "A plugin track." },
-                    "effect_id": { "type": "integer", "description": "A plugin effect (from get_track or get_song)." }
+                    "effect_id": { "type": "integer", "description": "A plugin effect (from get_track or get_song)." },
+                    "search": { "type": "string", "description": "Only parameters whose name holds every one of these words (any case, any order)." },
+                    "limit": { "type": "integer", "minimum": 1, "maximum": 500, "description": "At most this many (default 50)." }
                 }),
                 &[],
             ),
@@ -559,6 +561,11 @@ pub fn to_request(name: &str, args: Map<String, Value>) -> Result<Request, Strin
         "plugin_params" => Request::PluginParams {
             track_id: get_id("track_id").ok(),
             effect_id: get_id("effect_id").ok(),
+            search: get_str("search").filter(|s| !s.trim().is_empty()),
+            limit: args
+                .get("limit")
+                .and_then(Value::as_u64)
+                .and_then(|v| usize::try_from(v).ok()),
         },
         "add_plugin_effect" => Request::AddPluginEffect {
             track_id: get_id("track_id").ok(),
@@ -751,6 +758,23 @@ mod tests {
             panic!("not a batch");
         };
         assert_eq!(commands.len(), 2);
+    }
+
+    #[test]
+    fn plugin_params_passes_its_search_word_on() {
+        let args = json!({ "track_id": 4, "search": "cutoff", "limit": 10 })
+            .as_object()
+            .cloned()
+            .expect("obj");
+        assert_eq!(
+            to_request("plugin_params", args).expect("ok"),
+            Request::PluginParams {
+                track_id: Some(4),
+                effect_id: None,
+                search: Some("cutoff".into()),
+                limit: Some(10),
+            }
+        );
     }
 
     #[test]

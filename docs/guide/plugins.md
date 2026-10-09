@@ -38,7 +38,7 @@ Every change, in the plugin window or on the sliders, is undoable, and a whole k
 
 ## Claude and plugins
 
-Claude can list your plugins, put one on a track or in an effect chain, and change its controls: "put Surge XT on the bass track and make it darker", "add Supermassive to the pad and make it a long shimmer". It reads the same control names and values you see. Claude can't see the plugin's window, so for picking sounds by ear, open the window yourself (or ask Claude which control to try).
+Claude can list your plugins, put one on a track or in an effect chain, and change its controls: "put Surge XT on the bass track and make it darker", "add Supermassive to the pad and make it a long shimmer". It reads the same control names and values you see; for big synths with thousands of controls (Surge XT) it looks them up by name, so "the cutoff" or "filter 1 resonance" works best. Claude can't see the plugin's window, so for picking sounds by ear, open the window yourself (or ask Claude which control to try).
 
 ## If something goes wrong
 

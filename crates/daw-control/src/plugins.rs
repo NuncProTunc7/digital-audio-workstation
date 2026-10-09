@@ -293,6 +293,37 @@ pub fn params<H: Host>(host: &H, id: Id) -> Result<Vec<ParamInfo>, String> {
     live(host, id)?.params()
 }
 
+/// How many parameters `plugin_params` returns unless asked for fewer.
+pub const DEFAULT_PARAMS_SHOWN: usize = 50;
+/// The most it returns at once: big synths have thousands.
+pub const MAX_PARAMS_SHOWN: usize = 500;
+
+/// The parameters whose name holds every word of `search` (any case, any
+/// order), at most `limit` of them; also how many matched in all.
+pub fn filter_params(
+    params: Vec<ParamInfo>,
+    search: Option<&str>,
+    limit: Option<usize>,
+) -> (Vec<ParamInfo>, usize) {
+    let words: Vec<String> = search
+        .unwrap_or_default()
+        .split_whitespace()
+        .map(str::to_lowercase)
+        .collect();
+    let matching: Vec<ParamInfo> = params
+        .into_iter()
+        .filter(|p| {
+            let name = p.name.to_lowercase();
+            words.iter().all(|w| name.contains(w.as_str()))
+        })
+        .collect();
+    let count = matching.len();
+    let limit = limit
+        .unwrap_or(DEFAULT_PARAMS_SHOWN)
+        .clamp(1, MAX_PARAMS_SHOWN);
+    (matching.into_iter().take(limit).collect(), count)
+}
+
 /// Turns an edit made in a plugin's own window into the matching Command,
 /// so it's undoable and Claude sees it. A whole drag is one undo step.
 pub fn apply_edit<H: Host>(host: &H, id: Id, edit: Edit) -> Result<(), String> {
@@ -389,6 +420,44 @@ pub fn connect_edits<H: Host>(host: &H, send: &std::sync::mpsc::Sender<(Id, Edit
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn plugin_params_are_searched_by_name_and_capped() {
+        // Surge XT has thousands of parameters (575,000 characters in all,
+        // 2026-10-09), far too many for Claude to read at once.
+        let param = |id: u32, name: &str| ParamInfo {
+            id,
+            name: name.into(),
+            units: String::new(),
+            value: 0.5,
+            default: 0.0,
+            display: "0.5".into(),
+            steps: 0,
+            automatable: true,
+        };
+        let mut all: Vec<ParamInfo> = (0..200)
+            .map(|i| param(i, &format!("Osc {i} Pitch")))
+            .collect();
+        all.push(param(500, "A Filter 1 Cutoff"));
+        all.push(param(501, "B Filter 2 cutoff"));
+        all.push(param(502, "Filter Resonance"));
+
+        let (found, matching) = filter_params(all.clone(), Some("CUTOFF"), None);
+        assert_eq!(matching, 2);
+        assert_eq!(found.iter().map(|p| p.id).collect::<Vec<_>>(), [500, 501]);
+        // Every word has to match, in any order.
+        let (found, _) = filter_params(all.clone(), Some("cutoff filter 2"), None);
+        assert_eq!(found.iter().map(|p| p.id).collect::<Vec<_>>(), [501]);
+
+        // Without a search: the first 50, and how many there are in all.
+        let (found, matching) = filter_params(all.clone(), None, None);
+        assert_eq!((found.len(), matching), (50, 203));
+        let (found, _) = filter_params(all.clone(), Some(" "), Some(5));
+        assert_eq!(found.len(), 5);
+        let many: Vec<ParamInfo> = (0..600).map(|i| param(i, "Macro")).collect();
+        let (found, matching) = filter_params(many, None, Some(100_000));
+        assert_eq!((found.len(), matching), (MAX_PARAMS_SHOWN, 600));
+    }
     use crate::host::tests::TestHost;
 
     #[test]
