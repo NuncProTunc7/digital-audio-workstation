@@ -2,9 +2,8 @@
 
 ## Tutorial status (2026-10-09)
 
-Done: 1 Basics, 2 Writing music, 3 Drums, 4 Sounds, 5 Real instruments (flute), 7.1-7.2 (recording notes with count-in).
-**Was blocked by the freezes (fixed 2026-10-09), redo now:** 6 Plugins (Surge XT instrument and Surge XT Effects), 7.3+ microphone, calibration, takes and comping, 8 Audio clips (any audio track selected freezes the app). Also later: Surge XT Effects in the mixer, and anything needing an audio track.
-Next up: 9 Mixing (avoid selecting audio tracks), then 10-14. Test files left behind: `practice flute note.flac` on the Desktop (copied from the flute pack, CC BY).
+Done: 1 Basics, 2 Writing music, 3 Drums, 4 Sounds, 5 Real instruments (flute), 6 Plugins, 7 Recording (notes, microphone, calibration, takes and comping), 8 Audio clips. Sections 6-8 were redone on the fixed build on 2026-10-09 and worked.
+Sections 9-14 were already done earlier (some while avoiding audio tracks; worth a quick re-look with an audio track selected). Test files left behind: `practice flute note.flac` on the Desktop (copied from the flute pack, CC BY).
 
 A running log from the hands-on tutorial (started 2026-10-08), written so nothing gets lost when development resumes. Add to it as the tour continues. Items marked *unverified* are guesses that need a look at the app.
 
@@ -92,6 +91,16 @@ A running log from the hands-on tutorial (started 2026-10-08), written so nothin
 - [ ] **The diagnostic report forgets previous runs and can't show freezes.** The report's log starts at app launch ("[0.0s] Audio output...") and is lost on restart, so after this morning's four freezes (plugin instrument, plugin effect, audio track panel, and the Audio tab) the report showed none of them. Persist the log to a file under `%APPDATA%\io.github.nuncprotunc7.nuncprotune\` (keep the last few runs), and add a watchdog thread that notices the UI thread not answering for more than a few seconds and logs "UI not responding for N s during <command>" (the last Tauri command invoked), plus a "last run ended unexpectedly" note on the next start. (Section 14.)
 
 - [ ] **The "switched off after a crash" safety net doesn't cover freezes.** After the Surge XT freezes, `plugins-switched-off.json` stayed `[]`, so the plugin was offered again and froze the app a second and third time. Treat "the window stopped responding while loading or opening plugin X" like a crash (record the plugin on a "pending" marker before loading, clear it when loading succeeds, and if the next start finds the marker, switch that plugin off and say so). Pairs with the watchdog and persistent-log item above. (Section 14.)
+
+- [x] **Section 6 retest (2026-10-09, fixed build): Surge XT loads on a new "+ Synth track" without freezing**, its window opens, the Controls sliders and Surge's own A/B screens move together. Undoing knob turns worked, and Surge XT Effects added from the Mixer worked and stayed responsive. **Section 6 done.**
+- [ ] **`plugin_params` ignores its search word.** Asking Claude for "cutoff" on Surge XT returned all parameters (about 575,000 characters, over 28,000 lines), too big for Claude to read. Filter by name on the server (and cap the result, say 50, with a "N more" note). Also *unverified*: the four Filter Cutoff parameters report `default` 0.0 but `value` 1.0 (25087 Hz) on a fresh track; check that `default` is read from the plugin correctly.
+
+- [ ] **A Bluetooth headset switched on while the app is running is seen, but its microphone stays silent until the app restarts** (2026-10-09, Section 7). The owner turned the headset on with the app already open: the app listed it and played the song through it, but the Microphone meter did not move. After restarting the app with the headset already on, the meter worked. Likely the input stream (or the cached input list, refreshed every 3 s) was opened before the headset's mic appeared, and the app never reopens it when devices change (the output moves to the headset's 44.1 kHz). Ideas: re-open the input when the device list changes or on a "Refresh" button next to the Input menu, and mention "turn the headset on before starting" in the guide until fixed.
+
+- [x] **Section 7 retest (2026-10-09, fixed build): mic meter, recording with count-in, calibration (Measured 147 ms from 8 claps on the Razer Barracuda X) and takes/comping all worked and stayed responsive.** The saved delay shows in `recording_delay` (147 ms) and the new takes' `offset_seconds` moved by about 0.14 s, as expected.
+- [ ] **`get_track` / `get_clip` don't say which take clip is muted.** After comping three takes (cut at beat 4, which did save correctly), Claude saw six clips stacked in pairs of three with no `muted` field, so it couldn't tell which take was playing. Add `muted` (and the take's lane) to the audio clip output. (Same gap as `frozen`, Section 9.)
+
+- [x] **Section 8 retest (2026-10-09, fixed build): audio clips worked.** Import of `practice flute note.flac`, trimming both sides, fades (0.22 s), gain and Normalize, and Follow song tempo all worked as expected, and the app stayed responsive with audio tracks selected. The import again made a new track rather than using an existing audio track (that one already had takes, so it wasn't a clean test of the "empty selected track" item above).
 
 ## To check
 
