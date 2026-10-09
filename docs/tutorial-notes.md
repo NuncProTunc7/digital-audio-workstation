@@ -52,7 +52,7 @@ A running log from the hands-on tutorial (started 2026-10-08), written so nothin
 
 - [ ] **More bass sounds.** The owner wants more built-in bass options. Today there are only Sub Bass, Fat Bass and Acid Bass (synth presets). Ideas: a plucked/electric bass, a wobble/dubstep bass, a slap/fingered sampled bass (SFZ), a chiptune bass, a synth-brass bass. (Section 4.)
 
-- [ ] **Sampler track keeps the name "Piano" after loading another instrument.** Owner loaded the Ixox Flute and the track was still called "Piano". Rename the track to the instrument when it's still on its default name (Section 5).
+- [x] **FIXED (2026-10-09): loading a pack (Free instruments or a file) renames a track still called "Piano"/"Sampler" to the instrument, e.g. "Cello (Bowed)", in the same undo step.** **Sampler track keeps the name "Piano" after loading another instrument.** Owner loaded the Ixox Flute and the track was still called "Piano". Rename the track to the instrument when it's still on its default name (Section 5).
 - [ ] **Held flute notes stop after a few seconds** *(probably the sample, unverified)*. The Ixox Flute SFZ likely has no `loop_mode` / loop points, so a long note ends when the recording does. Options: loop the sample tail in the Sampler, a "sustain" toggle, or mention it in the instrument's description in `library.rs`. Also consider a note in the guide that long notes on a sampled flute fade.
 - [ ] **Free-instrument octave hint.** Owner couldn't hear the flute at first because the keyboard octave was too low (flute plays about C4-C7). Show the instrument's range in the panel and/or jump the on-screen keyboard to a sensible octave when an instrument loads.
 

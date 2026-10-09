@@ -24,7 +24,7 @@ interface InstrumentPanelProps {
   samplePackStatus: (path: string) => Promise<SamplePackStatus>;
   sampleLibrary?: () => Promise<LibraryPack[]>;
   onDownloadSamplePack?: (id: string) => Promise<void>;
-  onUseSamplePack?: (path: string) => void;
+  onUseSamplePack?: (path: string, label: string) => void;
   /** Third-party plugins; omitted where they can't be used. */
   plugins?: {
     list: (rescan: boolean) => Promise<PluginList>;

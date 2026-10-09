@@ -28,7 +28,7 @@ Synth knobs, in plain terms: **Wave** is the basic tone (Sine soft, Saw bright a
 
 1. **+ Sampler track**, then in its panel open **Free instruments**. You'll find two grand pianos (Salamander, Headroom), a cello, a double bass, a flute and a war tuba.
 2. Click **Download** next to one. It comes straight from its publisher and stays on this computer for every song. Small ones take seconds; the Salamander piano (750 MB) can take several minutes. You can keep working while it downloads.
-3. When it's done, click **Use …** (e.g. **Use Bowed** or **Use Plucked** for the cello) to play it on this track. Claude can do all of this too: "add a cello playing the melody".
+3. When it's done, click **Use …** (e.g. **Use Bowed** or **Use Plucked** for the cello) to play it on this track. A track still called *Piano* (the name **+ Sampler track** gives it) takes the instrument's name, such as *Cello (Bowed)*. Claude can do all of this too: "add a cello playing the melody".
 4. Some instruments ask for a **credit** in your game (the panel shows the line to copy, e.g. "Flute by Xavier Hosxe / Ixox (CC BY 4.0)"). The ones marked "no credit needed" are free for anything.
 5. Already have an SFZ pack? **Load sample pack file…** and choose its `.sfz` file.
 6. Big packs load in the background (the panel shows *loading…*). To save memory the app may keep only some of the pack's soft-to-loud layers; the panel tells you how many.

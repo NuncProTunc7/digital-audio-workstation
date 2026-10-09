@@ -11,7 +11,8 @@ interface SamplePackProps {
   library?: () => Promise<LibraryPack[]>;
   onDownload?: (id: string) => Promise<void>;
   /** Load a library instrument's program (.sfz path) on this track. */
-  onUse?: (path: string) => void;
+  /** Plays a pack's program; `label` names the instrument ("Cello (Bowed)"). */
+  onUse?: (path: string, label: string) => void;
 }
 
 function jobText(pack: LibraryPack): string | null {
@@ -31,7 +32,7 @@ function Library({
 }: {
   library: () => Promise<LibraryPack[]>;
   onDownload: (id: string) => Promise<void>;
-  onUse: (path: string) => void;
+  onUse: (path: string, label: string) => void;
 }) {
   const [packs, setPacks] = useState<LibraryPack[] | null>(null);
   const refresh = useCallback(() => {
@@ -63,7 +64,11 @@ function Library({
               {p.installed ? (
                 <div className="library-programs">
                   {p.installed.map(([name, path]) => (
-                    <button key={path} onClick={() => onUse(path)} title={`Play ${name} on this track`}>
+                    <button
+                      key={path}
+                      onClick={() => onUse(path, p.installed?.length === 1 ? p.name : `${p.name} (${name})`)}
+                      title={`Play ${name} on this track`}
+                    >
                       Use {name}
                     </button>
                   ))}

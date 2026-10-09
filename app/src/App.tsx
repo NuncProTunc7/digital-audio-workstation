@@ -67,6 +67,9 @@ interface AppProps {
   backend: Backend;
 }
 
+/** Names a sampler track has before it plays a chosen instrument. */
+const SAMPLER_DEFAULT_NAMES = ["Piano", "Sampler"];
+
 function isTextEntry(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
   if (!el) return false;
@@ -550,6 +553,21 @@ export default function App({ backend }: AppProps) {
       return saved !== undefined && !saved.dirty;
     },
     [backend, run, applyView],
+  );
+
+  /** Loads a sample pack; a track still on a default name ("Piano" from
+   * + Sampler track) takes the instrument's name, in the same undo step. */
+  const loadSamplePack = useCallback(
+    (track: Track, path: string, label: string) => {
+      const load: Command = { command: "load_sample_pack", track_id: track.id, path };
+      const rename = SAMPLER_DEFAULT_NAMES.includes(track.name) && label.trim() !== "";
+      void execute(
+        rename
+          ? { command: "batch", commands: [load, { command: "rename_track", track_id: track.id, name: label.trim() }] }
+          : load,
+      ).then(endGesture);
+    },
+    [execute, endGesture],
   );
 
   // ---- Transport ----
@@ -1133,7 +1151,7 @@ export default function App({ backend }: AppProps) {
                 onPadRelease={noteOff}
                 onChooseSamplePack={() =>
                   void run(() => backend.pickSamplePack()).then((path) => {
-                    if (path) void execute({ command: "load_sample_pack", track_id: selectedTrack.id, path }).then(endGesture);
+                    if (path) loadSamplePack(selectedTrack, path, path.split(/[\\/]/).pop()?.replace(/\.sfz$/i, "") ?? "");
                   })
                 }
                 samplePackStatus={backend.samplePackStatus}
@@ -1158,9 +1176,7 @@ export default function App({ backend }: AppProps) {
                 onDownloadSamplePack={async (id) => {
                   await run(() => backend.downloadSamplePack(id));
                 }}
-                onUseSamplePack={(path) =>
-                  void execute({ command: "load_sample_pack", track_id: selectedTrack.id, path }).then(endGesture)
-                }
+                onUseSamplePack={(path, label) => loadSamplePack(selectedTrack, path, label)}
               />
               <div className="keyboard-dock">
                 <div className="keyboard-help">

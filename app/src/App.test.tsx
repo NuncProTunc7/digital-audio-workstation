@@ -1506,6 +1506,8 @@ describe("Sampler", () => {
     const piano = (await backend.getProject()).project.tracks[3];
     expect(piano.instrument.sample_pack).toBe("D:\\Samples\\Salamander\\SalamanderGrandPiano.sfz");
     expect(await screen.findByText("SalamanderGrandPiano.sfz")).toBeTruthy();
+    // A track still on its default name takes the instrument's name.
+    expect((await backend.getProject()).project.tracks[3].name).toBe("SalamanderGrandPiano");
   });
 
   it("downloads a free instrument and plays it", async () => {
@@ -1527,6 +1529,8 @@ describe("Sampler", () => {
     });
     const track = (await backend.getProject()).project.tracks[3];
     expect(track.instrument.sample_pack).toBe("C:/Library/cello/Programs/01- Bowed (velocity layer).sfz");
+    // Found 2026-10-09: the flute track kept the name "Piano".
+    expect(track.name).toBe("Cello (Bowed)");
   });
 });
 
