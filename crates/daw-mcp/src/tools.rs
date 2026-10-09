@@ -158,13 +158,13 @@ fn extra_tools() -> Vec<ToolDef> {
     vec![
         tool(
             "get_song",
-            "Overview of the open song: tempo, time signature, length, loop, master, and every track with its clips (ids, positions, note counts). Start here.",
+            "Overview of the open song: tempo, time signature, length, loop, master, and every track with its clips (ids, positions, note counts, muted). Each track says frozen: \"frozen\", \"out of date (plays live)\", or \"no\". Muted clips are kept but silent (e.g. unused recording takes stacked under the one that plays). Start here.",
             object_schema(json!({}), &[]),
             true,
         ),
         tool(
             "get_track",
-            "One track in full: instrument parameters, effect settings, mixer, and clip list.",
+            "One track in full: instrument parameters, effect settings, mixer, frozen state, and clip list (muted = kept but silent, like unused takes).",
             object_schema(
                 json!({ "track_id": int("Track id from get_song.") }),
                 &["track_id"],

@@ -26,7 +26,7 @@ pub fn song_summary(project: &Project) -> Value {
             "volume_db": project.master.volume_db,
             "effects": project.master.effects.iter().map(|e| json!({"id": e.id, "kind": e.kind, "enabled": e.enabled})).collect::<Vec<_>>(),
         },
-        "tracks": project.tracks.iter().map(track_brief).collect::<Vec<_>>(),
+        "tracks": project.tracks.iter().map(|t| track_brief(project, t)).collect::<Vec<_>>(),
         "buses": project.buses.iter().map(|b| json!({
             "id": b.id,
             "name": b.name,
@@ -58,7 +58,16 @@ pub fn song_summary(project: &Project) -> Value {
     })
 }
 
-fn track_brief(t: &Track) -> Value {
+/// "frozen", "out of date (plays live)" (edited since freezing), or "no".
+fn frozen_state(project: &Project, t: &Track) -> &'static str {
+    match &t.frozen {
+        None => "no",
+        Some(_) if project.frozen_is_current(t) => "frozen",
+        Some(_) => "out of date (plays live)",
+    }
+}
+
+fn track_brief(project: &Project, t: &Track) -> Value {
     json!({
         "id": t.id,
         "name": t.name,
@@ -74,6 +83,7 @@ fn track_brief(t: &Track) -> Value {
         "mute": t.mixer.mute,
         "solo": t.mixer.solo,
         "output_bus": t.output,
+        "frozen": frozen_state(project, t),
         "sends": t.sends,
         "effects": t.mixer.effects.iter().map(|e| json!({"id": e.id, "kind": e.kind, "enabled": e.enabled})).collect::<Vec<_>>(),
         "clips": t.clips.iter().map(clip_brief).collect::<Vec<_>>(),
@@ -95,6 +105,7 @@ fn clip_brief(c: &Clip) -> Value {
             "name": c.name,
             "start_beats": c.start_beats,
             "length_beats": c.length_beats,
+            "muted": c.muted,
             "audio": a,
         });
     }
@@ -105,6 +116,7 @@ fn clip_brief(c: &Clip) -> Value {
         "name": c.name,
         "start_beats": c.start_beats,
         "length_beats": c.length_beats,
+        "muted": c.muted,
         "note_count": c.notes.len(),
         "lowest_pitch": lo,
         "highest_pitch": hi,
@@ -113,8 +125,8 @@ fn clip_brief(c: &Clip) -> Value {
 
 /// One track in full (instrument parameters, effect settings), with clip
 /// summaries instead of notes.
-pub fn track_detail(track: &Track) -> Value {
-    let mut v = track_brief(track);
+pub fn track_detail(project: &Project, track: &Track) -> Value {
+    let mut v = track_brief(project, track);
     v["instrument_params"] = json!(track.instrument.params);
     v["effects"] = json!(track.mixer.effects);
     v["automation"] = json!(track.automation);
@@ -123,12 +135,15 @@ pub fn track_detail(track: &Track) -> Value {
 
 /// One clip with every note.
 pub fn clip_detail(track: &Track, clip: &Clip) -> Value {
-    json!({
+    let mut v = json!({
         "track_id": track.id,
         "track_name": track.name,
         "instrument": track.instrument.kind,
         "clip": clip,
-    })
+    });
+    // Serialization leaves out `muted` when false; say it either way.
+    v["clip"]["muted"] = json!(clip.muted);
+    v
 }
 
 #[cfg(test)]
@@ -146,7 +161,7 @@ mod tests {
     #[test]
     fn track_detail_includes_params() {
         let p = Project::default();
-        let d = track_detail(&p.tracks[0]);
+        let d = track_detail(&p, &p.tracks[0]);
         assert!(d["instrument_params"]["filter.cutoff_hz"].is_number());
     }
 
@@ -174,5 +189,43 @@ mod tests {
         let b = clip_brief(&c);
         assert_eq!(b["audio"]["file"], "vox.wav");
         assert!(b.get("note_count").is_none());
+        assert_eq!(b["muted"], false);
+    }
+
+    #[test]
+    fn muted_takes_and_frozen_tracks_are_reported() {
+        // Found 2026-10-09: after comping, Claude saw stacked takes with no
+        // way to tell which one plays, and couldn't tell a track was frozen.
+        let mut p = Project::default();
+        p.tracks[0].clips.push(Clip {
+            link: None,
+            muted: true,
+            swing: None,
+            id: 90,
+            name: "Take 1".into(),
+            start_beats: 0.0,
+            length_beats: 4.0,
+            notes: Vec::new(),
+            audio: None,
+        });
+        p.tracks[0].frozen = Some(crate::project::Frozen {
+            file: "keys frozen.wav".into(),
+            fingerprint: p.freeze_fingerprint(&p.tracks[0]),
+        });
+        let song = song_summary(&p);
+        assert_eq!(song["tracks"][0]["clips"][0]["muted"], true);
+        assert_eq!(song["tracks"][0]["frozen"], "frozen");
+        assert_eq!(song["tracks"][1]["frozen"], "no");
+        let detail = track_detail(&p, &p.tracks[0]);
+        assert_eq!(detail["frozen"], "frozen");
+        let clip = clip_detail(&p.tracks[0], &p.tracks[0].clips[0]);
+        assert_eq!(clip["clip"]["muted"], true);
+
+        // An edit after freezing makes it play live again.
+        p.tempo_bpm = 90.0;
+        assert_eq!(
+            song_summary(&p)["tracks"][0]["frozen"],
+            "out of date (plays live)"
+        );
     }
 }

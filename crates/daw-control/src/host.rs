@@ -316,7 +316,7 @@ fn handle_inner<H: Host>(host: &H, request: Request) -> Result<Value, String> {
                 .project()
                 .track(track_id)
                 .ok_or_else(|| format!("there is no track with id {track_id}"))?;
-            let mut v = track_detail(track);
+            let mut v = track_detail(session.project(), track);
             if let Some(pack) = &track.instrument.sample_pack {
                 v["sample_pack_status"] = json!(sample_pack_status(Path::new(pack)));
             }
