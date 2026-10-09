@@ -6,6 +6,7 @@ import { CHORD_QUALITIES, NOTE_NAMES, chordName, homeChord } from "../music";
 import { AUTOMATION_HEIGHT, automatableTargets, targetScale } from "../automation";
 import AutomationLaneEditor from "./AutomationLane";
 import Waveform from "./Waveform";
+import FixedMenu from "./FixedMenu";
 
 export const TRACK_HEIGHT = 60;
 /** Height of one take lane when an audio track shows its takes. */
@@ -470,11 +471,12 @@ export default function Timeline(props: TimelineProps) {
           </div>
         </div>
         {menuChord && chordMenu && (
-          <div
+          <FixedMenu
             className="step-menu chord-menu"
             role="dialog"
             aria-label={`Edit chord ${chordName(menuChord)}`}
-            style={{ left: chordMenu.x, top: chordMenu.y + 12 }}
+            x={chordMenu.x}
+            y={chordMenu.y + 12}
           >
             <div className="step-menu-row">
               <span>Root</span>
@@ -530,7 +532,7 @@ export default function Timeline(props: TimelineProps) {
                 Done
               </button>
             </div>
-          </div>
+          </FixedMenu>
         )}
 
         <div className="timeline-body">

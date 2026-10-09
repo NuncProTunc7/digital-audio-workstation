@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { noteName } from "../keymap";
+import FixedMenu from "./FixedMenu";
 import type { Clip, Command, DrumPad, Note, NoteInput } from "../types";
 
 /** Rows from the most used drums down to the rarer ones. */
@@ -297,11 +298,12 @@ export default function StepSequencer(props: StepSequencerProps) {
       </div>
 
       {menu && (
-        <div
+        <FixedMenu
           className="step-menu"
           role="menu"
           aria-label={`${rowName(menu.pitch)} step ${menu.step + 1}`}
-          style={{ left: menu.x, top: menu.y }}
+          x={menu.x}
+          y={menu.y}
           onPointerLeave={() => setMenu(null)}
         >
           <div className="step-menu-row">
@@ -357,7 +359,7 @@ export default function StepSequencer(props: StepSequencerProps) {
               Clear step
             </button>
           )}
-        </div>
+        </FixedMenu>
       )}
     </div>
   );
