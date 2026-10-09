@@ -168,7 +168,11 @@ pub fn inspect(
     if spec.stems {
         let mut silent = Vec::new();
         let mut lengths_ok = true;
-        for t in &project.tracks {
+        for t in project
+            .tracks
+            .iter()
+            .filter(|t| crate::heard_in_mix(project, t))
+        {
             let stem = render::render_with_intro(
                 project,
                 audio,
@@ -202,6 +206,16 @@ pub fn inspect(
                 format!(
                     "These tracks are silent here and get no stem: {}",
                     silent.join(", ")
+                ),
+            );
+        }
+        let unheard = crate::unheard_tracks(project);
+        if !unheard.is_empty() {
+            say(
+                Level::Warning,
+                format!(
+                    "These tracks are muted (or another track is soloed), so they get no stem: {}. Unmute them to include them.",
+                    unheard.join(", ")
                 ),
             );
         }

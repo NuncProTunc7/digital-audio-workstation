@@ -126,6 +126,24 @@ pub struct ExportReport {
     pub loop_start_seconds: f64,
 }
 
+/// Whether `track` plays in the mix: not muted, and not left out by
+/// another track's solo.
+pub fn heard_in_mix(project: &Project, track: &daw_model::Track) -> bool {
+    let any_solo = project.tracks.iter().any(|t| t.mixer.solo);
+    !track.mixer.mute && (!any_solo || track.mixer.solo)
+}
+
+/// Tracks the mix leaves out (muted, or another track is soloed). They get
+/// no stem, so the game plays what the owner hears.
+pub fn unheard_tracks(project: &Project) -> Vec<&str> {
+    project
+        .tracks
+        .iter()
+        .filter(|t| !heard_in_mix(project, t))
+        .map(|t| t.name.as_str())
+        .collect()
+}
+
 /// `Boss Theme!` → `boss_theme`.
 pub fn file_slug(name: &str) -> String {
     let s: String = name
@@ -223,9 +241,14 @@ pub fn export_to_godot(
                 continue;
             }
             let mut only = project.clone();
-            for t in &mut only.tracks {
+            let heard: Vec<_> = project
+                .tracks
+                .iter()
+                .map(|t| heard_in_mix(project, t))
+                .collect();
+            for (t, heard) in only.tracks.iter_mut().zip(heard) {
                 t.mixer.solo = false;
-                t.mixer.mute = t.mixer.mute || !ids.contains(&t.id);
+                t.mixer.mute = !heard || !ids.contains(&t.id);
             }
             let stem = render::render_with_intro(&only, audio, from, start, end, spec.looped, None);
             if stem.is_silent() {
@@ -235,7 +258,7 @@ pub fn export_to_godot(
             stem_paths.push(res);
         }
     } else if spec.stems {
-        for t in &project.tracks {
+        for t in project.tracks.iter().filter(|t| heard_in_mix(project, t)) {
             let stem = render::render_with_intro(
                 project,
                 audio,

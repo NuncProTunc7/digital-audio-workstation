@@ -57,6 +57,9 @@ export default function GodotExportDialog({
   const [markerSections, setMarkerSections] = useState(sectionCount > 0);
   const [stems, setStems] = useState(false);
   const hasBuses = (project.buses ?? []).length > 0;
+  // Tracks the mix leaves out get no stem (as in daw-export's heard_in_mix).
+  const anySolo = project.tracks.some((t) => t.mixer.solo);
+  const unheard = project.tracks.filter((t) => t.mixer.mute || (anySolo && !t.mixer.solo)).map((t) => t.name);
   const [busStems, setBusStems] = useState(hasBuses);
   const [lufs, setLufs] = useState<number | null>(-16);
   const [busy, setBusy] = useState(false);
@@ -240,6 +243,13 @@ export default function GodotExportDialog({
           <input type="checkbox" checked={stems} onChange={(e) => setStems(e.target.checked)} />
           Also export each track as a stem, with a layers resource for adaptive music
         </label>
+        {stems && unheard.length > 0 && (
+          <p className="finding warning">
+            <span aria-hidden>⚠</span> {unheard.length === 1 ? "This track is" : "These tracks are"} muted (or another
+            track is soloed), so {unheard.length === 1 ? "it gets" : "they get"} no stem: {unheard.join(", ")}. Unmute to
+            include.
+          </p>
+        )}
         {stems && hasBuses && (
           <label className="dialog-check">
             <input type="checkbox" checked={busStems} onChange={(e) => setBusStems(e.target.checked)} />

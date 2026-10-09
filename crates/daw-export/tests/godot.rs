@@ -532,3 +532,57 @@ fn refuses_non_godot_folders_and_escaping_paths() {
     }
     assert_eq!(file_slug("Boss Theme! (v2)"), "boss_theme_v2");
 }
+
+#[test]
+fn muted_and_unsoloed_tracks_get_no_stem() {
+    use daw_export::{Level, inspect};
+    let mixer = |p: &mut Project, track_id, mute, solo| {
+        Command::SetTrackMixer {
+            track_id,
+            volume_db: None,
+            pan: None,
+            mute,
+            solo,
+        }
+        .apply(p)
+        .expect("mixer");
+    };
+    let dir = godot_project();
+    let mut s = spec(dir.path());
+    s.stems = true;
+    s.layers_resource = true;
+
+    // A muted bass is not in the mix, so Godot must not play it either.
+    let mut muted = song();
+    mixer(&mut muted, 2, Some(true), None);
+    let report = export_to_godot(&muted, &AudioPool::in_temp_dir(), &s).expect("export");
+    assert_eq!(
+        report.files,
+        vec![
+            "res://music/boss/boss_theme.ogg",
+            "res://music/boss/boss_theme_drums.ogg",
+            "res://music/boss/boss_theme_layers.tres",
+        ]
+    );
+    let layers = std::fs::read_to_string(dir.path().join("music/boss/boss_theme_layers.tres"))
+        .expect("layers");
+    assert!(layers.contains("stream_count = 1"), "{layers}");
+    let check = inspect(&muted, &AudioPool::in_temp_dir(), &s).expect("inspect");
+    assert!(
+        check.findings.iter().any(|f| f.level == Level::Warning
+            && f.message.contains("muted")
+            && f.message.contains("Bass")),
+        "{:#?}",
+        check.findings
+    );
+
+    // Soloing the drums leaves the bass out the same way.
+    let mut soloed = song();
+    mixer(&mut soloed, 3, None, Some(true));
+    let report = export_to_godot(&soloed, &AudioPool::in_temp_dir(), &s).expect("export");
+    assert!(
+        !report.files.iter().any(|f| f.contains("bass")),
+        "{:?}",
+        report.files
+    );
+}

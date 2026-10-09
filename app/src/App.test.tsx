@@ -1183,6 +1183,18 @@ describe("Import and export", () => {
     expect(listen.title).toContain("Tick Seamless loop");
   });
 
+  it("warns that muted tracks get no Godot stem", async () => {
+    const backend = createPreviewBackend();
+    await backend.execute({ command: "set_track_mixer", track_id: 1, volume_db: null, pan: null, mute: true, solo: null });
+    await renderApp(backend);
+    fireEvent.click(screen.getByRole("button", { name: "Export ▾" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "To Godot (loops, stems)…" }));
+    const dialog = screen.getByRole("dialog", { name: "Export to Godot" });
+    expect(within(dialog).queryByText(/no stem/)).toBeNull();
+    fireEvent.click(screen.getByLabelText(/Also export each track as a stem/));
+    expect(within(dialog).getByText(/no stem/).textContent).toContain("Keys");
+  });
+
   it("stops the audition when the Godot dialog closes", async () => {
     const backend = createPreviewBackend();
     vi.spyOn(backend, "stop");
