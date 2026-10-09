@@ -8,6 +8,7 @@ Mixing makes every part audible and the whole song sit at the right loudness.
 - **Type an exact value**: double-click the number under a fader (or a pan, send or effect setting), type, and press **Enter**; **Esc** cancels. Pan takes `C`, `30L` or `45R`; levels take `-3.5` (or `-inf` for silence).
 - **+ Add effect…** on a track: EQ, Compressor, Reverb, Delay, Chorus, Distortion, Limiter, and under **Plugins** any VST3 effect you installed (see [Plugins](plugins.md)). Effects run top to bottom; each has an on/off switch and its own settings (a plugin effect's are in its window: click its name, then **Open plugin window**).
 - The master channel affects everything. A **Limiter** there stops the song clipping.
+- **Master** and **+ Bus** always stay at the right of the Mixer. With many tracks, scroll the other strips sideways with the mouse wheel or the scrollbar under them.
 
 | Effect | Use it to |
 |---|---|

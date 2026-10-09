@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { formatDb, meterPercent, parseDb, parsePan } from "../format";
 import type { Bus, Catalog, Command, Effect, EffectKind, PluginInfo, PluginList, Project, Track } from "../types";
 import Fader from "./Fader";
@@ -160,187 +160,211 @@ export default function Mixer(props: MixerProps) {
       .catch(() => {});
   }, [list]);
   const plugins = props.plugins ? { effects: pluginEffects, add: props.plugins.add, openWindow: props.plugins.openWindow } : null;
+  // A plain mouse wheel scrolls the strips sideways (most mice can't scroll
+  // sideways). A native listener, because React's wheel listener is passive
+  // and can't stop the page scrolling as well.
+  const stripsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = stripsRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX) || el.scrollWidth <= el.clientWidth) return;
+      // Leave the wheel to an effect list or strip that scrolls up and down.
+      for (let n = e.target as HTMLElement | null; n && n !== el; n = n.parentElement) {
+        if (n.scrollHeight > n.clientHeight && ["auto", "scroll"].includes(getComputedStyle(n).overflowY)) return;
+      }
+      e.preventDefault();
+      el.scrollLeft += e.deltaY;
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
   const mixer = (
     <div className="mixer">
-      {project.tracks.map((t, i) => (
-        <Strip
-        tracks={project.tracks}
-          key={t.id}
-          name={t.name}
-          selected={t.id === props.selectedTrackId}
-          onSelect={() => props.onSelectTrack(t.id)}
-          volumeDb={t.mixer.volume_db}
-          peak={props.trackPeaks[i] ?? 0}
-          effects={t.mixer.effects}
-          trackId={t.id}
-          catalog={props.catalog}
-          onCommand={props.onCommand}
-          onEndGesture={props.onEndGesture}
-          onVolume={(v) =>
-            send({ command: "set_track_mixer", track_id: t.id, volume_db: v, pan: null, mute: null, solo: null })
+      <div className="mixer-strips" role="group" aria-label="Track and bus channels" ref={stripsRef}>
+        {project.tracks.map((t, i) => (
+          <Strip
+            tracks={project.tracks}
+            key={t.id}
+            name={t.name}
+            selected={t.id === props.selectedTrackId}
+            onSelect={() => props.onSelectTrack(t.id)}
+            volumeDb={t.mixer.volume_db}
+            peak={props.trackPeaks[i] ?? 0}
+            effects={t.mixer.effects}
+            trackId={t.id}
+            catalog={props.catalog}
+            onCommand={props.onCommand}
+            onEndGesture={props.onEndGesture}
+            onVolume={(v) =>
+              send({ command: "set_track_mixer", track_id: t.id, volume_db: v, pan: null, mute: null, solo: null })
+            }
+          >
+            <label className="pan" title="Pan (double-click to center)">
+              <span>Pan</span>
+              <input
+                type="range"
+                min={-100}
+                max={100}
+                value={Math.round(t.mixer.pan * 100)}
+                aria-label={`${t.name} pan`}
+                onChange={(e) =>
+                  send({
+                    command: "set_track_mixer",
+                    track_id: t.id,
+                    volume_db: null,
+                    pan: Number(e.target.value) / 100,
+                    mute: null,
+                    solo: null,
+                  })
+                }
+                onPointerUp={props.onEndGesture}
+                onDoubleClick={() => {
+                  send({ command: "set_track_mixer", track_id: t.id, volume_db: null, pan: 0, mute: null, solo: null });
+                  props.onEndGesture();
+                }}
+              />
+              <PanEntry
+                name={t.name}
+                pan={t.mixer.pan}
+                onSet={(pan) =>
+                  void props
+                    .onCommand({ command: "set_track_mixer", track_id: t.id, volume_db: null, pan, mute: null, solo: null })
+                    .then(props.onEndGesture)
+                }
+              />
+            </label>
+            <div className="strip-buttons">
+              <button
+                className={t.mixer.mute ? "tiny on mute" : "tiny"}
+                aria-pressed={t.mixer.mute}
+                onClick={() => {
+                  send({ command: "set_track_mixer", track_id: t.id, volume_db: null, pan: null, mute: !t.mixer.mute, solo: null });
+                  props.onEndGesture();
+                }}
+              >
+                M
+              </button>
+              <button
+                className={t.mixer.solo ? "tiny on solo" : "tiny"}
+                aria-pressed={t.mixer.solo}
+                onClick={() => {
+                  send({ command: "set_track_mixer", track_id: t.id, volume_db: null, pan: null, mute: null, solo: !t.mixer.solo });
+                  props.onEndGesture();
+                }}
+              >
+                S
+              </button>
+            </div>
+            <Routing track={t} buses={buses} onCommand={props.onCommand} onEndGesture={props.onEndGesture} />
+          </Strip>
+        ))}
+        {buses.map((b, i) => (
+          <Strip
+            tracks={project.tracks}
+            key={b.id}
+            name={b.name}
+            bus
+            selected={false}
+            onSelect={() => {}}
+            volumeDb={b.mixer.volume_db}
+            peak={props.busPeaks[i] ?? 0}
+            effects={b.mixer.effects}
+            trackId={b.id}
+            catalog={props.catalog}
+            onCommand={props.onCommand}
+            onEndGesture={props.onEndGesture}
+            onVolume={(v) => send({ command: "set_bus_mixer", bus_id: b.id, volume_db: v, pan: null, mute: null })}
+            onRename={(name) =>
+              void props.onCommand({ command: "rename_bus", bus_id: b.id, name }).then(props.onEndGesture)
+            }
+          >
+            <label className="pan" title="Pan (double-click to center)">
+              <span>Pan</span>
+              <input
+                type="range"
+                min={-100}
+                max={100}
+                value={Math.round(b.mixer.pan * 100)}
+                aria-label={`${b.name} pan`}
+                onChange={(e) =>
+                  send({ command: "set_bus_mixer", bus_id: b.id, volume_db: null, pan: Number(e.target.value) / 100, mute: null })
+                }
+                onPointerUp={props.onEndGesture}
+                onDoubleClick={() => {
+                  send({ command: "set_bus_mixer", bus_id: b.id, volume_db: null, pan: 0, mute: null });
+                  props.onEndGesture();
+                }}
+              />
+              <PanEntry
+                name={b.name}
+                pan={b.mixer.pan}
+                onSet={(pan) =>
+                  void props
+                    .onCommand({ command: "set_bus_mixer", bus_id: b.id, volume_db: null, pan, mute: null })
+                    .then(props.onEndGesture)
+                }
+              />
+            </label>
+            <div className="strip-buttons">
+              <button
+                className={b.mixer.mute ? "tiny on mute" : "tiny"}
+                aria-pressed={b.mixer.mute}
+                aria-label={`Mute ${b.name}`}
+                onClick={() => {
+                  send({ command: "set_bus_mixer", bus_id: b.id, volume_db: null, pan: null, mute: !b.mixer.mute });
+                  props.onEndGesture();
+                }}
+              >
+                M
+              </button>
+              <button
+                className="tiny"
+                aria-label={`Delete bus ${b.name}`}
+                title="Delete this bus (its tracks play into the master)"
+                onClick={() => void props.onCommand({ command: "remove_bus", bus_id: b.id }).then(props.onEndGesture)}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="bus-members muted">
+              {project.tracks
+                .filter((t) => t.output === b.id)
+                .map((t) => t.name)
+                .join(", ") || "No tracks yet"}
+            </div>
+          </Strip>
+        ))}
+      </div>
+      {/* Always in view, however many tracks there are. */}
+      <div className="mixer-pinned">
+        <button
+          className="add-bus"
+          onClick={() =>
+            void props
+              .onCommand({ command: "add_bus", name: buses.length === 0 ? "Reverb" : `Bus ${buses.length + 1}` })
+              .then(props.onEndGesture)
           }
+          title="Add a group bus: send several tracks to one shared reverb, or group drums to set their level together"
         >
-          <label className="pan" title="Pan (double-click to center)">
-            <span>Pan</span>
-            <input
-              type="range"
-              min={-100}
-              max={100}
-              value={Math.round(t.mixer.pan * 100)}
-              aria-label={`${t.name} pan`}
-              onChange={(e) =>
-                send({
-                  command: "set_track_mixer",
-                  track_id: t.id,
-                  volume_db: null,
-                  pan: Number(e.target.value) / 100,
-                  mute: null,
-                  solo: null,
-                })
-              }
-              onPointerUp={props.onEndGesture}
-              onDoubleClick={() => {
-                send({ command: "set_track_mixer", track_id: t.id, volume_db: null, pan: 0, mute: null, solo: null });
-                props.onEndGesture();
-              }}
-            />
-            <PanEntry
-              name={t.name}
-              pan={t.mixer.pan}
-              onSet={(pan) =>
-                void props
-                  .onCommand({ command: "set_track_mixer", track_id: t.id, volume_db: null, pan, mute: null, solo: null })
-                  .then(props.onEndGesture)
-              }
-            />
-          </label>
-          <div className="strip-buttons">
-            <button
-              className={t.mixer.mute ? "tiny on mute" : "tiny"}
-              aria-pressed={t.mixer.mute}
-              onClick={() => {
-                send({ command: "set_track_mixer", track_id: t.id, volume_db: null, pan: null, mute: !t.mixer.mute, solo: null });
-                props.onEndGesture();
-              }}
-            >
-              M
-            </button>
-            <button
-              className={t.mixer.solo ? "tiny on solo" : "tiny"}
-              aria-pressed={t.mixer.solo}
-              onClick={() => {
-                send({ command: "set_track_mixer", track_id: t.id, volume_db: null, pan: null, mute: null, solo: !t.mixer.solo });
-                props.onEndGesture();
-              }}
-            >
-              S
-            </button>
-          </div>
-          <Routing track={t} buses={buses} onCommand={props.onCommand} onEndGesture={props.onEndGesture} />
-        </Strip>
-      ))}
-      {buses.map((b, i) => (
+          + Bus
+        </button>
         <Strip
-        tracks={project.tracks}
-          key={b.id}
-          name={b.name}
-          bus
+          tracks={project.tracks}
+          name="Master"
+          master
           selected={false}
           onSelect={() => {}}
-          volumeDb={b.mixer.volume_db}
-          peak={props.busPeaks[i] ?? 0}
-          effects={b.mixer.effects}
-          trackId={b.id}
+          volumeDb={project.master.volume_db}
+          peak={Math.max(...props.masterPeaks)}
+          effects={project.master.effects}
+          trackId={null}
           catalog={props.catalog}
           onCommand={props.onCommand}
           onEndGesture={props.onEndGesture}
-          onVolume={(v) => send({ command: "set_bus_mixer", bus_id: b.id, volume_db: v, pan: null, mute: null })}
-          onRename={(name) =>
-            void props.onCommand({ command: "rename_bus", bus_id: b.id, name }).then(props.onEndGesture)
-          }
-        >
-          <label className="pan" title="Pan (double-click to center)">
-            <span>Pan</span>
-            <input
-              type="range"
-              min={-100}
-              max={100}
-              value={Math.round(b.mixer.pan * 100)}
-              aria-label={`${b.name} pan`}
-              onChange={(e) =>
-                send({ command: "set_bus_mixer", bus_id: b.id, volume_db: null, pan: Number(e.target.value) / 100, mute: null })
-              }
-              onPointerUp={props.onEndGesture}
-              onDoubleClick={() => {
-                send({ command: "set_bus_mixer", bus_id: b.id, volume_db: null, pan: 0, mute: null });
-                props.onEndGesture();
-              }}
-            />
-            <PanEntry
-              name={b.name}
-              pan={b.mixer.pan}
-              onSet={(pan) =>
-                void props
-                  .onCommand({ command: "set_bus_mixer", bus_id: b.id, volume_db: null, pan, mute: null })
-                  .then(props.onEndGesture)
-              }
-            />
-          </label>
-          <div className="strip-buttons">
-            <button
-              className={b.mixer.mute ? "tiny on mute" : "tiny"}
-              aria-pressed={b.mixer.mute}
-              aria-label={`Mute ${b.name}`}
-              onClick={() => {
-                send({ command: "set_bus_mixer", bus_id: b.id, volume_db: null, pan: null, mute: !b.mixer.mute });
-                props.onEndGesture();
-              }}
-            >
-              M
-            </button>
-            <button
-              className="tiny"
-              aria-label={`Delete bus ${b.name}`}
-              title="Delete this bus (its tracks play into the master)"
-              onClick={() => void props.onCommand({ command: "remove_bus", bus_id: b.id }).then(props.onEndGesture)}
-            >
-              ✕
-            </button>
-          </div>
-          <div className="bus-members muted">
-            {project.tracks
-              .filter((t) => t.output === b.id)
-              .map((t) => t.name)
-              .join(", ") || "No tracks yet"}
-          </div>
-        </Strip>
-      ))}
-      <button
-        className="add-bus"
-        onClick={() =>
-          void props
-            .onCommand({ command: "add_bus", name: buses.length === 0 ? "Reverb" : `Bus ${buses.length + 1}` })
-            .then(props.onEndGesture)
-        }
-        title="Add a group bus: send several tracks to one shared reverb, or group drums to set their level together"
-      >
-        + Bus
-      </button>
-      <Strip
-        tracks={project.tracks}
-        name="Master"
-        master
-        selected={false}
-        onSelect={() => {}}
-        volumeDb={project.master.volume_db}
-        peak={Math.max(...props.masterPeaks)}
-        effects={project.master.effects}
-        trackId={null}
-        catalog={props.catalog}
-        onCommand={props.onCommand}
-        onEndGesture={props.onEndGesture}
-        onVolume={(v) => send({ command: "set_master_volume", volume_db: v })}
-      />
+          onVolume={(v) => send({ command: "set_master_volume", volume_db: v })}
+        />
+      </div>
     </div>
   );
   return <PluginEffects.Provider value={plugins}>{mixer}</PluginEffects.Provider>;

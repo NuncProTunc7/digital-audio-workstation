@@ -682,6 +682,34 @@ describe("Buses", () => {
   });
 });
 
+describe("Mixer layout", () => {
+  it("keeps Master and + Bus outside the scrolling strips, and the wheel scrolls sideways", async () => {
+    await renderApp();
+    fireEvent.click(screen.getByRole("tab", { name: /Mixer/ }));
+    const strips = screen.getByRole("group", { name: "Track and bus channels" });
+    expect(within(strips).getByRole("region", { name: "Keys channel" })).toBeTruthy();
+    expect(within(strips).queryByRole("region", { name: "Master channel" })).toBeNull();
+    expect(within(strips).queryByRole("button", { name: "+ Bus" })).toBeNull();
+    expect(screen.getByRole("region", { name: "Master channel" })).toBeTruthy();
+
+    // jsdom has no layout: pretend the strips are wider than the panel.
+    let left = 0;
+    Object.defineProperty(strips, "scrollWidth", { configurable: true, value: 1000 });
+    Object.defineProperty(strips, "clientWidth", { configurable: true, value: 400 });
+    Object.defineProperty(strips, "scrollLeft", {
+      configurable: true,
+      get: () => left,
+      set: (v: number) => {
+        left = v;
+      },
+    });
+    const wheel = new WheelEvent("wheel", { deltaY: 120, bubbles: true, cancelable: true });
+    within(strips).getByRole("region", { name: "Keys channel" }).dispatchEvent(wheel);
+    expect(left).toBe(120);
+    expect(wheel.defaultPrevented).toBe(true);
+  });
+});
+
 describe("Typed mixer values", () => {
   it("types levels, pan and send amounts, and refuses values out of range", async () => {
     const backend = createPreviewBackend();

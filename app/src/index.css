@@ -75,6 +75,9 @@ button:focus-visible {
 
 .app {
   display: grid;
+  /* Never wider than the window: wide content (a mixer with many strips)
+     scrolls inside its panel instead of pushing the page off screen. */
+  grid-template-columns: minmax(0, 1fr);
   height: 100%;
 }
 
@@ -1241,9 +1244,49 @@ button.tiny.delete {
   display: flex;
   gap: 8px;
   padding: 8px;
-  overflow-x: auto;
   height: 100%;
   align-items: stretch;
+}
+
+/* Tracks and buses scroll sideways; the scrollbar always shows (and has
+   room), so it's clear there is more to the right. */
+.mixer-strips {
+  display: flex;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  overflow-x: scroll;
+  overflow-y: hidden;
+  align-items: stretch;
+}
+
+.mixer-strips::-webkit-scrollbar {
+  height: 12px;
+}
+
+.mixer-strips::-webkit-scrollbar-track {
+  background: var(--panel);
+  border-radius: 6px;
+}
+
+.mixer-strips::-webkit-scrollbar-thumb {
+  background: var(--muted);
+  border: 2px solid var(--panel);
+  border-radius: 6px;
+}
+
+.mixer-strips::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-2);
+}
+
+/* + Bus and Master stay in view; the bottom padding matches the scrollbar
+   so their faders line up with the others. */
+.mixer-pinned {
+  display: flex;
+  gap: 8px;
+  flex: none;
+  align-items: stretch;
+  padding-bottom: 12px;
 }
 
 .strip {
@@ -1270,7 +1313,6 @@ button.tiny.delete {
 
 .strip.master {
   border-color: var(--accent-2);
-  margin-left: auto;
 }
 
 .strip-name {
