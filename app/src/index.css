@@ -2309,3 +2309,29 @@ button.tiny.power.on {
   left: 0;
   right: auto;
 }
+
+/* A frozen track: an icy badge, and its clips tinted and hatched, so it's
+   clear they play a recording rather than live. */
+.frozen-badge {
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #0b1e2e;
+  background: #9fd8ff;
+  vertical-align: middle;
+}
+
+.lane.frozen {
+  background-image: repeating-linear-gradient(
+    135deg,
+    rgba(159, 216, 255, 0.07) 0 6px,
+    transparent 6px 12px
+  );
+}
+
+.lane.frozen .clip {
+  filter: saturate(0.35) brightness(1.1);
+  outline: 1px solid rgba(159, 216, 255, 0.6);
+}

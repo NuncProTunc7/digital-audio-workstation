@@ -964,10 +964,15 @@ describe("Track freeze", () => {
     expect((await backend.getProject()).project.tracks[0].frozen).toBeTruthy();
     const button = screen.getByRole("button", { name: "Unfreeze Keys" });
     expect(button.getAttribute("aria-pressed")).toBe("true");
+    // It looks frozen (found 2026-10-09: only the small ❄ button changed).
+    expect(screen.getByLabelText("Keys is frozen").textContent).toContain("Frozen");
+    expect(document.querySelectorAll(".lane")[0].classList.contains("frozen")).toBe(true);
     await act(async () => {
       fireEvent.click(button);
     });
     expect((await backend.getProject()).project.tracks[0].frozen).toBeNull();
+    expect(screen.queryByLabelText("Keys is frozen")).toBeNull();
+    expect(document.querySelectorAll(".lane")[0].classList.contains("frozen")).toBe(false);
     // Audio tracks have nothing to freeze.
     expect(screen.queryByRole("button", { name: "Freeze Vox" })).toBeNull();
   });

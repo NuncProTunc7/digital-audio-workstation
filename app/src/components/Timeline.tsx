@@ -569,6 +569,15 @@ export default function Timeline(props: TimelineProps) {
                     <span className="track-name" onDoubleClick={() => setRenaming(t.id)} title="Double-click to rename">
                       {props.recording && t.id === props.selectedTrackId && <span className="rec-dot">● </span>}
                       {t.name}
+                      {props.frozenCurrent.has(t.id) && (
+                        <span
+                          className="frozen-badge"
+                          aria-label={`${t.name} is frozen`}
+                          title="Frozen: plays a recording of its sound to save CPU. Click ❄ to edit it again."
+                        >
+                          ❄ Frozen
+                        </span>
+                      )}
                     </span>
                   )}
                   <div className="track-controls">
@@ -765,7 +774,9 @@ export default function Timeline(props: TimelineProps) {
             {project.tracks.map((t, i) => (
               <Fragment key={t.id}>
               <div
-                className={t.id === props.selectedTrackId ? "lane selected" : "lane"}
+                className={`lane${t.id === props.selectedTrackId ? " selected" : ""}${
+                  props.frozenCurrent.has(t.id) ? " frozen" : ""
+                }`}
                 style={{ height: laneHeight(t) }}
                 data-track={t.id}
                 onPointerDown={() => {
