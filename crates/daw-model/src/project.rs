@@ -104,8 +104,8 @@ pub struct Send {
 }
 
 impl Send {
-    /// Level of a new send.
-    pub const DEFAULT_LEVEL_DB: f64 = -6.0;
+    /// Level of a new send: clearly audible, a usual reverb-send level.
+    pub const DEFAULT_LEVEL_DB: f64 = -12.0;
 }
 
 /// A named point on the timeline where a section starts ("Explore",

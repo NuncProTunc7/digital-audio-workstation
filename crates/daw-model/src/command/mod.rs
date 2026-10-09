@@ -202,7 +202,7 @@ pub enum Command {
         bus_id: Option<Id>,
     },
     /// Send some of a track's sound to a bus as well (e.g. a shared
-    /// reverb), or change an existing send. New sends start at -6 dB,
+    /// reverb), or change an existing send. New sends start at -12 dB,
     /// after the fader. `pre_fader: true` ignores the track's fader.
     SetSend {
         track_id: TrackId,

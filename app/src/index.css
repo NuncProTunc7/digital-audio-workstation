@@ -1879,11 +1879,27 @@ button.tiny.power.on {
   font-size: 11px;
 }
 
+/* "→ Reverb" and its level on one line, the slider full width below. */
+.send {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 4px;
+}
+
 .send label {
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 4px;
   color: var(--muted);
+}
+
+.send-db {
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .send input[type="range"] {

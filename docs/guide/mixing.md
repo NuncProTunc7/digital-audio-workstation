@@ -22,7 +22,7 @@ Mixing makes every part audible and the whole song sit at the right loudness.
 
 A **bus** is an extra channel that other tracks play into. Two common uses:
 
-- **A shared reverb**: click **+ Bus** (the first one is called *Reverb*), add a **Reverb** effect to it, and turn the reverb's mix all the way up. Then on each track tick **→ Reverb** and set how much it sends with the slider under it. All tracks sit in the same room, and one reverb uses less CPU than one per track.
+- **A shared reverb**: click **+ Bus** (the first one is called *Reverb*), add a **Reverb** effect to it, and turn the reverb's mix all the way up. Then on each track tick **→ Reverb** and set how much it sends with the slider under it. A new send starts at -12 dB (a usual reverb level), and the number beside **→ Reverb** shows the level: try -18 dB for a hint of room, -6 dB for a big wash. All tracks sit in the same room, and one reverb uses less CPU than one per track.
 - **A group**: add a bus called *Drums*, then set each drum track's **Out** to *Drums*. Now one fader (and one compressor, if you add one) controls all of them together.
 
 Details:

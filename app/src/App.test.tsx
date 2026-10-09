@@ -644,12 +644,16 @@ describe("Buses", () => {
     await act(async () => {
       fireEvent.click(screen.getByLabelText("Send Keys to Reverb"));
     });
+    // A new send starts audible, and its level is shown, not just hovered.
+    expect((screen.getByLabelText("Keys send to Reverb") as HTMLInputElement).value).toBe("-12");
+    expect(screen.getByLabelText("Keys send level").textContent).toBe("-12.0 dB");
     await act(async () => {
-      fireEvent.change(screen.getByLabelText("Keys send to Reverb"), { target: { value: "-12" } });
+      fireEvent.change(screen.getByLabelText("Keys send to Reverb"), { target: { value: "-8.5" } });
     });
+    expect(screen.getByLabelText("Keys send level").textContent).toBe("-8.5 dB");
     let p = (await backend.getProject()).project;
     expect(p.tracks[2].output).toBe(bus?.id);
-    expect(p.tracks[0].sends).toEqual([{ bus_id: bus?.id, level_db: -12, pre_fader: false }]);
+    expect(p.tracks[0].sends).toEqual([{ bus_id: bus?.id, level_db: -8.5, pre_fader: false }]);
     expect(screen.getByRole("region", { name: "Reverb channel" }).textContent).toContain("Drums");
     // Deleting the bus sends the drums back to the master.
     await act(async () => {

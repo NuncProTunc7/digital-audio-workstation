@@ -84,6 +84,11 @@ function Routing({ track, buses, onCommand, onEndGesture }: {
                 <span>→ {b.name}</span>
               </label>
               {s && (
+                <span className="send-db" aria-label={`${track.name} send level`}>
+                  {s.level_db.toFixed(1)} dB
+                </span>
+              )}
+              {s && (
                 <input
                   type="range"
                   min={-60}

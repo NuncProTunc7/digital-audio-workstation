@@ -740,7 +740,7 @@ fn buses_take_tracks_sends_and_effects_and_undo_cleanly() {
         p.tracks[0].sends,
         vec![crate::project::Send {
             bus_id: verb,
-            level_db: -6.0,
+            level_db: -12.0,
             pre_fader: false,
         }]
     );
@@ -761,7 +761,7 @@ fn buses_take_tracks_sends_and_effects_and_undo_cleanly() {
     }
     s.end_gesture();
     s.undo();
-    assert_eq!(s.project().tracks[0].sends[0].level_db, -6.0);
+    assert_eq!(s.project().tracks[0].sends[0].level_db, -12.0);
 
     // Removing a bus sends its tracks to the master; undo puts it all back.
     let before = s.project().clone();

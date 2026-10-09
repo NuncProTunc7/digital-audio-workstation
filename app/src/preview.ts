@@ -342,7 +342,7 @@ export function applyCommand(project: Project, command: Command): Project {
         if (command.level_db !== null) s.level_db = command.level_db;
         if (command.pre_fader !== null) s.pre_fader = command.pre_fader;
       } else {
-        sends.push({ bus_id: command.bus_id, level_db: command.level_db ?? -6, pre_fader: command.pre_fader ?? false });
+        sends.push({ bus_id: command.bus_id, level_db: command.level_db ?? -12, pre_fader: command.pre_fader ?? false });
       }
       break;
     }
