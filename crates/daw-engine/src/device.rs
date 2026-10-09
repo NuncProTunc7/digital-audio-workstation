@@ -7,7 +7,7 @@
 
 use std::sync::{OnceLock, mpsc};
 use std::thread::JoinHandle;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, SizedSample};
@@ -32,6 +32,60 @@ pub enum DeviceError {
     Backend(String),
     #[error("audio thread stopped unexpectedly")]
     ThreadDied,
+    #[error(
+        "Microphone unavailable: it didn't answer within {0} seconds. Check that it is connected and not in use by another app, or choose another input."
+    )]
+    InputTimedOut(u64),
+    #[error(
+        "Sound output unavailable: the device didn't answer within {0} seconds. Check that it is connected, or choose another output."
+    )]
+    OutputTimedOut(u64),
+}
+
+/// How long opening a sound card or microphone may take. Bluetooth headsets
+/// can take a few seconds to switch modes; one that never answers must not
+/// freeze the app.
+pub const OPEN_TIMEOUT: Duration = Duration::from_secs(8);
+
+/// Opens a stream with `open` on a thread of its own (some platforms don't
+/// allow moving a stream between threads) and keeps it there until the
+/// returned sender is dropped. Gives up waiting after `timeout` with
+/// `timed_out`; a stream that opens later is closed again at once.
+fn open_on_thread<S, T: Send + 'static>(
+    name: &str,
+    timeout: Duration,
+    timed_out: DeviceError,
+    open: impl FnOnce() -> Result<(S, T), DeviceError> + Send + 'static,
+) -> Result<(T, mpsc::Sender<()>, JoinHandle<()>), DeviceError> {
+    let (ready_tx, ready_rx) = mpsc::channel::<Result<T, DeviceError>>();
+    let (shutdown_tx, shutdown_rx) = mpsc::channel::<()>();
+    let thread = std::thread::Builder::new()
+        .name(name.into())
+        .spawn(move || {
+            let stream = match open() {
+                Ok((stream, ready)) => {
+                    if ready_tx.send(Ok(ready)).is_err() {
+                        // Nobody waited any longer: close it again.
+                        return;
+                    }
+                    stream
+                }
+                Err(e) => {
+                    let _ = ready_tx.send(Err(e));
+                    return;
+                }
+            };
+            // Park until the owner is dropped; the stream runs meanwhile.
+            let _ = shutdown_rx.recv();
+            drop(stream);
+        })
+        .map_err(|e| DeviceError::Backend(e.to_string()))?;
+    match ready_rx.recv_timeout(timeout) {
+        Ok(Ok(ready)) => Ok((ready, shutdown_tx, thread)),
+        Ok(Err(e)) => Err(e),
+        Err(mpsc::RecvTimeoutError::Timeout) => Err(timed_out),
+        Err(mpsc::RecvTimeoutError::Disconnected) => Err(DeviceError::ThreadDied),
+    }
 }
 
 /// Nanoseconds on one clock shared by every stream in the app.
@@ -93,32 +147,14 @@ impl AudioOutput {
     ) -> Result<(Engine, AudioOutput), DeviceError> {
         // Fix the shared clock's epoch here, not in a callback.
         clock_ns();
-        let (ready_tx, ready_rx) = mpsc::channel::<Result<Opened, DeviceError>>();
-        let (shutdown_tx, shutdown_rx) = mpsc::channel::<()>();
         let device_name = device_name.map(str::to_owned);
         let project = project.clone();
-
-        let thread = std::thread::Builder::new()
-            .name("npt-audio-output".into())
-            .spawn(move || {
-                let opened = open_stream(device_name.as_deref(), buffer_frames, &project, audio);
-                let stream = match opened {
-                    Ok((stream, opened)) => {
-                        let _ = ready_tx.send(Ok(opened));
-                        stream
-                    }
-                    Err(e) => {
-                        let _ = ready_tx.send(Err(e));
-                        return;
-                    }
-                };
-                // Park until the output is dropped; the stream runs meanwhile.
-                let _ = shutdown_rx.recv();
-                drop(stream);
-            })
-            .map_err(|e| DeviceError::Backend(e.to_string()))?;
-
-        let opened = ready_rx.recv().map_err(|_| DeviceError::ThreadDied)??;
+        let (opened, shutdown_tx, thread) = open_on_thread(
+            "npt-audio-output",
+            OPEN_TIMEOUT,
+            DeviceError::OutputTimedOut(OPEN_TIMEOUT.as_secs()),
+            move || open_stream(device_name.as_deref(), buffer_frames, &project, audio),
+        )?;
         let output = AudioOutput {
             shutdown_tx: Some(shutdown_tx),
             thread: Some(thread),
@@ -306,29 +342,16 @@ impl AudioInput {
     /// the recorder that turns its sound into takes.
     pub fn start(device_name: Option<&str>) -> Result<(AudioInput, AudioRecorder), DeviceError> {
         clock_ns();
-        type Ready = Result<(AudioRecorder, String, u32), DeviceError>;
-        let (ready_tx, ready_rx) = mpsc::channel::<Ready>();
-        let (shutdown_tx, shutdown_rx) = mpsc::channel::<()>();
         let device_name = device_name.map(str::to_owned);
-        let thread = std::thread::Builder::new()
-            .name("npt-audio-input".into())
-            .spawn(move || {
-                let stream = match open_input(device_name.as_deref()) {
-                    Ok((stream, recorder, name, rate)) => {
-                        let _ = ready_tx.send(Ok((recorder, name, rate)));
-                        stream
-                    }
-                    Err(e) => {
-                        let _ = ready_tx.send(Err(e));
-                        return;
-                    }
-                };
-                let _ = shutdown_rx.recv();
-                drop(stream);
-            })
-            .map_err(|e| DeviceError::Backend(e.to_string()))?;
-        let (recorder, device_name, sample_rate_hz) =
-            ready_rx.recv().map_err(|_| DeviceError::ThreadDied)??;
+        let ((recorder, device_name, sample_rate_hz), shutdown_tx, thread) = open_on_thread(
+            "npt-audio-input",
+            OPEN_TIMEOUT,
+            DeviceError::InputTimedOut(OPEN_TIMEOUT.as_secs()),
+            move || {
+                open_input(device_name.as_deref())
+                    .map(|(stream, recorder, name, rate)| (stream, (recorder, name, rate)))
+            },
+        )?;
         Ok((
             AudioInput {
                 shutdown_tx: Some(shutdown_tx),
@@ -447,5 +470,37 @@ mod tests {
         assert_eq!(fixed_buffer(Some(99_999), &range), Some(2048));
         let unknown = cpal::SupportedBufferSize::Unknown;
         assert_eq!(fixed_buffer(Some(1024), &unknown), Some(1024));
+    }
+
+    #[test]
+    fn a_device_that_never_answers_gives_up_instead_of_freezing() {
+        let started = Instant::now();
+        let result = open_on_thread(
+            "test-slow-device",
+            Duration::from_millis(100),
+            DeviceError::InputTimedOut(0),
+            || {
+                std::thread::sleep(Duration::from_secs(2));
+                Ok(((), 7u32))
+            },
+        );
+        assert!(matches!(result, Err(DeviceError::InputTimedOut(_))));
+        assert!(started.elapsed() < Duration::from_secs(1));
+        assert!(
+            DeviceError::InputTimedOut(8)
+                .to_string()
+                .starts_with("Microphone unavailable")
+        );
+        // A device that answers in time is kept open until dropped.
+        let (value, shutdown, thread) = open_on_thread(
+            "test-device",
+            Duration::from_secs(5),
+            DeviceError::ThreadDied,
+            || Ok(((), 7u32)),
+        )
+        .expect("opens");
+        assert_eq!(value, 7);
+        drop(shutdown);
+        thread.join().expect("closes");
     }
 }
