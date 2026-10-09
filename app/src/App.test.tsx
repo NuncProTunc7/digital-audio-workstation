@@ -1149,6 +1149,55 @@ describe("Import and export", () => {
     expect(backend.auditionSeam).toHaveBeenCalledWith(0, 8);
   });
 
+  it("stops the loop-point audition from inside the Godot dialog", async () => {
+    const backend = createPreviewBackend();
+    vi.spyOn(backend, "stop");
+    await renderApp(backend);
+    fireEvent.click(screen.getByRole("button", { name: "Export ▾" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "To Godot (loops, stems)…" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Listen to the loop point" }));
+    });
+    const dialog = screen.getByRole("dialog", { name: "Export to Godot" });
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole("button", { name: "Stop" }));
+    });
+    expect(backend.stop).toHaveBeenCalledTimes(1);
+
+    // Space stops it too, even with a tick box focused (it must not tick it).
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Listen to the loop point" }));
+    });
+    const seamless = screen.getByLabelText(/Seamless loop/) as HTMLInputElement;
+    seamless.focus();
+    await act(async () => {
+      fireEvent.keyDown(seamless, { code: "Space", key: " " });
+    });
+    expect(backend.stop).toHaveBeenCalledTimes(2);
+    expect(seamless.checked).toBe(true);
+
+    // Unticking Seamless loop keeps the button, disabled, with a reason.
+    fireEvent.click(seamless);
+    const listen = screen.getByRole("button", { name: "Listen to the loop point" }) as HTMLButtonElement;
+    expect(listen.disabled).toBe(true);
+    expect(listen.title).toContain("Tick Seamless loop");
+  });
+
+  it("stops the audition when the Godot dialog closes", async () => {
+    const backend = createPreviewBackend();
+    vi.spyOn(backend, "stop");
+    await renderApp(backend);
+    fireEvent.click(screen.getByRole("button", { name: "Export ▾" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "To Godot (loops, stems)…" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Listen to the loop point" }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    });
+    expect(backend.stop).toHaveBeenCalledTimes(1);
+  });
+
   it("exports an intro that plays once before the loop", async () => {
     const backend = createPreviewBackend();
     vi.spyOn(backend, "exportGodot");

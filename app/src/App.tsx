@@ -1352,6 +1352,8 @@ export default function App({ backend }: AppProps) {
           onExport={(options) => run(() => backend.exportGodot(options))}
           onInspect={(options) => run(() => backend.inspectExport(options))}
           onAuditionSeam={(start, end) => void run(() => backend.auditionSeam(start, end))}
+          playing={transport?.playing ?? false}
+          onStop={() => void run(() => backend.stop())}
           onClose={() => setGodotOpen(false)}
         />
       )}

@@ -19,7 +19,7 @@ Click **🎮 Game preview** in the top bar. The song plays the way your game wil
 4. **Format**: OGG (small, recommended) or WAV.
 5. **Loudness**: leave it on game level (-16 LUFS), or **Keep the mix level**.
 6. **Check** (optional, recommended): renders exactly what would be exported and lists anything wrong, in plain words: a click where the loop repeats, clipping, silence, recordings that are missing, a loop that isn't a whole number of bars (Godot can't keep it in time), stems of different lengths. ✓ is fine, ⚠ is worth a listen, ✗ will sound wrong in the game.
-7. **Listen to the loop point** plays the last bar into the first bar, over and over, so you can hear the join. Press **Stop** (Space) to end.
+7. **Listen to the loop point** plays the last bar into the first bar, over and over, so you can hear the join. Press the **Stop** button beside it (or Space) to end; closing the window stops it too. It needs **Seamless loop** ticked (the button is greyed out otherwise).
 8. **Export**.
 
 What you get:

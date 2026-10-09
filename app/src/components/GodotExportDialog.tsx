@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type KeyboardEvent } from "react";
 import type { ExportReport, GodotOptions, Inspection, Project } from "../types";
 
 const STORAGE_KEY = "npt.godotProjectDir";
@@ -29,6 +29,9 @@ interface GodotExportDialogProps {
   onInspect: (options: GodotOptions) => Promise<Inspection | undefined>;
   /** Plays the end of a loop into its start, over and over. */
   onAuditionSeam: (startBeats: number, endBeats: number) => void;
+  /** True while the transport plays. */
+  playing: boolean;
+  onStop: () => void;
   onClose: () => void;
 }
 
@@ -39,6 +42,8 @@ export default function GodotExportDialog({
   onExport,
   onInspect,
   onAuditionSeam,
+  playing,
+  onStop,
   onClose,
 }: GodotExportDialogProps) {
   const [dir, setDir] = useState(rememberedDir);
@@ -58,6 +63,10 @@ export default function GodotExportDialog({
   const [report, setReport] = useState<ExportReport | null>(null);
   const [inspection, setInspection] = useState<Inspection | null>(null);
   const [checking, setChecking] = useState(false);
+  // The transport status arrives by polling, so remember our own audition
+  // too: Space and closing must stop it straight after Listen is clicked.
+  const [auditioning, setAuditioning] = useState(false);
+  const sounding = playing || auditioning;
 
   const loop = project.loop_region;
   // An intro needs a loop that starts after the song start.
@@ -107,13 +116,39 @@ export default function GodotExportDialog({
     if (result) setReport(result);
   };
 
+  const stop = () => {
+    setAuditioning(false);
+    onStop();
+  };
+  const close = () => {
+    if (sounding) stop();
+    onClose();
+  };
+  const listen = () => {
+    setAuditioning(true);
+    if (region === "loop" && loop.enabled) onAuditionSeam(loop.start_beats, loop.end_beats);
+    else onAuditionSeam(0, songEndBars * project.time_signature.numerator);
+  };
+  // The dialog sits in front of the transport, and a focused tick box or
+  // button would take Space for itself, so Space stops playback here. Text
+  // fields keep it: folder names can have spaces.
+  const onKeyDown = (e: KeyboardEvent) => {
+    if (e.code !== "Space" || !sounding) return;
+    const el = e.target as HTMLElement;
+    const typing = el.tagName === "TEXTAREA" || (el.tagName === "INPUT" && (el as HTMLInputElement).type === "text");
+    if (typing) return;
+    e.preventDefault();
+    e.stopPropagation();
+    stop();
+  };
+
   return (
-    <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="dialog" role="dialog" aria-label="Export to Godot">
+    <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && close()}>
+      <div className="dialog" role="dialog" aria-label="Export to Godot" onKeyDownCapture={onKeyDown}>
         <div className="claude-panel-header">
           <strong>Export to Godot</strong>
           <span className="spacer" />
-          <button className="small" onClick={onClose} aria-label="Close">
+          <button className="small" onClick={close} aria-label="Close">
             ✕
           </button>
         </div>
@@ -217,18 +252,20 @@ export default function GodotExportDialog({
           <button onClick={() => void check()} disabled={checking} title="Render what would be exported and look for problems">
             {checking ? "Checking…" : "Check"}
           </button>
-          {looped && (
-            <button
-              onClick={() =>
-                region === "loop" && loop.enabled
-                  ? onAuditionSeam(loop.start_beats, loop.end_beats)
-                  : onAuditionSeam(0, songEndBars * project.time_signature.numerator)
-              }
-              title="Play the last bar into the first bar, over and over, to hear the loop point. Press Stop (Space) to end."
-            >
-              Listen to the loop point
-            </button>
-          )}
+          <button
+            onClick={listen}
+            disabled={!looped}
+            title={
+              looped
+                ? "Play the last bar into the first bar, over and over, to hear the loop point. Press Stop (Space) to end."
+                : "Tick Seamless loop to hear the join"
+            }
+          >
+            Listen to the loop point
+          </button>
+          <button onClick={stop} disabled={!sounding} title="Stop playback (Space)">
+            Stop
+          </button>
         </div>
         {inspection && (
           <ul className="findings" aria-label="Export check">
