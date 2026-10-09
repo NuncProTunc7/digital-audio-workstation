@@ -380,7 +380,7 @@ fn handle_inner<H: Host>(host: &H, request: Request) -> Result<Value, String> {
         }
         Request::Plugins { rescan } => {
             let cache = if rescan {
-                crate::plugins::rescan(host)
+                crate::plugins::look_again(host)
             } else {
                 crate::plugins::load_cache(&host.plugin_cache_path())
             };

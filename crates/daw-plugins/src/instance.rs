@@ -153,7 +153,7 @@ impl Instance {
     ) -> Result<(Instance, PluginProcessor), String> {
         if crate::guard::is_blocked(&info.uid) {
             return Err(format!(
-                "{} is switched off because it closed the app the last time it started;                  after updating or reinstalling it, choose Look for new plugins to try again",
+                "{} is switched off because it closed or froze the app the last time it started; after updating or reinstalling it, choose Look for new plugins to try again",
                 info.name
             ));
         }

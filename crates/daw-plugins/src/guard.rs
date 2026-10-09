@@ -1,10 +1,11 @@
-//! Remembering a plugin that crashed the app, so the next start doesn't
-//! crash again the same way.
+//! Remembering a plugin that crashed or froze the app, so the next start
+//! doesn't go the same way.
 //!
 //! While a plugin starts (or opens its window) a marker file names it; it
 //! is removed when that finishes. A marker left behind at start-up means
-//! that plugin took the app down: it is switched off until the user looks
-//! for plugins again (after updating or reinstalling it).
+//! that plugin took the app down, or froze it until it was closed from Task
+//! Manager: it is switched off until the user looks for plugins again
+//! (after updating or reinstalling it).
 //!
 //! Without [`init`] (tests, the command line) nothing is written.
 
@@ -68,6 +69,17 @@ pub fn is_blocked(uid: &str) -> bool {
         .is_ok_and(|b| b.contains(&uid.to_ascii_uppercase()))
 }
 
+fn starting_now() -> &'static Mutex<Option<String>> {
+    static S: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+    S.get_or_init(|| Mutex::new(None))
+}
+
+/// The plugin starting (or opening its window) right now, if any, for
+/// telling the user which plugin a frozen window is waiting on.
+pub fn starting() -> Option<String> {
+    starting_now().lock().ok().and_then(|s| s.clone())
+}
+
 /// Gives every switched-off plugin another chance.
 pub fn unblock_all() {
     if let Ok(mut b) = blocked().lock() {
@@ -91,7 +103,13 @@ pub fn watch<R>(info: &PluginInfo, f: impl FnOnce() -> R) -> R {
             let _ = std::fs::write(path, text);
         }
     }
+    if let Ok(mut s) = starting_now().lock() {
+        *s = Some(info.name.clone());
+    }
     let result = f();
+    if let Ok(mut s) = starting_now().lock() {
+        *s = None;
+    }
     if let Some(path) = &marker {
         let _ = std::fs::remove_file(path);
     }
@@ -125,8 +143,13 @@ mod tests {
             categories: String::new(),
             path: String::new(),
         };
-        let seen = watch(&info, || dir.path().join(MARKER).exists());
-        assert!(seen, "the marker exists while it starts");
+        let seen = watch(&info, || (dir.path().join(MARKER).exists(), starting()));
+        assert_eq!(
+            seen,
+            (true, Some("Fine".to_owned())),
+            "the marker exists while it starts"
+        );
+        assert_eq!(starting(), None);
         assert!(!dir.path().join(MARKER).exists());
         // Still blocked after a restart, until unblocked.
         assert_eq!(init(dir.path()), None);

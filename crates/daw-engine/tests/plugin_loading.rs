@@ -33,8 +33,13 @@ fn a_plugin_loads_in_the_background_and_then_plays() {
             let _ = tx.send(job);
         }
     });
+    // Jobs posted from this thread arrive through a relay thread, so wait
+    // for the first one.
     let pump = || {
-        while let Ok(job) = rx.try_recv() {
+        if let Ok(job) = rx.recv_timeout(std::time::Duration::from_secs(10)) {
+            job();
+        }
+        while let Ok(job) = rx.recv_timeout(std::time::Duration::from_millis(50)) {
             job();
         }
     };

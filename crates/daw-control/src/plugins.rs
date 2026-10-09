@@ -35,11 +35,18 @@ pub fn load_cache(path: &Path) -> ScanCache {
         .unwrap_or_default()
 }
 
-/// Looks through the plugin folders again (only new or changed plugins
-/// are opened), and remembers the result.
-pub fn rescan<H: Host>(host: &H) -> ScanCache {
-    // Looking again is the user's way to retry plugins that crashed.
+/// The user's "Look for new plugins": gives plugins that were switched off
+/// for crashing or freezing the app another chance, then rescans.
+pub fn look_again<H: Host>(host: &H) -> ScanCache {
     daw_plugins::guard::unblock_all();
+    rescan(host)
+}
+
+/// Looks through the plugin folders again (only new or changed plugins
+/// are opened), and remembers the result. Plugins switched off for
+/// crashing or freezing the app stay off (the app does this at every
+/// start); [`look_again`] retries them.
+pub fn rescan<H: Host>(host: &H) -> ScanCache {
     let path = host.plugin_cache_path();
     let old = load_cache(&path);
     let folders = host.plugin_folders();
@@ -376,5 +383,35 @@ pub fn connect_edits<H: Host>(host: &H, send: &std::sync::mpsc::Sender<(Id, Edit
                 }
             });
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::host::tests::TestHost;
+
+    #[test]
+    fn a_plugin_that_froze_the_app_stays_off_after_the_startup_scan() {
+        let host = TestHost::default();
+        let dir = host.plugin_cache_path().parent().expect("dir").to_owned();
+        // The last run was closed while "Big Synth" was starting.
+        std::fs::write(
+            dir.join("plugin-starting.json"),
+            r#"{ "uid": "0123456789ABCDEF0123456789ABCDEF", "name": "Big Synth" }"#,
+        )
+        .expect("marker");
+        assert_eq!(daw_plugins::guard::init(&dir).as_deref(), Some("Big Synth"));
+        // The app looks for new plugins in the background at every start.
+        rescan(&host);
+        assert!(
+            daw_plugins::guard::is_blocked("0123456789ABCDEF0123456789ABCDEF"),
+            "still switched off after the start-up scan"
+        );
+        // Choosing "Look for new plugins" gives it another chance.
+        look_again(&host);
+        assert!(!daw_plugins::guard::is_blocked(
+            "0123456789ABCDEF0123456789ABCDEF"
+        ));
     }
 }
