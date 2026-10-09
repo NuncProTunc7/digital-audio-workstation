@@ -10,6 +10,7 @@
 
 1. **+ Audio track**, and select it.
 2. In the **Audio** tab, choose the **Input** device and check the **Microphone** meter moves when you speak. Aim for the loud parts reaching about three quarters of the meter, never pinned at the top.
+   - Switched a headset on while the app was open? With **System default** chosen, the app moves to the new default microphone by itself within a few seconds. If the meter still doesn't move, click **⟳** beside the Input menu to look for microphones again.
 3. Wear headphones, so the mic doesn't record the song.
 4. **Bluetooth headset? Calibrate once** (see below), or your takes land late.
 5. Press **R**. First you hear a bar of clicks (the **count-in**; the position box counts down 4, 3, 2, 1 in red). Then the song plays from the playhead: come in right after the last click. Press **R** again to stop. The take lines up with the beat you heard, and anything the mic picked up during the count-in is left out.

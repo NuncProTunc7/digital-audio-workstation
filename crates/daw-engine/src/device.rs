@@ -5,6 +5,7 @@
 //! owns the [`AudioProcessor`]; the rest of the app talks to it through the
 //! [`Engine`] handle.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{OnceLock, mpsc};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
@@ -329,12 +330,31 @@ pub fn default_input_device_name() -> Option<String> {
         .map(|d| d.to_string())
 }
 
+/// Whether an open microphone should be closed and opened again: it
+/// follows the system default (`chosen` is None) and Windows switched the
+/// default (say a Bluetooth headset was turned on), or it disappeared from
+/// the device list, or its stream reported an error (`lost`). An empty
+/// `devices` list means the listing failed, so it isn't taken as "gone".
+pub fn input_should_reopen(
+    open: &str,
+    chosen: Option<&str>,
+    default: Option<&str>,
+    devices: &[String],
+    lost: bool,
+) -> bool {
+    let default_moved = chosen.is_none() && default.is_some_and(|d| d != open);
+    let gone = !devices.is_empty() && !devices.iter().any(|d| d == open);
+    lost || default_moved || gone
+}
+
 /// A running input stream. Dropping it closes the microphone.
 pub struct AudioInput {
     shutdown_tx: Option<mpsc::Sender<()>>,
     thread: Option<JoinHandle<()>>,
     device_name: String,
     sample_rate_hz: u32,
+    /// Set when the stream reports an error (the device went away).
+    lost: Arc<AtomicBool>,
 }
 
 impl AudioInput {
@@ -343,12 +363,14 @@ impl AudioInput {
     pub fn start(device_name: Option<&str>) -> Result<(AudioInput, AudioRecorder), DeviceError> {
         clock_ns();
         let device_name = device_name.map(str::to_owned);
+        let lost = Arc::new(AtomicBool::new(false));
+        let flag = Arc::clone(&lost);
         let ((recorder, device_name, sample_rate_hz), shutdown_tx, thread) = open_on_thread(
             "npt-audio-input",
             OPEN_TIMEOUT,
             DeviceError::InputTimedOut(OPEN_TIMEOUT.as_secs()),
             move || {
-                open_input(device_name.as_deref())
+                open_input(device_name.as_deref(), flag)
                     .map(|(stream, recorder, name, rate)| (stream, (recorder, name, rate)))
             },
         )?;
@@ -358,6 +380,7 @@ impl AudioInput {
                 thread: Some(thread),
                 device_name,
                 sample_rate_hz,
+                lost,
             },
             recorder,
         ))
@@ -369,6 +392,12 @@ impl AudioInput {
 
     pub fn sample_rate_hz(&self) -> u32 {
         self.sample_rate_hz
+    }
+
+    /// True once the stream has reported an error, such as its device
+    /// being switched off; it then delivers no more sound.
+    pub fn is_lost(&self) -> bool {
+        self.lost.load(Ordering::Relaxed)
     }
 }
 
@@ -383,6 +412,7 @@ impl Drop for AudioInput {
 
 fn open_input(
     device_name: Option<&str>,
+    lost: Arc<AtomicBool>,
 ) -> Result<(cpal::Stream, AudioRecorder, String, u32), DeviceError> {
     let host = cpal::default_host();
     let device = match device_name {
@@ -402,12 +432,12 @@ fn open_input(
     let config: cpal::StreamConfig = supported.into();
     let (capture, recorder) = input_pair(config.sample_rate);
     let stream = match format {
-        cpal::SampleFormat::F32 => build_input::<f32>(&device, &config, capture),
-        cpal::SampleFormat::I16 => build_input::<i16>(&device, &config, capture),
-        cpal::SampleFormat::I32 => build_input::<i32>(&device, &config, capture),
-        cpal::SampleFormat::U16 => build_input::<u16>(&device, &config, capture),
-        cpal::SampleFormat::U8 => build_input::<u8>(&device, &config, capture),
-        cpal::SampleFormat::F64 => build_input::<f64>(&device, &config, capture),
+        cpal::SampleFormat::F32 => build_input::<f32>(&device, &config, capture, Arc::clone(&lost)),
+        cpal::SampleFormat::I16 => build_input::<i16>(&device, &config, capture, Arc::clone(&lost)),
+        cpal::SampleFormat::I32 => build_input::<i32>(&device, &config, capture, Arc::clone(&lost)),
+        cpal::SampleFormat::U16 => build_input::<u16>(&device, &config, capture, Arc::clone(&lost)),
+        cpal::SampleFormat::U8 => build_input::<u8>(&device, &config, capture, Arc::clone(&lost)),
+        cpal::SampleFormat::F64 => build_input::<f64>(&device, &config, capture, Arc::clone(&lost)),
         other => Err(DeviceError::UnsupportedFormat(other.to_string())),
     }?;
     stream
@@ -420,6 +450,7 @@ fn build_input<T>(
     device: &cpal::Device,
     config: &cpal::StreamConfig,
     mut capture: InputCapture,
+    lost: Arc<AtomicBool>,
 ) -> Result<cpal::Stream, DeviceError>
 where
     T: SizedSample,
@@ -448,7 +479,11 @@ where
                     frames_done += chunk.len() / channels;
                 }
             },
-            |err| eprintln!("audio input error: {err}"),
+            // Runs on cpal's own thread, not the audio callback.
+            move |err| {
+                eprintln!("audio input error: {err}");
+                lost.store(true, Ordering::Relaxed);
+            },
             None,
         )
         .map_err(|e| DeviceError::Backend(e.to_string()))
@@ -502,5 +537,59 @@ mod tests {
         assert_eq!(value, 7);
         drop(shutdown);
         thread.join().expect("closes");
+    }
+
+    #[test]
+    fn the_microphone_reopens_when_its_device_changes() {
+        let devices = |names: &[&str]| names.iter().map(|n| (*n).to_owned()).collect::<Vec<_>>();
+        let both = devices(&["Realtek Mic", "Headset Mic"]);
+        // Following the system default: a headset turned on becomes the
+        // default, so the open Realtek mic must give way to it.
+        assert!(input_should_reopen(
+            "Realtek Mic",
+            None,
+            Some("Headset Mic"),
+            &both,
+            false
+        ));
+        assert!(!input_should_reopen(
+            "Realtek Mic",
+            None,
+            Some("Realtek Mic"),
+            &both,
+            false
+        ));
+        // A microphone the user picked stays, whatever the default does.
+        assert!(!input_should_reopen(
+            "Realtek Mic",
+            Some("Realtek Mic"),
+            Some("Headset Mic"),
+            &both,
+            false
+        ));
+        // The open microphone was unplugged or switched off.
+        assert!(input_should_reopen(
+            "Headset Mic",
+            Some("Headset Mic"),
+            Some("Realtek Mic"),
+            &devices(&["Realtek Mic"]),
+            false
+        ));
+        // An empty list means Windows didn't answer, not that it's gone.
+        assert!(!input_should_reopen(
+            "Realtek Mic",
+            Some("Realtek Mic"),
+            None,
+            &[],
+            false
+        ));
+        // The stream reported an error (the device went away mid-stream).
+        assert!(input_should_reopen(
+            "Realtek Mic",
+            Some("Realtek Mic"),
+            Some("Realtek Mic"),
+            &both,
+            true
+        ));
     }
 }

@@ -1144,6 +1144,7 @@ export function createPreviewBackend(): PreviewBackend {
       return input();
     },
     setInputDevice: async () => input(),
+    refreshInput: async () => input(),
     setRecordingOffset: async (ms) => {
       offsetMs = Math.max(-500, Math.min(500, ms));
       return delay();

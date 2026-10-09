@@ -19,6 +19,8 @@ interface AudioPanelProps {
   recording: boolean;
   input: InputStatus | null;
   onInputDevice: (name: string | null) => void;
+  /** Lists the microphones again and reopens the open one. */
+  onRefreshInput: () => void;
   /** Sets the microphone's recording delay (ms). */
   onRecordingOffset: (ms: number) => void;
   /** Runs clap-along calibration; undefined if it failed (the error is shown elsewhere). */
@@ -99,6 +101,17 @@ export default function AudioPanel(props: AudioPanelProps) {
                 </option>
               ))}
             </select>
+            <button
+              className="small"
+              aria-label="Refresh microphones"
+              title="Look for microphones again (after switching a headset on) and reopen the microphone"
+              onClick={(e) => {
+                e.preventDefault();
+                props.onRefreshInput();
+              }}
+            >
+              ⟳
+            </button>
           </label>
           <div className="input-meter" title="Microphone level" aria-label="Microphone level">
             <div

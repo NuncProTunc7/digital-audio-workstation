@@ -1318,6 +1318,7 @@ fn input_status(state: State<'_, AppState>) -> InputStatus {
 const INPUT_LIST_FOR: std::time::Duration = std::time::Duration::from_secs(3);
 
 fn input_status_of(state: &AppState) -> InputStatus {
+    follow_input_changes(state);
     // Read and let go: `recording_delay` below locks `input` again.
     let (active, sample_rate_hz) = state
         .input
@@ -1343,6 +1344,36 @@ fn input_status_of(state: &AppState) -> InputStatus {
         error: state.input_error.lock().ok().and_then(|e| e.clone()),
         delay: state.recording_delay(None).ok(),
     }
+}
+
+/// Reopens the microphone when its device changed under it: a headset
+/// switched on became the default, the device went away, or its stream
+/// broke. Never during a recording. Locks are read and let go first.
+fn follow_input_changes(state: &AppState) {
+    if state.audio_take.lock().map_or(true, |t| t.is_some()) {
+        return;
+    }
+    let Some((open, lost)) = state.input.lock().ok().and_then(|i| {
+        i.as_ref()
+            .map(|i| (i.device_name().to_owned(), i.is_lost()))
+    }) else {
+        return;
+    };
+    let (devices, default) = input_devices(state);
+    let chosen = state.input_device.lock().ok().and_then(|n| n.clone());
+    if device::input_should_reopen(&open, chosen.as_deref(), default.as_deref(), &devices, lost) {
+        diagnostics::log(&format!(
+            "Microphone changed (was {open}{}): opening it again",
+            if lost { ", stopped working" } else { "" }
+        ));
+        reopen_input(state);
+    }
+}
+
+/// Closes and opens the microphone again (errors show in the status).
+fn reopen_input(state: &AppState) {
+    state.close_input();
+    let _ = state.ensure_input();
 }
 
 /// The inputs and the default one, listed at most every few seconds.
@@ -1382,6 +1413,20 @@ fn monitor_input(state: State<'_, AppState>, on: bool) -> InputStatus {
         let _ = state.ensure_input();
     } else {
         state.close_input();
+    }
+    input_status_of(&state)
+}
+
+/// Lists the microphones again now and reopens the open one, for a
+/// headset switched on while the app runs.
+#[tauri::command(async)]
+fn refresh_input(state: State<'_, AppState>) -> InputStatus {
+    if let Ok(mut cache) = state.input_devices.lock() {
+        *cache = None;
+    }
+    let was_open = state.input.lock().is_ok_and(|i| i.is_some());
+    if was_open && state.audio_take.lock().is_ok_and(|t| t.is_none()) {
+        reopen_input(&state);
     }
     input_status_of(&state)
 }
@@ -1757,6 +1802,7 @@ pub fn run() {
             input_status,
             monitor_input,
             set_input_device,
+            refresh_input,
             import_midi,
             export_midi,
             export_wav,

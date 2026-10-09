@@ -1071,6 +1071,7 @@ export default function App({ backend }: AppProps) {
               recording={recording}
               input={input}
               onInputDevice={(name) => void run(() => backend.setInputDevice(name)).then((s) => s && setInput(s))}
+              onRefreshInput={() => void run(() => backend.refreshInput()).then((s) => s && setInput(s))}
               onRecordingOffset={(ms) =>
                 void run(() => backend.setRecordingOffset(ms)).then(
                   (delay) => delay && setInput((i) => (i ? { ...i, delay } : i)),

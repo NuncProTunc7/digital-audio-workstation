@@ -137,6 +137,9 @@ export interface Backend {
   /** Opens (true) or closes (false) the microphone for metering. */
   monitorInput(on: boolean): Promise<InputStatus>;
   setInputDevice(name: string | null): Promise<InputStatus>;
+  /** Lists the microphones again and reopens the open one (for a headset
+   * switched on while the app runs). */
+  refreshInput(): Promise<InputStatus>;
   /** Sets how late the current microphone's recordings arrive (ms). */
   setRecordingOffset(ms: number): Promise<RecordingDelay>;
   /** Plays clicks for the user to clap along with (about 10 s); measures and keeps the delay. */
@@ -319,6 +322,7 @@ export const tauriBackend: Backend = {
   inputStatus: () => invoke("input_status"),
   monitorInput: (on) => invoke("monitor_input", { on }),
   setInputDevice: (name) => invoke("set_input_device", { name }),
+  refreshInput: () => invoke("refresh_input"),
   setRecordingOffset: (ms) => invoke("set_recording_offset", { ms }),
   calibrateRecording: () => invoke("calibrate_recording"),
   recoveryCheck: () => invoke("recovery_check"),

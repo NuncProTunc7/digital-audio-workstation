@@ -311,6 +311,28 @@ describe("Audio", () => {
     await waitFor(() => expect(backend.monitorInput).toHaveBeenCalledWith(false));
   });
 
+  it("looks for microphones again with Refresh", async () => {
+    const backend = createPreviewBackend();
+    vi.spyOn(backend, "refreshInput").mockResolvedValue({
+      ...(await backend.inputStatus()),
+      devices: ["Realtek Mic", "Headset Mic"],
+      default_device: "Headset Mic",
+      active: "Headset Mic",
+    });
+    await renderApp(backend);
+    await act(async () => {
+      fireEvent.click(screen.getByText("+ Audio track"));
+    });
+    fireEvent.click(trackHeader("Audio"));
+    await screen.findByLabelText("Audio input");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Refresh microphones" }));
+    });
+    expect(backend.refreshInput).toHaveBeenCalled();
+    const menu = screen.getByLabelText("Audio input") as HTMLSelectElement;
+    expect([...menu.options].map((o) => o.textContent)).toContain("Headset Mic");
+  });
+
   it("sets the recording delay and explains calibration results", async () => {
     const backend = createPreviewBackend();
     vi.spyOn(backend, "setRecordingOffset");
