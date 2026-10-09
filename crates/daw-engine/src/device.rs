@@ -415,16 +415,36 @@ fn open_input(
     lost: Arc<AtomicBool>,
 ) -> Result<(cpal::Stream, AudioRecorder, String, u32), DeviceError> {
     let host = cpal::default_host();
-    let device = match device_name {
-        None => host
-            .default_input_device()
-            .ok_or(DeviceError::NoInputDevice)?,
-        Some(name) => host
-            .input_devices()
+    let named = |name: &str| {
+        host.input_devices()
             .map_err(|e| DeviceError::Backend(e.to_string()))?
             .find(|d| d.to_string() == name)
-            .ok_or_else(|| DeviceError::DeviceNotFound(name.to_owned()))?,
+            .ok_or_else(|| DeviceError::DeviceNotFound(name.to_owned()))
     };
+    match device_name {
+        Some(name) => open_input_device(&named(name)?, lost),
+        None => {
+            let default = host
+                .default_input_device()
+                .ok_or(DeviceError::NoInputDevice)?;
+            // cpal opens "the default" through a Windows route that failed
+            // for a Bluetooth headset switched on while the app ran
+            // ("Cannot change thread mode", 2026-10-09). Open the default's
+            // own device instead (the app follows default changes itself),
+            // and only fall back to that route.
+            match named(&default.to_string()) {
+                Ok(device) => open_input_device(&device, Arc::clone(&lost))
+                    .or_else(|_| open_input_device(&default, lost)),
+                Err(_) => open_input_device(&default, lost),
+            }
+        }
+    }
+}
+
+fn open_input_device(
+    device: &cpal::Device,
+    lost: Arc<AtomicBool>,
+) -> Result<(cpal::Stream, AudioRecorder, String, u32), DeviceError> {
     let supported = device
         .default_input_config()
         .map_err(|e| DeviceError::Backend(e.to_string()))?;
@@ -432,12 +452,12 @@ fn open_input(
     let config: cpal::StreamConfig = supported.into();
     let (capture, recorder) = input_pair(config.sample_rate);
     let stream = match format {
-        cpal::SampleFormat::F32 => build_input::<f32>(&device, &config, capture, Arc::clone(&lost)),
-        cpal::SampleFormat::I16 => build_input::<i16>(&device, &config, capture, Arc::clone(&lost)),
-        cpal::SampleFormat::I32 => build_input::<i32>(&device, &config, capture, Arc::clone(&lost)),
-        cpal::SampleFormat::U16 => build_input::<u16>(&device, &config, capture, Arc::clone(&lost)),
-        cpal::SampleFormat::U8 => build_input::<u8>(&device, &config, capture, Arc::clone(&lost)),
-        cpal::SampleFormat::F64 => build_input::<f64>(&device, &config, capture, Arc::clone(&lost)),
+        cpal::SampleFormat::F32 => build_input::<f32>(device, &config, capture, Arc::clone(&lost)),
+        cpal::SampleFormat::I16 => build_input::<i16>(device, &config, capture, Arc::clone(&lost)),
+        cpal::SampleFormat::I32 => build_input::<i32>(device, &config, capture, Arc::clone(&lost)),
+        cpal::SampleFormat::U16 => build_input::<u16>(device, &config, capture, Arc::clone(&lost)),
+        cpal::SampleFormat::U8 => build_input::<u8>(device, &config, capture, Arc::clone(&lost)),
+        cpal::SampleFormat::F64 => build_input::<f64>(device, &config, capture, Arc::clone(&lost)),
         other => Err(DeviceError::UnsupportedFormat(other.to_string())),
     }?;
     stream
