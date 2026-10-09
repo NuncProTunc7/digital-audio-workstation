@@ -45,6 +45,9 @@ export default function PianoRoll(props: PianoRollProps) {
   const [ppb, setPpb] = useState(64);
   const [grid, setGrid] = useState(0.25);
   const [noteLength, setNoteLength] = useState(1);
+  // What the last Quantize did, so a click that changes nothing doesn't
+  // look broken.
+  const [quantized, setQuantized] = useState<{ clipId: number; text: string } | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const drag = useRef<Drag | null>(null);
@@ -197,7 +200,17 @@ export default function PianoRoll(props: PianoRollProps) {
           </select>
         </label>
         <button
-          onClick={() =>
+          onClick={() => {
+            const notes = targetIds ? clip.notes.filter((n) => targetIds.includes(n.id)) : clip.notes;
+            const moved = notes.filter((n) => Math.abs(n.start_beats - Math.round(n.start_beats / grid) * grid) > 1e-6).length;
+            const label = GRID_OPTIONS.find((g) => g.beats === grid)?.label ?? `${grid} beat`;
+            setQuantized({
+              clipId: clip.id,
+              text:
+                moved === 0
+                  ? `Already on the ${label} grid`
+                  : `${moved} note${moved === 1 ? "" : "s"} moved to the ${label} grid`,
+            });
             void props
               .onCommand({
                 command: "quantize_notes",
@@ -207,12 +220,17 @@ export default function PianoRoll(props: PianoRollProps) {
                 lengths: false,
                 note_ids: targetIds,
               })
-              .then(props.onEndGesture)
-          }
+              .then(props.onEndGesture);
+          }}
           title="Snap note starts to the grid (selected notes, or all)"
         >
           Quantize
         </button>
+        {quantized?.clipId === clip.id && (
+          <span className="muted quantize-result" role="status" aria-label="Quantize result">
+            {quantized.text}
+          </span>
+        )}
         <button
           onClick={() =>
             void props

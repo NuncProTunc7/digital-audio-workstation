@@ -72,7 +72,7 @@ Games often need the same music in several intensities. One way to build them in
 - **Click** an empty spot to add a note. It takes the length of the last note you touched.
 - **Drag** a note to move it, drag its right end to change its length, **double-click** it to delete it.
 - **Shift+click** adds notes to the selection; **Ctrl+A** selects all.
-- **Grid** sets the snap (1/4, 1/8, 1/16...). **Quantize** snaps the selected notes (or all) onto the grid, tidying up a played-in part.
+- **Grid** sets the snap (1/4, 1/8, 1/16...). **Quantize** snaps the selected notes (or all) onto the grid, tidying up a played-in part. A note beside the button says how many notes moved, or *Already on the 1/16 grid* when there was nothing to fix (try a finer grid, like 1/32, if the timing still sounds loose).
 - **Humanize** does the opposite: it nudges the selected notes (or all) slightly off the grid and varies their loudness, so a part you clicked in sounds played. Click again for a different take; **Ctrl+Z** undoes.
 - On drum tracks, each row is a drum pad instead of a pitch. Drum clips open in the step grid (below); click **Piano roll** to edit them here, **Steps** to go back.
 

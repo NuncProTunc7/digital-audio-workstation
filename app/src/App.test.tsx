@@ -826,6 +826,38 @@ describe("Updates", () => {
   });
 });
 
+describe("Quantize", () => {
+  it("says how many notes moved, or that they were already on the grid", async () => {
+    // Found 2026-10-09: Quantize on notes already on the grid did nothing
+    // visible, and looked broken.
+    const backend = createPreviewBackend();
+    await backend.execute({
+      command: "create_clip",
+      track_id: 1,
+      start_beats: 0,
+      length_beats: 4,
+      name: "Riff",
+      notes: [
+        { pitch: 60, start_beats: 0.1, length_beats: 1, velocity: 100 },
+        { pitch: 62, start_beats: 1, length_beats: 1, velocity: 100 },
+        { pitch: 64, start_beats: 2.05, length_beats: 1, velocity: 100 },
+      ],
+    });
+    await renderApp(backend);
+    fireEvent.pointerDown(screen.getByTitle(/^Riff/), { button: 0, clientX: 5 });
+    fireEvent.pointerUp(document.querySelector(".timeline") as HTMLElement);
+    fireEvent.click(screen.getByRole("tab", { name: /Piano roll/ }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Quantize" }));
+    });
+    expect(screen.getByRole("status", { name: "Quantize result" }).textContent).toBe("2 notes moved to the 1/16 grid");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Quantize" }));
+    });
+    expect(screen.getByRole("status", { name: "Quantize result" }).textContent).toBe("Already on the 1/16 grid");
+  });
+});
+
 describe("Linked clips", () => {
   it("duplicates a clip linked, edits both at once, and unlinks", async () => {
     const backend = createPreviewBackend();
