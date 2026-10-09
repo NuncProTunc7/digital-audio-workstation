@@ -70,6 +70,11 @@ struct AppState {
     /// Chosen input (None = system default).
     input_device: Mutex<Option<String>>,
     input_error: Mutex<Option<String>>,
+    /// The Audio tab's meter wants the microphone open.
+    input_wanted: Mutex<bool>,
+    /// The microphones (and default) when opening last failed; a change
+    /// (say a headset switched on) is worth another try.
+    input_failed_with: Mutex<Option<(Vec<String>, Option<String>)>>,
     /// Audio track being recorded onto, while recording audio.
     audio_take: Mutex<Option<TrackId>>,
     /// For telling the UI about changes made by Claude.
@@ -124,6 +129,8 @@ impl Default for AppState {
             recorder: Mutex::new(None),
             input_device: Mutex::new(None),
             input_error: Mutex::new(None),
+            input_wanted: Mutex::new(false),
+            input_failed_with: Mutex::new(None),
             audio_take: Mutex::new(None),
             app: OnceLock::new(),
             control: Mutex::new(None),
@@ -488,12 +495,20 @@ impl AppState {
                     *r = Some(recorder);
                 }
                 *error = None;
+                if let Ok(mut f) = self.input_failed_with.lock() {
+                    *f = None;
+                }
                 Ok(())
             }
             Err(e) => {
                 let message = e.to_string();
                 diagnostics::log_error(&format!("microphone failed: {message}"));
                 *error = Some(message.clone());
+                drop(error);
+                let (devices, default) = input_devices(self);
+                if let Ok(mut f) = self.input_failed_with.lock() {
+                    *f = Some((devices, default));
+                }
                 Err(message)
             }
         }
@@ -1357,6 +1372,7 @@ fn follow_input_changes(state: &AppState) {
         i.as_ref()
             .map(|i| (i.device_name().to_owned(), i.is_lost()))
     }) else {
+        retry_failed_input(state);
         return;
     };
     let (devices, default) = input_devices(state);
@@ -1367,6 +1383,28 @@ fn follow_input_changes(state: &AppState) {
             if lost { ", stopped working" } else { "" }
         ));
         reopen_input(state);
+    }
+}
+
+/// After a failed open, whether to try again: the meter wants the
+/// microphone and the microphones Windows offers changed since it failed.
+fn input_should_retry(
+    wanted: bool,
+    failed_with: Option<&(Vec<String>, Option<String>)>,
+    now: &(Vec<String>, Option<String>),
+) -> bool {
+    wanted && failed_with.is_some_and(|f| f != now)
+}
+
+/// Opens the microphone again if it failed and the device list changed
+/// since (no microphone at start, then a headset switched on).
+fn retry_failed_input(state: &AppState) {
+    let wanted = state.input_wanted.lock().is_ok_and(|w| *w);
+    let failed_with = state.input_failed_with.lock().ok().and_then(|f| f.clone());
+    let now = input_devices(state);
+    if input_should_retry(wanted, failed_with.as_ref(), &now) {
+        diagnostics::log("Microphones changed after a failed open: trying again");
+        let _ = state.ensure_input();
     }
 }
 
@@ -1408,6 +1446,9 @@ fn calibrate_recording(state: State<'_, AppState>) -> Result<CalibrationResult, 
 /// Off the main thread: opening a microphone can take seconds.
 #[tauri::command(async)]
 fn monitor_input(state: State<'_, AppState>, on: bool) -> InputStatus {
+    if let Ok(mut w) = state.input_wanted.lock() {
+        *w = on;
+    }
     if on {
         // Errors show up in the returned status.
         let _ = state.ensure_input();
@@ -1424,8 +1465,10 @@ fn refresh_input(state: State<'_, AppState>) -> InputStatus {
     if let Ok(mut cache) = state.input_devices.lock() {
         *cache = None;
     }
-    let was_open = state.input.lock().is_ok_and(|i| i.is_some());
-    if was_open && state.audio_take.lock().is_ok_and(|t| t.is_none()) {
+    // Also opens a microphone that failed before (none found at start).
+    let open_or_wanted = state.input.lock().is_ok_and(|i| i.is_some())
+        || state.input_wanted.lock().is_ok_and(|w| *w);
+    if open_or_wanted && state.audio_take.lock().is_ok_and(|t| t.is_none()) {
         reopen_input(&state);
     }
     input_status_of(&state)
@@ -1945,6 +1988,20 @@ mod tests {
         });
         rx.recv_timeout(Duration::from_secs(20))
             .unwrap_or_else(|_| panic!("{what} froze"))
+    }
+
+    #[test]
+    fn a_microphone_that_appears_after_a_failed_open_is_tried_again() {
+        // Found 2026-10-09: started with the headset off ("no microphone
+        // found"), then switched it on; nothing tried again until a restart.
+        let none: (Vec<String>, Option<String>) = (Vec::new(), None);
+        let headset = (vec!["Headset".to_owned()], Some("Headset".to_owned()));
+        assert!(input_should_retry(true, Some(&none), &headset));
+        // Same microphones as when it failed: don't keep hammering it.
+        assert!(!input_should_retry(true, Some(&headset), &headset));
+        // Nobody is looking at the meter, or it never failed.
+        assert!(!input_should_retry(false, Some(&none), &headset));
+        assert!(!input_should_retry(true, None, &headset));
     }
 
     #[test]
