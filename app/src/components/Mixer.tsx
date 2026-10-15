@@ -64,8 +64,17 @@ function Routing({ track, buses, onCommand, onEndGesture }: {
   if (buses.length === 0) return null;
   const run = (command: Command) => void onCommand(command).then(onEndGesture);
   const sends = track.sends ?? [];
+  const hasReverb = (effects: Effect[]) => effects.some((e) => e.kind === "reverb");
+  // A Reverb here and on a shared bus stacks two rooms, which washes the mix out.
+  const reverbBus = hasReverb(track.mixer.effects) ? buses.find((b) => hasReverb(b.mixer.effects)) : undefined;
   return (
     <div className="routing">
+      {reverbBus && (
+        <p className="muted routing-hint" role="note" aria-label={`${track.name} reverb hint`}>
+          {reverbBus.name} already has a Reverb. Two reverbs can wash the mix out: remove this track's and use{" "}
+          {track.output === reverbBus.id ? `Out → ${reverbBus.name}` : `→ ${reverbBus.name}`} instead?
+        </p>
+      )}
       <label className="routing-out" title="Where this track plays: the master, or a group bus">
         <span>Out</span>
         <select

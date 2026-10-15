@@ -757,6 +757,22 @@ describe("Buses", () => {
   });
 });
 
+describe("Doubled reverbs", () => {
+  it("warns when a track has its own Reverb and a bus already has one", async () => {
+    const backend = createPreviewBackend();
+    await backend.execute({ command: "add_bus", name: "Reverb" });
+    const bus = (await backend.getProject()).project.buses?.[0];
+    await backend.execute({ command: "add_effect", track_id: bus?.id ?? 0, kind: "reverb", index: null });
+    await renderApp(backend);
+    fireEvent.click(screen.getByRole("tab", { name: /Mixer/ }));
+    expect(screen.queryByLabelText("Keys reverb hint")).toBeNull();
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText("Add effect to Keys"), { target: { value: "reverb" } });
+    });
+    expect((await screen.findByLabelText("Keys reverb hint")).textContent).toContain("→ Reverb instead");
+  });
+});
+
 describe("Mixer layout", () => {
   it("keeps Master and + Bus outside the scrolling strips, and the wheel scrolls sideways", async () => {
     await renderApp();

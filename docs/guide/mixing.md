@@ -31,6 +31,7 @@ Details:
 
 - **Out** chooses where a track plays: the **Master**, or one bus.
 - **→ Bus** sends are taken after the track's fader, so turning the track down also turns down its reverb.
+- With a shared Reverb bus, don't also put a **Reverb** on each track: that stacks two rooms and can wash the mix out, and the tracks no longer share one space. The Mixer says so under a track when it happens; remove the track's own Reverb and use its **→ Reverb** send.
 - Buses have a fader, pan, mute (**M**), effects, and a meter; double-click a bus's name to rename it; **✕** deletes it (its tracks go back to the master).
 - Godot export can make one stem per bus (see [Godot](godot.md)).
 
