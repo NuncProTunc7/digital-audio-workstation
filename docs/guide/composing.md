@@ -1,6 +1,6 @@
 # Composing playbook
 
-How Claude writes music in Nunc Pro Tune. The user can read it too: it explains what Claude does and why.
+How an AI (Claude, Codex, or another) writes music in Nunc Pro Tune. The user can read it too: it explains what the AI does and why.
 
 ## Workflow
 

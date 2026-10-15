@@ -28,6 +28,6 @@ What you get:
 - With stems, a `*_layers.tres` (`AudioStreamSynchronized`): all stems play in sync, and your game fades layers in and out (e.g. add drums when combat starts) by changing each stream's volume.
 - If the song has [buses](mixing.md), tick **One stem per bus** to get one stem per group (say *drums*, *music*, *ambience*) plus *other* for tracks that play straight into the master. Fewer, bigger layers are easier to handle in the game.
 - **Sections from markers**: mark where each part of the song starts (see [section markers](writing-music.md)), then tick **Sections from markers**. Each section becomes its own seamless loop, plus a `*_sections.tres` (`AudioStreamInteractive`) that switches to another section on the next bar with a short crossfade. In Godot, call `switch_to_clip_by_name("Combat")` on the playback to change section.
-- Claude can export sections too, from your markers or ones it names itself.
+- Your AI can export sections too, from your markers or ones it names itself.
 
 Using it in Godot 4.6: drag the `.ogg` (or `.tres`) onto an `AudioStreamPlayer`'s **Stream** and enable **Autoplay**, or set it from code. Re-exporting replaces the files and keeps Godot's references working.

@@ -14,12 +14,12 @@
 | "Microphone unavailable" | The microphone didn't answer within a few seconds. Check it's connected (Bluetooth headsets can be slow to wake) and not in use by another app, then select the audio track again or pick another **Input** in the Audio tab. |
 | "Missing audio" when opening a song | The `<Song name> Audio` folder wasn't moved with the `.nptune` file. Put it back next to the song. |
 | Sampler track is silent | Load a sample pack; wait for *loading…* to finish; check the panel for an error. |
-| Claude can't find the app | Open Nunc Pro Tune first. In Claude Desktop, quit fully and reopen after setup. |
+| Your AI can't find the app | Open Nunc Pro Tune first. In Claude Desktop, quit fully and reopen after setup; in Codex, start a new session. Check the steps under **AI** in the status bar. |
 | Windows warns about the installer | It's unsigned: **More info → Run anyway**. |
 | Getting new versions | When a new version is published, the app shows **Update and restart** at the bottom a few seconds after it opens. It saves your song first, installs, and reopens. **Later** hides it until next time. |
 
 When reporting a problem, say what you did, what you heard, and what you expected ("it crackles when I add reverb to the drums"). Claude turns that into a test and a fix.
 
-Then click **Report** in the status bar (or **Copy diagnostic report** in the Claude panel) and paste it into the same message. It lists your sound card, buffer, CPU load, how many crackles the app noticed, your microphone and its delay, and the last errors and events (including any moment the window stopped responding, and what it was busy with). If the last run froze or crashed, the report also shows the end of that run's log. It contains no folder paths. If Claude is connected to the app, it can fetch the same report itself.
+Then click **Report** in the status bar (or **Copy diagnostic report** in the AI panel) and paste it into the same message. It lists your sound card, buffer, CPU load, how many crackles the app noticed, your microphone and its delay, and the last errors and events (including any moment the window stopped responding, and what it was busy with). If the last run froze or crashed, the report also shows the end of that run's log. It contains no folder paths. If your AI is connected to the app, it can fetch the same report itself.
 
 The app also keeps a log of each of its last five runs in `%APPDATA%\io.github.nuncprotunc7.nuncprotune\logs` (`log.txt` is the current run, `log-1.txt` the one before), in case you're asked for one.

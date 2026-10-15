@@ -1,6 +1,6 @@
 # Lessons
 
-A short course. Each lesson takes 15–30 minutes and ends with something you can hear. Ask Claude "teach me lesson N": it walks you through the steps, watches what you do in the app, and answers questions as you go.
+A short course. Each lesson takes 15–30 minutes and ends with something you can hear. Ask your AI "teach me lesson N": it walks you through the steps, watches what you do in the app, and answers questions as you go.
 
 ## Lesson 1: Find your way around
 
@@ -56,7 +56,7 @@ Goal: everything clear, nothing too loud.
 3. **+ Add effect…**: Reverb on the keys, Delay on the lead, Compressor on the drums.
 4. Add a **Limiter** to the master.
 5. Click **A** on the keys track, automate **Volume** to fade in over the first 2 bars.
-6. Ask Claude: "listen to my mix and tell me what to fix."
+6. Ask your AI: "listen to my mix and tell me what to fix."
 
 ## Lesson 6: Into your game
 
@@ -67,11 +67,11 @@ Goal: your loop playing in Godot.
 3. In Godot, put `music/<song>.ogg` on an `AudioStreamPlayer` with **Autoplay**. Run the game: it loops with no gap.
 4. Bonus: use the `_layers.tres` and fade the drums stem in from code when something exciting happens.
 
-## Lesson 7: Compose with Claude
+## Lesson 7: Compose with your AI
 
-Goal: direct Claude like a composer directs a band.
+Goal: direct your AI like a composer directs a band.
 
 1. Describe a scene: "a calm forest village at dusk, 90 BPM, 8 bars, loops".
 2. Listen, then react in plain words: "warmer", "less busy", "the melody needs to resolve at the end".
 3. Ask for variations: "make a combat version with the same melody" and export both as adaptive music.
-4. Ask Claude to explain what it changed and why, and try one of the changes yourself.
+4. Ask your AI to explain what it changed and why, and try one of the changes yourself.

@@ -36,12 +36,12 @@ Every change, in the plugin window or on the sliders, is undoable, and a whole k
 - To open the song on another computer, that computer needs the same plugins installed. If one is missing, its track is silent and the panel says which plugin it needs.
 - Exports (WAV, Godot) and versions/A-B use exactly what you hear.
 
-## Claude and plugins
+## Your AI and plugins
 
-Claude can list your plugins, put one on a track or in an effect chain, and change its controls: "put Surge XT on the bass track and make it darker", "add Supermassive to the pad and make it a long shimmer". It reads the same control names and values you see; for big synths with thousands of controls (Surge XT) it looks them up by name, so "the cutoff" or "filter 1 resonance" works best. Claude can't see the plugin's window, so for picking sounds by ear, open the window yourself (or ask Claude which control to try).
+Your AI can list your plugins, put one on a track or in an effect chain, and change its controls: "put Surge XT on the bass track and make it darker", "add Supermassive to the pad and make it a long shimmer". It reads the same control names and values you see; for big synths with thousands of controls (Surge XT) it looks them up by name, so "the cutoff" or "filter 1 resonance" works best. Your AI can't see the plugin's window, so for picking sounds by ear, open the window yourself (or ask your AI which control to try).
 
 ## If something goes wrong
 
 - **Silent plugin track**: check the panel. *Loading* means wait; an error usually means the plugin isn't installed any more. Reinstall it, then **Look for new plugins…**.
 - **A plugin isn't in the menu**: make sure it's the **VST3** version (not VST2/.dll or AAX) and installed in the VST3 folder, then **Look for new plugins…**.
-- **The app closed or froze while using a plugin**: plugins run inside the app, so a broken one can close it or freeze its window. Your work is kept: when you reopen, the app offers to recover it. If the plugin closed or froze the app while starting or opening its window (and you closed the frozen app), it is **switched off** next time (its panel says so), so the app can't get stuck the same way. It stays off when the app restarts; after updating or reinstalling that plugin, choose **Look for new plugins…** to switch it back on. Tell Claude or the plugin's maker which plugin it was.
+- **The app closed or froze while using a plugin**: plugins run inside the app, so a broken one can close it or freeze its window. Your work is kept: when you reopen, the app offers to recover it. If the plugin closed or froze the app while starting or opening its window (and you closed the frozen app), it is **switched off** next time (its panel says so), so the app can't get stuck the same way. It stays off when the app restarts; after updating or reinstalling that plugin, choose **Look for new plugins…** to switch it back on. Tell your AI or the plugin's maker which plugin it was.

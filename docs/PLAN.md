@@ -11,7 +11,7 @@
 - Record one live instrument at a time (built so more inputs can be added later), then edit, mix, and fine-tune.
 - Compose on the computer with built-in instruments: **piano/keys, synth, drums, bass**.
 - Write and read **sheet music**, and turn sheet music into tracks (including from a photo of a printed score).
-- Let **Claude Desktop and Claude Code** control the whole app through MCP (Model Context Protocol).
+- Let **any MCP-capable AI** (Claude Desktop, Claude Code, OpenAI's Codex, LM Studio, goose, local open models...) control the whole app through MCP (Model Context Protocol). Claude stays the default and best-tested.
 - Export straight into **Godot**: seamless loops, stems, and adaptive-music layers.
 
 **Non-goals (for now)**
@@ -34,7 +34,7 @@
 | Loudness analysis | **ebur128** crate | Standard LUFS/true-peak measurement. |
 | Sheet music rendering | **OpenSheetMusicDisplay** (BSD-3, built on VexFlow) | Renders MusicXML in the browser. |
 | MIDI files | **midly** | Read/write Standard MIDI Files. |
-| AI control | MCP server written with **rmcp** (official Rust MCP SDK) | Works with both Claude Desktop and Claude Code. |
+| AI control | MCP server written with **rmcp** (official Rust MCP SDK) | Works with any MCP client (changed 2026-10-15 at the owner's request; was Claude Desktop and Claude Code only). The app offers one-click setup for Claude Desktop and Codex, commands for Claude Code and Codex, a standard `mcpServers` snippet for other apps, and `npt-mcp --core` (short tool list, text-only results) for small local models. The bridge passes the client's name to the app, which labels changes and safety versions with it. |
 | Layout | Linear timeline first (GarageBand-style) | Simpler; suits writing complete tracks. |
 | Plugins | **VST3 first, then CLAP** (changed Oct 2026; owner approved) | Both are open (CLAP: MIT; VST3: MIT since SDK 3.8, Oct 2025). The free plugins the owner wants (Spitfire LABS, Valhalla Supermassive, Vital) ship as VST3 only, so VST3 comes first. |
 | Internal audio format | 32-bit float, 48 kHz default, stereo buses | Industry norm; matches Godot's mixer. |
@@ -236,7 +236,7 @@ Check each source file's own header before porting; projects sometimes mix licen
 - **Recording gear:** **Bluetooth** headset (confirmed Oct 2026) → WASAPI is enough for v1, but Bluetooth adds latency the automatic alignment may not see; see §13 item 2. Recommend headphones while recording so the click and backing tracks don't bleed into the mic.
 - **MIDI keyboard:** none for now → on-screen piano and musical typing are Phase 1 requirements.
 - **Godot version:** **4.6**. Godot export targets 4.6; verify `.import`/`.tres` formats against it.
-- **Claude clients:** Claude Desktop and Claude Code.
+- **AI clients:** Claude Desktop and Claude Code (default), Codex, and any other MCP client; `--core` for small local models.
 
 ## 13. Next work, in order (agreed Oct 2026)
 

@@ -57,6 +57,6 @@ Use it for fade-ins, filter sweeps into a chorus, and reverb swells at the end o
 3. EQ: cut lows from everything except kick and bass.
 4. Add reverb and delay to taste.
 5. Limiter on the master.
-6. Ask Claude to "listen to the mix". It measures loudness and balance and reports what's off.
+6. Ask your AI to "listen to the mix". It measures loudness and balance and reports what's off.
 
 Game music usually sits around **-16 to -20 LUFS** (a loudness measure), with peaks below **-1 dB**. The Godot export levels this for you.

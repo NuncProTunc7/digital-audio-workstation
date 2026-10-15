@@ -9,7 +9,7 @@
   - **Piano roll**: the notes in the selected clip.
   - **Sheet music**: the selected track (or all tracks) as notation.
   - **Mixer**: volume, pan, mute/solo, and effects for every track.
-- **Status bar** (bottom edge): sound card, sample rate, **Buffer** (see below), CPU load, output level, MIDI keyboards, and the **Claude** button.
+- **Status bar** (bottom edge): sound card, sample rate, **Buffer** (see below), CPU load, output level, MIDI keyboards, and the **AI** button (connect Claude, Codex or another AI app; see [Working with your AI](ai.md)).
 - **Buffer** is how much sound the computer prepares at a time. Smaller (128, 256) answers faster when you play; bigger (1024, 2048) stops crackles on a busy computer. Each choice shows its delay in ms. **Default** lets Windows choose. If the computer struggles, a **Crackling? Use buffer …** button appears; click it to go one size up.
 
 ## Playing
@@ -39,11 +39,11 @@ Versions are named copies of your song kept inside the song file: try something 
 - **Load** puts that version back in place of the song (tracks, mixer, tempo, loop). **Ctrl+Z** undoes a load.
 - **A/B** compares a version with the song as it is now. Press play, then switch between **A: Song now** and **B: version** as often as you like; playback carries on. The louder of the two is turned down to match the other (the bar shows by how much), so you hear which one is *better*, not which is *louder*. **Keep B** loads the version; **Done** goes back to normal.
 - Double-click a version's name to rename it; **✕** deletes it.
-- Claude saves a version called **Before Claude's changes** by itself whenever it starts changing your song after a quiet spell (10 minutes), so your own work is always one click away.
+- Your AI saves a version named after it (**Before Claude's changes**, **Before Codex's changes**…) by itself whenever it starts changing your song after a quiet spell (10 minutes), so your own work is always one click away.
 
 ## Undo
 
-Everything, including what Claude does, can be undone: **Ctrl+Z** undo, **Ctrl+Y** (or Ctrl+Shift+Z) redo. A slider drag, a typed value, or a clip drag counts as one step. The History buttons in the top bar do the same.
+Everything, including what your AI does, can be undone: **Ctrl+Z** undo, **Ctrl+Y** (or Ctrl+Shift+Z) redo. A slider drag, a typed value, or a clip drag counts as one step. The History buttons in the top bar do the same.
 
 ## All keyboard shortcuts
 
