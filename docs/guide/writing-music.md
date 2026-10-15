@@ -34,6 +34,8 @@ Synth knobs, in plain terms: **Wave** is the basic tone (Sine soft, Saw bright a
 - **Capo**: clamps the strings at a fret, raising every string (Fret 2 makes Standard sound a whole step higher).
 - **Tone** (dark to bright), **Sustain** (how long a note rings), **Pick position** (near the bridge is thin and twangy, further out is round), **Palm mute** (short, chunky notes), **Strum** (how long a chord takes to strum from the low string up; 0 plays all strings at once), **Body** (the wooden boom of an acoustic).
 
+The **fretboard** at the top of the panel is a guitar neck you can play with the mouse: the high E string is at the top (as in guitar tab), the nut on the left, and the dots mark frets 3, 5, 7, 9 and 12 like a real neck. Click and hold a fret to hear it. While notes play (from the keyboard, a clip, or a MIDI keyboard), a dot lights on the string and fret where the guitar sounds each one, so you can watch a part's shapes. With a **Key** set for the song, frets in the key are shaded, which makes scales easy to find. Frets behind the capo are greyed out.
+
 Each note you play goes to the highest string that can reach it, like a guitarist would. A chord shape gets one note per string, and playing a new note on a string that is still ringing cuts the old one, as on a real guitar. That is why the tuning matters: in Drop D or an open tuning the low notes are real open strings and chords ring together differently. Changing the preset keeps your tuning and capo.
 
 Notes below the lowest string still play (on the lowest string), but a real guitarist couldn't play them, so keep parts within the range shown.

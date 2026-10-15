@@ -665,8 +665,8 @@ const CAPO_FRETS: &[&str] = &[
     "Fret 9", "Fret 10", "Fret 11", "Fret 12",
 ];
 
-/// Frets on the built-in guitar: the highest note is the top string's
-/// open note plus this.
+/// Frets on the built-in guitar: without a capo, the highest note is the
+/// top string's open note plus this (a capo shortens the reach).
 pub const GUITAR_FRETS: u8 = 22;
 
 /// Guitar parameters. The order is the engine's parameter index: append only.

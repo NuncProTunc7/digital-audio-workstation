@@ -1100,6 +1100,34 @@ describe("Guitar", () => {
   });
 });
 
+describe("Fretboard", () => {
+  it("plays a fret, lights where it sounds, and greys out frets behind the capo", async () => {
+    const backend = spyBackend();
+    await renderApp(backend);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "+ Guitar track" }));
+    });
+    fireEvent.click(trackHeader("Guitar"));
+    const id = (await backend.getProject()).project.tracks[3].id;
+    const fret = await screen.findByRole("button", { name: "String 5 fret 3: C3" });
+    await act(async () => {
+      fireEvent.pointerDown(fret);
+    });
+    expect(backend.noteOn).toHaveBeenCalledWith(id, 48, expect.any(Number));
+    // C3 sounds on the A string's 3rd fret, where it was clicked.
+    expect(screen.getByRole("button", { name: "String 5 fret 3: C3" }).getAttribute("aria-pressed")).toBe("true");
+    await act(async () => {
+      fireEvent.pointerUp(fret);
+    });
+    expect(backend.noteOff).toHaveBeenCalledWith(id, 48);
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText("Capo"), { target: { value: "2" } });
+    });
+    expect((screen.getByRole("button", { name: "String 1 fret 1: F4" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "String 1 fret 2: F#4" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+});
+
 describe("Sound browser", () => {
   it("searches, tries, favorites, and adds a track with a sound", async () => {
     const backend = spyBackend();

@@ -62,3 +62,35 @@ export function homeChord(key: Key | null | undefined): { root: number; quality:
   if (!key) return { root: 0, quality: "major" };
   return { root: key.tonic, quality: isMinor(key.mode) ? "minor" : "major" };
 }
+
+/**
+ * Which string sounds each held note, like the guitar does it: a note goes
+ * to the highest string that reaches it and isn't already taken. `open`
+ * includes the capo; `reach` is how many frets lie above it.
+ */
+export function guitarStringsFor(notes: number[], open: number[], reach: number): Map<number, number> {
+  const taken = new Map<number, number>();
+  const used = new Set<number>();
+  for (const note of [...notes].sort((a, b) => a - b)) {
+    const reaches = (s: number) => note >= open[s] && note <= open[s] + reach;
+    let s = -1;
+    for (let i = open.length - 1; i >= 0; i--) {
+      if (reaches(i) && !used.has(i)) {
+        s = i;
+        break;
+      }
+    }
+    if (s === -1) {
+      for (let i = open.length - 1; i >= 0; i--) {
+        if (reaches(i)) {
+          s = i;
+          break;
+        }
+      }
+    }
+    if (s === -1) continue;
+    used.add(s);
+    taken.set(note, s);
+  }
+  return taken;
+}

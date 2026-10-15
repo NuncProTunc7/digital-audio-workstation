@@ -1,7 +1,8 @@
 import { useState } from "react";
-import type { Catalog, LibraryPack, PluginList, PluginParam, PluginStatus, SamplePackStatus, Track, UserPreset } from "../types";
+import type { Catalog, Key, LibraryPack, PluginList, PluginParam, PluginStatus, SamplePackStatus, Track, UserPreset } from "../types";
 import { noteName } from "../keymap";
 import DrumPads from "./DrumPads";
+import Fretboard from "./Fretboard";
 import ParamControl from "./ParamControl";
 import PluginChooser from "./PluginChooser";
 import PluginPanel from "./PluginPanel";
@@ -11,6 +12,8 @@ interface InstrumentPanelProps {
   track: Track;
   catalog: Catalog;
   activeNotes: ReadonlySet<number>;
+  /** The song's key, shaded on the guitar's fretboard. */
+  songKey?: Key | null;
   onParam: (param: string, value: number) => void;
   onEndGesture: () => void;
   onPreset: (preset: string) => void;
@@ -51,7 +54,8 @@ function GuitarStrings({ track, catalog }: { track: Track; catalog: Catalog }) {
   const capo = track.instrument.params["string.capo"] ?? 0;
   const strings = tuning.strings.map((n) => n + capo);
   const lowest = strings[0];
-  const highest = strings[strings.length - 1] + (catalog.guitar_frets ?? 22);
+  // The capo shortens the neck; it still ends at the last fret.
+  const highest = strings[strings.length - 1] + (catalog.guitar_frets ?? 22) - capo;
   return (
     <p className="guitar-strings" aria-label="Guitar strings">
       Strings, low to high: <strong>{strings.map(noteName).join(" ")}</strong>
@@ -66,6 +70,7 @@ export default function InstrumentPanel({
   track,
   catalog,
   activeNotes,
+  songKey,
   onParam,
   onEndGesture,
   onPreset,
@@ -216,6 +221,17 @@ export default function InstrumentPanel({
       </header>
 
       <div className={`instrument-body ${track.instrument.kind}`}>
+        {track.instrument.kind === "guitar" && catalog.guitar_tunings?.length > 0 && (
+          <Fretboard
+            tuning={catalog.guitar_tunings[track.instrument.params["string.tuning"] ?? 0] ?? catalog.guitar_tunings[0]}
+            capo={track.instrument.params["string.capo"] ?? 0}
+            frets={catalog.guitar_frets ?? 22}
+            activeNotes={activeNotes}
+            songKey={songKey}
+            onPlay={onPadHit}
+            onRelease={onPadRelease}
+          />
+        )}
         {track.instrument.kind === "drums" && (
           <DrumPads pads={catalog.drum_pads} activeNotes={activeNotes} onHit={onPadHit} onRelease={onPadRelease} />
         )}

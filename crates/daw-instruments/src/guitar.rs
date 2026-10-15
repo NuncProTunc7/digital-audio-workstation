@@ -172,6 +172,12 @@ impl Guitar {
         strings_for(f64::from(self.params.tuning), f64::from(self.params.capo))
     }
 
+    /// The low string without the capo, to tell how far up the capo sits.
+    // RT-SAFE
+    fn uncapoed_low(&self) -> u8 {
+        strings_for(f64::from(self.params.tuning), 0.0)[0]
+    }
+
     /// Which string plays `note`: the one already playing it, else the
     /// highest free string that can reach it, else the highest that can.
     // RT-SAFE
@@ -184,7 +190,9 @@ impl Guitar {
             return i;
         }
         let open = self.open_strings();
-        let reaches = |i: usize| note >= open[i] && note <= open[i].saturating_add(GUITAR_FRETS);
+        // The capo shortens the neck: it still ends at the last fret.
+        let reach = GUITAR_FRETS.saturating_sub(open[0].saturating_sub(self.uncapoed_low()));
+        let reaches = |i: usize| note >= open[i] && note <= open[i].saturating_add(reach);
         if let Some(i) = (0..STRINGS)
             .rev()
             .find(|&i| reaches(i) && self.strings[i].is_free())

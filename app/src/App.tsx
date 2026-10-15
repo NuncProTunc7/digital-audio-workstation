@@ -1140,6 +1140,7 @@ export default function App({ backend }: AppProps) {
                 track={selectedTrack}
                 catalog={catalog}
                 activeNotes={activeNotes}
+                songKey={project.key}
                 onParam={(param, value) =>
                   void execute({ command: "set_instrument_param", track_id: selectedTrack.id, param, value })
                 }
