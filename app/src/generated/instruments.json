@@ -380,6 +380,22 @@
         {
           "name": "Acid Bass",
           "description": "Squelchy resonant bass for driving loops."
+        },
+        {
+          "name": "Pluck Bass",
+          "description": "Round, plucked bass like a fingered electric bass."
+        },
+        {
+          "name": "Wobble Bass",
+          "description": "Growling bass whose filter wobbles, for dubstep and boss fights. Change the LFO rate to match the tempo."
+        },
+        {
+          "name": "Chip Bass",
+          "description": "8-bit triangle bass like old game consoles."
+        },
+        {
+          "name": "Brass Bass",
+          "description": "Punchy synth-brass bass that swells open on each note."
         }
       ]
     },

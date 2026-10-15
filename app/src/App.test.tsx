@@ -1062,7 +1062,7 @@ describe("Sound browser", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Sounds" }));
     fireEvent.change(screen.getByLabelText("Search sounds"), { target: { value: "bass" } });
     const names = () => [...document.querySelectorAll(".sound strong")].map((n) => n.textContent);
-    expect(names()).toEqual(["Sub Bass", "Fat Bass", "Acid Bass"]);
+    expect(names()).toEqual(["Sub Bass", "Fat Bass", "Acid Bass", "Pluck Bass", "Wobble Bass", "Chip Bass", "Brass Bass"]);
     // Keys (a synth) is selected: synth sounds can be tried on it.
     await act(async () => {
       fireEvent.click(screen.getAllByRole("button", { name: "Try on Keys" })[2]);
@@ -1073,7 +1073,7 @@ describe("Sound browser", () => {
     // Favorites, then only favorites.
     fireEvent.change(screen.getByLabelText("Search sounds"), { target: { value: "" } });
     fireEvent.click(screen.getByRole("button", { name: "epic" }));
-    expect(names()).toEqual(["Brass Stab", "Boomy Kit"]);
+    expect(names()).toEqual(["Brass Stab", "Brass Bass", "Boomy Kit"]);
     fireEvent.click(screen.getByRole("button", { name: "Favorite Boomy Kit" }));
     fireEvent.click(screen.getByRole("button", { name: "epic" }));
     fireEvent.click(screen.getByRole("button", { name: "★ Favorites" }));

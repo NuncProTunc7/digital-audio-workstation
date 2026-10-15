@@ -17,7 +17,7 @@
 
 | Instrument | Presets | Good for |
 |---|---|---|
-| Synth | Warm Keys, Soft Pad, Bright Lead, Pluck, Chip Square, Brass Stab, Sub Bass, Fat Bass, Acid Bass (Init = blank) | Chords, leads, pads, basses, chiptune |
+| Synth | Warm Keys, Soft Pad, Bright Lead, Pluck, Chip Square, Brass Stab, Sub Bass, Fat Bass, Acid Bass, Pluck Bass, Wobble Bass, Chip Bass, Brass Bass (Init = blank) | Chords, leads, pads, basses, chiptune |
 | Drums | Classic Kit, Tight Kit, Boomy Kit | Beats: 16 pads (kick, snare, hats, toms, crash, ride...) |
 | Sampler | Free instruments (pianos, cello, double bass, flute, tuba) or any SFZ pack | Realistic piano, strings, brass, woodwinds |
 | Plugin | A VST3 instrument you installed (see [Plugins](plugins.md)) | Whatever it does: orchestras, synths, pianos |
