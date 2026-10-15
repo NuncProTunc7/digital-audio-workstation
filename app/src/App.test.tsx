@@ -1651,6 +1651,31 @@ describe("Sampler", () => {
     expect((await backend.getProject()).project.tracks[3].name).toBe("SalamanderGrandPiano");
   });
 
+  it("shows a flute's range and moves the typing keys up to it", async () => {
+    // Found 2026-10-09: the owner heard nothing from the flute with the
+    // keys an octave too low.
+    const backend = createPreviewBackend();
+    vi.spyOn(backend, "pickSamplePack").mockResolvedValue("C:\\Library\\flute\\Ixox Flute.sfz");
+    const noteOn = vi.spyOn(backend, "noteOn");
+    await renderApp(backend);
+    await act(async () => {
+      fireEvent.click(screen.getByText("+ Sampler track"));
+    });
+    fireEvent.click(trackHeader("Piano"));
+    fireEvent.keyDown(window, { code: "KeyZ", key: "z" });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Load sample pack file…" }));
+    });
+    expect(await screen.findByText("Keys now start at C4: this instrument plays C4 to C7.")).toBeTruthy();
+    expect(screen.getByText("C4 to C7")).toBeTruthy();
+    fireEvent.keyDown(window, { code: "KeyA", key: "a" });
+    expect(noteOn).toHaveBeenLastCalledWith(4, 60, 100 / 127);
+    // Moving the keys again by hand sticks: it only happens once per instrument.
+    fireEvent.keyDown(window, { code: "KeyX", key: "x" });
+    fireEvent.keyDown(window, { code: "KeyS", key: "s" });
+    expect(noteOn).toHaveBeenLastCalledWith(4, 74, 100 / 127);
+  });
+
   it("downloads a free instrument and plays it", async () => {
     const backend = createPreviewBackend();
     await renderApp(backend);

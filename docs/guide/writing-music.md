@@ -48,6 +48,8 @@ Notes below the lowest string still play (on the lowest string), but a real guit
 4. Some instruments ask for a **credit** in your game (the panel shows the line to copy, e.g. "Flute by Xavier Hosxe / Ixox (CC BY 4.0)"). The ones marked "no credit needed" are free for anything.
 5. Already have an SFZ pack? **Load sample pack file…** and choose its `.sfz` file.
 6. Big packs load in the background (the panel shows *loading…*). To save memory the app may keep only some of the pack's soft-to-loud layers; the panel tells you how many.
+7. **Range**: a real instrument only plays its own notes. The panel shows them (the flute *plays C4 to C7*; keys outside that are silent), and the first time you pick such an instrument the computer-keyboard keys move into its range ("Keys now start at C4"). **Z/X** still move them wherever you like.
+8. Held notes on a flute, strings or other sustained instrument keep sounding as long as you hold them, even past the end of the recording; pianos and plucked sounds fade naturally as recorded.
 
 ## Key and chords
 
@@ -106,7 +108,7 @@ Drum clips open as a grid: one row per drum, one column per step (a sixteenth no
 
 ## Playing and recording notes (no MIDI keyboard needed)
 
-- Your computer keyboard is a piano: **A** = C, **W** = C#, **S** = D, and so on along the row. **Z/X** change octave, **C/V** change loudness.
+- Your computer keyboard is a piano: **A** = C, **W** = C#, **S** = D, and so on along the row. **Z/X** change octave, **C/V** change loudness. When you pick an instrument with a limited range (a flute, a guitar), the keys move into it by themselves.
 - You can also click the on-screen piano or drum pads, or plug in a MIDI keyboard (the status bar shows it).
 - To record: select the track, press **R**, wait for the count-in clicks (set **Count-in** in the top bar), play from the next beat, press **R** again. Your notes become a clip. Then quantize if the timing is loose.
 

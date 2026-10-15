@@ -16,6 +16,8 @@ Once an AI has done something, the button shows its name (**AI · Codex**), and 
 
 Your AI finds the app through a small connection note the app writes when it starts. Some AI apps keep their own out-of-date copy of that note; when the copy points at nothing, the bridge clears it and finds the open app by itself. If your AI still says the app isn't running while it is open, quit and reopen Nunc Pro Tune.
 
+The guide your AI reads is built into the bridge (`npt-mcp`). If your AI describes buttons or shortcuts that don't match the app, its bridge is older than the app: install the latest version (or, if you build the app yourself, build the bridge again too).
+
 ## Things to ask
 
 - "Teach me lesson 1." / "Explain what a compressor does, using my drums."

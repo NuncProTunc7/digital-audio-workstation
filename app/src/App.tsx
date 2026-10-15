@@ -19,6 +19,7 @@ import StatusBar from "./components/StatusBar";
 import Timeline from "./components/Timeline";
 import { formatPosition, snapDown } from "./format";
 import { MODES, NOTE_NAMES } from "./music";
+import { baseNoteForRange, guitarRange, packRange, rangeText } from "./range";
 import {
   DEFAULT_BASE_NOTE,
   DEFAULT_VELOCITY,
@@ -38,6 +39,7 @@ import type {
   InstrumentKind,
   Mode,
   PreviewPlan,
+  SamplePackStatus,
   UserPreset,
   InputStatus,
   Peaks,
@@ -288,6 +290,58 @@ export default function App({ backend }: AppProps) {
     return () => window.clearTimeout(timer);
   }, [backend, tab, project, sheetTrackId]);
   const typingBase = isDrums ? DRUM_BASE_NOTE : baseNote;
+
+  // Where the selected instrument plays: a flute is silent below C4, so the
+  // typing keys move there the first time it is selected or loaded.
+  const packPath = selectedTrack?.instrument.kind === "sampler" ? (selectedTrack.instrument.sample_pack ?? null) : null;
+  const [pack, setPack] = useState<{ path: string; status: SamplePackStatus } | null>(null);
+  useEffect(() => {
+    if (!packPath) return;
+    let alive = true;
+    let timer: number | undefined;
+    const check = () => {
+      backend
+        .samplePackStatus(packPath)
+        .then((status) => {
+          if (!alive) return;
+          setPack({ path: packPath, status });
+          if (status.state === "loading" || status.state === "not_loaded") timer = window.setTimeout(check, 500);
+        })
+        .catch(() => {});
+    };
+    check();
+    return () => {
+      alive = false;
+      window.clearTimeout(timer);
+    };
+  }, [backend, packPath]);
+  const instrumentRange =
+    selectedTrack?.instrument.kind === "guitar" && catalog
+      ? guitarRange(selectedTrack, catalog)
+      : packPath && pack?.path === packPath
+        ? packRange(pack.status)
+        : null;
+  const rangeKey = instrumentRange
+    ? `${selectedTrack?.id}:${packPath ?? ""}:${instrumentRange.low}-${instrumentRange.high}`
+    : null;
+  // Adjusted while rendering (once per instrument), not in an effect.
+  const [movedFor, setMovedFor] = useState<string | null>(null);
+  const [keysNotice, setKeysNotice] = useState<string | null>(null);
+  if (instrumentRange && rangeKey !== movedFor) {
+    setMovedFor(rangeKey);
+    const next = baseNoteForRange(instrumentRange, baseNote);
+    if (next !== baseNote) {
+      const notice = `Keys now start at ${noteName(next)}: this instrument plays ${rangeText(instrumentRange)}.`;
+      setBaseNote(next);
+      setKeysNotice(notice);
+      setToast(notice);
+    }
+  }
+  useEffect(() => {
+    if (!keysNotice || toast !== keysNotice) return;
+    const timer = window.setTimeout(() => setToast(null), TOAST_MS);
+    return () => window.clearTimeout(timer);
+  }, [keysNotice, toast]);
   const recording = transport?.recording ?? false;
 
   const applyView = useCallback((v: ProjectView | undefined) => {

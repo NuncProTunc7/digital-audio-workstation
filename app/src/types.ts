@@ -38,6 +38,9 @@ export interface SamplePackStatus {
   megabytes?: number;
   layers_kept?: number;
   layers_total?: number;
+  /** Lowest and highest notes that play something (MIDI), when ready. */
+  lowest_note?: number;
+  highest_note?: number;
   error?: string;
 }
 

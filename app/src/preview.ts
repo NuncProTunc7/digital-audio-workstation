@@ -1043,7 +1043,15 @@ export function createPreviewBackend(): PreviewBackend {
     exportMusicXml: noop,
     pickFolder: async () => null,
     pickSamplePack: async () => null,
-    samplePackStatus: async () => ({ state: "ready", name: "Preview", zones: 0, megabytes: 0 }),
+    // Free-library flutes play C4 to C7, as the real pack does.
+    samplePackStatus: async (path) => ({
+      state: "ready",
+      name: "Preview",
+      zones: 0,
+      megabytes: 0,
+      lowest_note: /flute/i.test(path) ? 60 : 21,
+      highest_note: /flute/i.test(path) ? 96 : 108,
+    }),
     plugins: async () => ({ plugins: structuredClone(previewPlugins), could_not_use: [] }),
     loadPlugin: async (trackId, uid) => {
       const p = previewPlugins.find((x) => x.uid === uid);

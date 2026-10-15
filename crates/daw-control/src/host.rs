@@ -599,6 +599,8 @@ pub fn sample_pack_status(path: &Path) -> Value {
             megabytes,
             layers_kept,
             layers_total,
+            lowest_note,
+            highest_note,
         } => json!({
             "state": "ready",
             "name": name,
@@ -606,6 +608,8 @@ pub fn sample_pack_status(path: &Path) -> Value {
             "megabytes": megabytes,
             "layers_kept": layers_kept,
             "layers_total": layers_total,
+            "lowest_note": lowest_note,
+            "highest_note": highest_note,
         }),
         S::Failed(e) => json!({ "state": "failed", "error": e }),
     }

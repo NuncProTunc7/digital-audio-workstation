@@ -60,5 +60,5 @@ Everything, including what your AI does, can be undone: **Ctrl+Z** undo, **Ctrl+
 | Ctrl+E | Split the selected clip at the playhead |
 | Ctrl+A | Select all notes (in the piano roll) |
 | A W S E D F T G Y H U J K O L P ; ' | Play notes, like a piano (A = C, W = C#, S = D...) |
-| Z / X | Octave down / up for the keys above |
+| Z / X | Octave down / up for the keys above (they also move by themselves into a flute's or guitar's range when you pick it) |
 | C / V | Softer / louder for the keys above |
