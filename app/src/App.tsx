@@ -77,6 +77,19 @@ function isTextEntry(target: EventTarget | null): boolean {
   return el.tagName === "SELECT" || el.tagName === "TEXTAREA";
 }
 
+/**
+ * Whether Home should still go to the song start from this field: menus and
+ * number boxes (tempo, values) have no use for it, and a menu would jump to
+ * its first choice instead.
+ */
+function homeGoesToStart(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null;
+  if (!el || !isTextEntry(el) || el.tagName === "SELECT") return true;
+  if (el.tagName !== "INPUT") return false;
+  const mode = el.getAttribute("inputmode");
+  return (el as HTMLInputElement).type === "number" || mode === "decimal" || mode === "numeric";
+}
+
 export default function App({ backend }: AppProps) {
   const [view, setView] = useState<ProjectView | null>(null);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
@@ -613,6 +626,11 @@ export default function App({ backend }: AppProps) {
   // from the previous render.
   useLayoutEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if (e.code === "Home" && isTextEntry(e.target) && homeGoesToStart(e.target) && !e.ctrlKey && !e.shiftKey) {
+        e.preventDefault();
+        void backend.locate(0);
+        return;
+      }
       if (isTextEntry(e.target)) return;
       if (e.ctrlKey || e.metaKey) {
         const key = e.key.toLowerCase();

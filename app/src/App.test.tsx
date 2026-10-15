@@ -133,6 +133,20 @@ describe("App", () => {
     expect(screen.queryByLabelText("Type Cutoff")).toBeNull();
   });
 
+  it("goes to the start with Home even from a menu or the tempo box", async () => {
+    const backend = await renderApp(spyBackend());
+    const signature = screen.getByLabelText("Time signature") as HTMLSelectElement;
+    signature.focus();
+    fireEvent.keyDown(signature, { code: "Home", key: "Home" });
+    expect(backend.locate).toHaveBeenCalledWith(0);
+    expect(signature.value).toBe("4/4");
+    vi.mocked(backend.locate).mockClear();
+    const tempo = screen.getByLabelText("Tempo in BPM");
+    tempo.focus();
+    fireEvent.keyDown(tempo, { code: "Home", key: "Home" });
+    expect(backend.locate).toHaveBeenCalledWith(0);
+  });
+
   it("starts playback with the space bar", async () => {
     const backend = await renderApp(spyBackend());
     await act(async () => {
