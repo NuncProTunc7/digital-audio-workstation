@@ -9,6 +9,8 @@ Keep Nunc Pro Tune open while Claude works: Claude talks to the running app, and
 
 The **Claude** panel lists what Claude did this session. **Ctrl+Z** undoes any of it.
 
+If Claude says the app isn't running while it is open, ask it to try once more: the first try clears an out-of-date connection note left by an earlier run (Claude Desktop sometimes keeps its own old copy), and the next one finds the app. If it still can't connect, quit and reopen Nunc Pro Tune.
+
 ## Things to ask
 
 - "Teach me lesson 1." / "Explain what a compressor does, using my drums."

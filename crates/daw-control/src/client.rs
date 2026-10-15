@@ -18,6 +18,10 @@ pub enum ClientError {
     NotRunning(String),
     #[error("Nunc Pro Tune isn't responding. If it was closed, open it again. ({0})")]
     Unreachable(String),
+    /// Nothing listens on the port the discovery file names: the file is
+    /// left over from an earlier run.
+    #[error("Nunc Pro Tune isn't running (or was closed). Open the app, then try again. ({0})")]
+    NoListener(String),
     #[error("unexpected reply from Nunc Pro Tune: {0}")]
     Protocol(String),
 }
@@ -41,6 +45,39 @@ impl ControlClient {
         Ok(Self::new(file.port, file.token))
     }
 
+    /// Finds the running app and sends it a request (see [`Self::call_via`]).
+    pub fn call_discovered(
+        request: &Request,
+    ) -> Result<Result<serde_json::Value, String>, ClientError> {
+        Self::call_via(&control_file_path(), request)
+    }
+
+    /// Sends a request to the app named in the discovery file at `path`.
+    ///
+    /// When nothing listens on that file's port, the file is stale. It is
+    /// removed and read again once: an app sandbox (Claude Desktop's
+    /// packaged storage on Windows) can keep its own old copy that hides
+    /// the app's fresh one, and removing the copy uncovers it.
+    pub fn call_via(
+        path: &Path,
+        request: &Request,
+    ) -> Result<Result<serde_json::Value, String>, ClientError> {
+        let seen = std::fs::read(path).ok();
+        let why = match Self::from_file(path)?.call(request) {
+            Err(ClientError::NoListener(why)) => why,
+            other => return other,
+        };
+        // Only if it still holds what we read: the app may have just
+        // started and written a fresh one.
+        if std::fs::read(path).ok() == seen {
+            let _ = std::fs::remove_file(path);
+        }
+        match std::fs::read(path).ok() {
+            Some(now) if Some(&now) != seen.as_ref() => Self::from_file(path)?.call(request),
+            _ => Err(ClientError::NoListener(why)),
+        }
+    }
+
     pub fn new(port: u16, token: String) -> Self {
         Self { port, token }
     }
@@ -54,7 +91,7 @@ impl ControlClient {
             serde_json::to_string(request).map_err(|e| ClientError::Protocol(e.to_string()))?;
         let addr = SocketAddr::from(([127, 0, 0, 1], self.port));
         let mut stream = TcpStream::connect_timeout(&addr, CONNECT_TIMEOUT)
-            .map_err(|e| ClientError::Unreachable(e.to_string()))?;
+            .map_err(|e| ClientError::NoListener(e.to_string()))?;
         stream
             .set_read_timeout(Some(READ_TIMEOUT))
             .map_err(|e| ClientError::Unreachable(e.to_string()))?;
@@ -113,6 +150,33 @@ fn dechunk(mut body: &str) -> Result<String, ClientError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A port nothing listens on.
+    fn closed_port() -> u16 {
+        let l = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        l.local_addr().expect("addr").port()
+    }
+
+    #[test]
+    fn a_stale_control_file_is_cleared() {
+        let dir = tempfile::tempdir().expect("dir");
+        let path = dir.path().join("control.json");
+        ControlFile {
+            port: closed_port(),
+            token: "old".into(),
+            pid: 1,
+            version: "0.0.0".into(),
+        }
+        .write(&path)
+        .expect("write");
+        let err = ControlClient::call_via(&path, &Request::Ping).expect_err("stale");
+        assert!(matches!(err, ClientError::NoListener(_)), "{err}");
+        assert!(err.to_string().contains("isn't running"));
+        assert!(!path.exists(), "the stale file is gone");
+        // With no file at all, the usual "not running" message.
+        let err = ControlClient::call_via(&path, &Request::Ping).expect_err("none");
+        assert!(matches!(err, ClientError::NotRunning(_)));
+    }
 
     #[test]
     fn dechunks_bodies() {

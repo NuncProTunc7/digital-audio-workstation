@@ -97,11 +97,7 @@ impl Bridge {
             Err(e) => return CallToolResult::error(vec![ContentBlock::text(e)]),
         };
         // Discover on every call so restarting the app just works.
-        let client = match ControlClient::discover() {
-            Ok(c) => c,
-            Err(e) => return CallToolResult::error(vec![ContentBlock::text(e.to_string())]),
-        };
-        match client.call(&request) {
+        match ControlClient::call_discovered(&request) {
             Err(e) => CallToolResult::error(vec![ContentBlock::text(e.to_string())]),
             Ok(Err(app_error)) => CallToolResult::error(vec![ContentBlock::text(app_error)]),
             Ok(Ok(mut value)) => {
