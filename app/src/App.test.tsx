@@ -588,6 +588,24 @@ describe("Drum step sequencer", () => {
     expect(notes.every((n) => n.velocity === 127 && n.chance === 50)).toBe(true);
   });
 
+  it("offers triplet steps and a one-click shuffle", async () => {
+    const backend = await openDrumClip();
+    fireEvent.change(screen.getByLabelText("Step size"), { target: { value: String(1 / 3) } });
+    // Three steps a beat: the fourth step is beat 2.
+    await act(async () => {
+      fireEvent.pointerDown(cell("Kick", 4), { button: 0 });
+      fireEvent.pointerUp(cell("Kick", 4));
+    });
+    expect((await drumNotes(backend)).map((n) => n.start_beats)).toEqual([1]);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Shuffle" }));
+    });
+    expect((await backend.getProject()).project.tracks[2].clips[0].swing).toEqual({
+      amount_percent: 67,
+      grid_beats: 0.25,
+    });
+  });
+
   it("swings the clip and switches to the piano roll and back", async () => {
     const backend = await openDrumClip();
     await act(async () => {

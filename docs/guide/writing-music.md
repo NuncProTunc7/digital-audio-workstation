@@ -78,14 +78,14 @@ Games often need the same music in several intensities. One way to build them in
 
 ## The drum step grid
 
-Drum clips open as a grid: one row per drum, one column per step (a sixteenth note unless you change **Steps**). Brighter columns mark beats; a line marks each bar.
+Drum clips open as a grid: one row per drum, one column per step (a sixteenth note unless you change **Steps**). Brighter columns mark beats; a line marks each bar. **Steps** also offers **1/8 triplet** (three steps a beat) and **1/16 triplet** (six), for placing shuffle and triplet hits exactly.
 
 - **Click** a step to add a hit, click it again to clear it. **Drag** along a row to paint (or erase) several at once; a drag is one undo step.
 - **Right-click** a step for:
   - **Velocity**: Soft, Normal, Accent. Louder hits look brighter.
   - **Roll**: ×2, ×3, ×4 quick hits inside the step, for snare rolls and hat flutters.
   - **Chance**: 75 %, 50 %, 25 % plays the hit only sometimes, so a repeating beat varies. Striped steps have a chance. The pattern of skips is fixed, so the song sounds the same each time you play or export it, while each lap of a loop differs.
-- **Swing** pushes every second step late for a shuffle (try 30–60 %). Choose whether sixteenths or eighths swing. Swing is heard when playing, exporting and in MIDI files; sheet music shows the notes straight.
+- **Swing** pushes every second step late for a shuffle. 0 % is straight, about 67 % is a triplet shuffle (the late step lands where the third triplet would be), and 100 % is the hardest. Try 30–60 % for a light bounce, or click **Shuffle** to jump straight to 67 %. Choose whether sixteenths or eighths swing: a half-time shuffle like Toto's *Rosanna* swings the sixteenths. Swing is heard when playing, exporting and in MIDI files; sheet music shows the notes straight.
 - Click a drum's name to hear it.
 
 ## Playing and recording notes (no MIDI keyboard needed)

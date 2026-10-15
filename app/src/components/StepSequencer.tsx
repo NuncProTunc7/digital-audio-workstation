@@ -7,11 +7,20 @@ import type { Clip, Command, DrumPad, Note, NoteInput } from "../types";
 /** Rows from the most used drums down to the rarer ones. */
 const ROW_ORDER = [36, 38, 39, 42, 46, 44, 37, 40, 45, 47, 48, 50, 41, 43, 49, 51];
 
+/** Step sizes; the triplet ones fit three (or six) steps in a beat for shuffles. */
 const STEP_OPTIONS: { label: string; beats: number }[] = [
   { label: "1/8", beats: 0.5 },
+  { label: "1/8 triplet", beats: 1 / 3 },
   { label: "1/16", beats: 0.25 },
+  { label: "1/16 triplet", beats: 1 / 6 },
   { label: "1/32", beats: 0.125 },
 ];
+
+/** Swing that puts the late step two thirds of the way through its pair: a triplet shuffle. */
+const SHUFFLE_PERCENT = 67;
+
+const SWING_HELP =
+  "Swing: plays every second step late for a shuffled, bouncy groove. 0% is straight, about 67% is a triplet shuffle, 100% is the hardest";
 
 /** Velocity levels a step can have. */
 const STEP_VELOCITIES: { label: string; velocity: number }[] = [
@@ -197,7 +206,7 @@ export default function StepSequencer(props: StepSequencerProps) {
             ))}
           </select>
         </label>
-        <label className="field" title="Swing: plays every second step late for a shuffled, bouncy groove">
+        <label className="field" title={SWING_HELP}>
           <span>Swing</span>
           <input
             type="range"
@@ -231,6 +240,21 @@ export default function StepSequencer(props: StepSequencerProps) {
             <option value={0.25}>1/16</option>
             <option value={0.5}>1/8</option>
           </select>
+          <button
+            className={swing?.amount_percent === SHUFFLE_PERCENT ? "small toggle on" : "small"}
+            title="Triplet shuffle: swing set to 67%, the classic shuffle feel"
+            onClick={() => {
+              void props
+                .onCommand({
+                  command: "set_clip_swing",
+                  clip_id: clip.id,
+                  swing: { amount_percent: SHUFFLE_PERCENT, grid_beats: swing?.grid_beats ?? 0.25 },
+                })
+                .then(props.onEndGesture);
+            }}
+          >
+            Shuffle
+          </button>
         </label>
         <span className="muted step-help">Click or drag to add hits · right-click a step for accent, rolls, chance</span>
         <span className="spacer" />
