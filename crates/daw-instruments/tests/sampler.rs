@@ -163,3 +163,45 @@ fn missing_packs_are_silent() {
     s.note_on(60, 1.0);
     assert_eq!(peak(&render(s.as_mut(), 0.1)), 0.0);
 }
+
+/// Held notes on a sustained instrument (a flute recorded for 3 s, fading
+/// at the end) keep sounding while the key is down, then release.
+#[test]
+fn a_held_flute_note_outlasts_its_recording() {
+    let dir = tempfile::tempdir().expect("tmp");
+    let n = 3 * 48_000;
+    let flute = AudioData {
+        sample_rate_hz: 48_000,
+        channels: vec![
+            (0..n)
+                .map(|i| {
+                    let t = i as f32 / 48_000.0;
+                    let swell = (t / 0.2).min(1.0) * ((3.0 - t) / 0.4).min(1.0);
+                    0.5 * swell * (std::f32::consts::TAU * 523.25 * t).sin()
+                })
+                .collect(),
+        ],
+    };
+    write_wav(&dir.path().join("c5.wav"), &flute).expect("wav");
+    let sfz = dir.path().join("Flute.sfz");
+    std::fs::write(
+        &sfz,
+        "<region> sample=c5.wav lokey=c4 hikey=c7 pitch_keycenter=c5 ampeg_release=0.1\n",
+    )
+    .expect("sfz");
+    let mut inst = Instrument::from_preset(InstrumentKind::Sampler, "Sample pack").expect("preset");
+    inst.sample_pack = Some(sfz.display().to_string());
+    let mut s = daw_instruments::create(&inst, SR);
+    wait_ready(&sfz);
+
+    s.note_on(72, 1.0);
+    let held = render(s.as_mut(), 8.0);
+    for second in 1..8 {
+        let part = &held[second * 48_000..(second + 1) * 48_000];
+        assert!(peak(part) > 0.4, "second {second}: {}", peak(part));
+    }
+    assert!((pitch_hz(&held[6 * 48_000..]) - 523.25).abs() < 5.0);
+    s.note_off(72);
+    let after = render(s.as_mut(), 1.0);
+    assert!(peak(&after[24_000..]) < 0.001, "{}", peak(&after[24_000..]));
+}
