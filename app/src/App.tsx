@@ -4,7 +4,7 @@ import type { Backend } from "./backend";
 import { AUDIO_EXTENSIONS, MIDI_EXTENSIONS, MUSICXML_EXTENSIONS } from "./backend";
 import type { ExportKind } from "./backend";
 import AudioPanel from "./components/AudioPanel";
-import ClaudePanel from "./components/ClaudePanel";
+import AiPanel from "./components/AiPanel";
 import GodotExportDialog from "./components/GodotExportDialog";
 import InstrumentPanel from "./components/InstrumentPanel";
 import Mixer from "./components/Mixer";
@@ -32,7 +32,7 @@ import type {
   AppInfo,
   AudioStatus,
   Catalog,
-  ClaudeStatus,
+  AiStatus,
   Command,
   Comparison,
   InstrumentKind,
@@ -49,7 +49,7 @@ import type {
 
 const TIME_SIGNATURES = ["2/4", "3/4", "4/4", "5/4", "6/8", "7/8", "9/8", "12/8"];
 const STATUS_POLL_MS = 60;
-const CLAUDE_POLL_MS = 2000;
+const AI_POLL_MS = 2000;
 const INPUT_POLL_MS = 70;
 const TOAST_MS = 4000;
 type Tab = "instrument" | "pianoroll" | "sheet" | "mixer" | "sounds";
@@ -106,8 +106,8 @@ export default function App({ backend }: AppProps) {
   const [baseNote, setBaseNote] = useState(DEFAULT_BASE_NOTE);
   const [velocity, setVelocity] = useState(DEFAULT_VELOCITY);
   const [activeNotes, setActiveNotes] = useState<ReadonlySet<number>>(new Set());
-  const [claude, setClaude] = useState<ClaudeStatus | null>(null);
-  const [claudeOpen, setClaudeOpen] = useState(false);
+  const [ai, setAi] = useState<AiStatus | null>(null);
+  const [aiOpen, setAiOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   // A newer version on GitHub, offered once per run.
   const [update, setUpdate] = useState<{ version: string; notes: string | null } | null>(null);
@@ -227,22 +227,22 @@ export default function App({ backend }: AppProps) {
     return () => unlisten?.();
   }, [backend, markNote]);
 
-  const refreshClaude = useCallback(() => {
+  const refreshAi = useCallback(() => {
     backend
-      .claudeStatus()
-      .then(setClaude)
+      .aiStatus()
+      .then(setAi)
       .catch(() => {});
   }, [backend]);
 
   // Poll only while the panel is open; changes also trigger a refresh below.
   useEffect(() => {
-    refreshClaude();
-    if (!claudeOpen) return;
-    const timer = window.setInterval(refreshClaude, CLAUDE_POLL_MS);
+    refreshAi();
+    if (!aiOpen) return;
+    const timer = window.setInterval(refreshAi, AI_POLL_MS);
     return () => window.clearInterval(timer);
-  }, [claudeOpen, refreshClaude]);
+  }, [aiOpen, refreshAi]);
 
-  // Claude edits the project from outside the UI: re-fetch and say what changed.
+  // The AI edits the project from outside the UI: re-fetch and say what changed.
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     let toastTimer: number | undefined;
@@ -252,7 +252,7 @@ export default function App({ backend }: AppProps) {
           .getProject()
           .then(setView)
           .catch(() => {});
-        refreshClaude();
+        refreshAi();
         setToast(description);
         window.clearTimeout(toastTimer);
         toastTimer = window.setTimeout(() => setToast(null), TOAST_MS);
@@ -264,7 +264,7 @@ export default function App({ backend }: AppProps) {
       unlisten?.();
       window.clearTimeout(toastTimer);
     };
-  }, [backend, refreshClaude]);
+  }, [backend, refreshAi]);
 
   const project = view?.project;
   const selectedTrack: Track | undefined =
@@ -763,8 +763,8 @@ export default function App({ backend }: AppProps) {
     );
     setToast(
       copied
-        ? "Diagnostic report copied. Paste it into your message to Claude."
-        : "Couldn't reach the clipboard; ask Claude to run diagnostic_report instead.",
+        ? "Diagnostic report copied. Paste it into your message to your AI."
+        : "Couldn't reach the clipboard; ask your AI to run diagnostic_report instead.",
     );
     window.setTimeout(() => setToast(null), TOAST_MS * 2);
   };
@@ -980,7 +980,7 @@ export default function App({ backend }: AppProps) {
           </select>
         </label>
 
-        <label className="field" title="The song's key: its notes are highlighted in the piano roll, and Claude writes in it">
+        <label className="field" title="The song's key: its notes are highlighted in the piano roll, and your AI writes in it">
           <span>Key</span>
           <select
             aria-label="Key"
@@ -1372,8 +1372,8 @@ export default function App({ backend }: AppProps) {
         onBufferSize={(frames) => void run(() => backend.setBufferSize(frames)).then((a) => a && setAudio(a))}
         onCopyReport={() => void copyReport()}
         onRefreshMidi={() => void run(() => backend.refreshMidi()).then((a) => a && setAudio(a))}
-        claude={claude}
-        onToggleClaude={() => setClaudeOpen((o) => !o)}
+        ai={ai}
+        onToggleAi={() => setAiOpen((o) => !o)}
       />
       {previewPlan && (
         <GamePreview
@@ -1401,11 +1401,12 @@ export default function App({ backend }: AppProps) {
           onClose={() => setGodotOpen(false)}
         />
       )}
-      {claudeOpen && (
-        <ClaudePanel
-          status={claude}
-          onInstallDesktop={() => void run(() => backend.claudeInstallDesktop()).then((s) => s && setClaude(s))}
-          onClose={() => setClaudeOpen(false)}
+      {aiOpen && (
+        <AiPanel
+          status={ai}
+          onInstallClaudeDesktop={() => void run(() => backend.aiInstallClaudeDesktop()).then((s) => s && setAi(s))}
+          onInstallCodex={() => void run(() => backend.aiInstallCodex()).then((s) => s && setAi(s))}
+          onClose={() => setAiOpen(false)}
           onCopyReport={() => void copyReport()}
         />
       )}

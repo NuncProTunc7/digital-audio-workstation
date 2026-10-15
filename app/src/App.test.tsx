@@ -261,7 +261,7 @@ describe("Arranging", () => {
     expect(document.querySelectorAll(".lane").length).toBe(4);
   });
 
-  it("shows Claude's edits as they happen", async () => {
+  it("shows the AI's edits as they happen", async () => {
     const backend = createPreviewBackend();
     await renderApp(backend);
     await act(async () => {
@@ -273,28 +273,40 @@ describe("Arranging", () => {
             { command: "add_track", name: "Lead", instrument: "synth", preset: null, index: null },
           ],
         },
-        "Claude: batch",
+        "Codex: batch",
       );
     });
     expect(await screen.findByDisplayValue("150")).toBeTruthy();
     expect(document.querySelectorAll(".lane").length).toBe(4);
-    expect(screen.getByRole("status").textContent).toBe("Claude: batch");
-    // Claude's change is one undo step.
+    expect(screen.getByRole("status").textContent).toBe("Codex: batch");
+    // The AI's change is one undo step.
     fireEvent.click(screen.getByRole("button", { name: "Undo" }));
     expect(await screen.findByDisplayValue("120")).toBeTruthy();
     expect(document.querySelectorAll(".lane").length).toBe(3);
   });
 
-  it("opens the Claude panel with setup instructions", async () => {
+  it("opens the AI panel with setup for Claude, Codex, or any MCP app", async () => {
     await renderApp();
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Claude" }));
+      fireEvent.click(screen.getByRole("button", { name: "AI connection" }));
     });
-    const panel = await screen.findByRole("dialog", { name: "Claude" });
-    expect(panel.textContent).toContain("claude mcp add");
+    const panel = await screen.findByRole("dialog", { name: "Your AI" });
+    expect(panel.textContent).toContain("Set up Claude Desktop");
     expect(panel.textContent).toContain("Nothing yet this session.");
-    fireEvent.click(screen.getByRole("button", { name: "Close Claude panel" }));
-    expect(screen.queryByRole("dialog", { name: "Claude" })).toBeNull();
+    fireEvent.change(screen.getByLabelText("Which AI app"), { target: { value: "claude-code" } });
+    expect(screen.getByLabelText("Claude Code command").textContent).toContain("claude mcp add");
+    fireEvent.change(screen.getByLabelText("Which AI app"), { target: { value: "codex" } });
+    expect(screen.getByRole("button", { name: "Set up Codex" })).toBeTruthy();
+    expect(screen.getByLabelText("Codex command").textContent).toContain("codex mcp add nunc-pro-tune");
+    fireEvent.change(screen.getByLabelText("Which AI app"), { target: { value: "local" } });
+    expect(screen.getByLabelText("MCP settings for small models").textContent).toContain("--core");
+    fireEvent.click(screen.getByRole("button", { name: "Close AI panel" }));
+    expect(screen.queryByRole("dialog", { name: "Your AI" })).toBeNull();
+    // The choice is remembered.
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "AI connection" }));
+    });
+    expect((screen.getByLabelText("Which AI app") as HTMLSelectElement).value).toBe("local");
   });
 });
 

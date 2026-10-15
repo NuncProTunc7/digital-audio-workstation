@@ -9,7 +9,7 @@ import type {
   AudioStatus,
   CalibrationResult,
   Catalog,
-  ClaudeStatus,
+  AiStatus,
   CompareSide,
   Comparison,
   Inspection,
@@ -185,10 +185,12 @@ export interface Backend {
   /** Files dropped on the window, with the drop point in CSS pixels. */
   onFileDrop(callback: (paths: string[], x: number, y: number) => void): Promise<() => void>;
 
-  // Claude.
-  claudeStatus(): Promise<ClaudeStatus>;
+  // The AI connection (Claude, Codex, or any MCP app).
+  aiStatus(): Promise<AiStatus>;
   /** Adds Nunc Pro Tune to Claude Desktop's settings. */
-  claudeInstallDesktop(): Promise<ClaudeStatus>;
+  aiInstallClaudeDesktop(): Promise<AiStatus>;
+  /** Adds Nunc Pro Tune to Codex's settings. */
+  aiInstallCodex(): Promise<AiStatus>;
   /** Plain-text report on devices, load, the song, and recent errors. */
   diagnosticReport(): Promise<string>;
   /** Records an error the UI showed, for the diagnostic report. */
@@ -333,8 +335,9 @@ export const tauriBackend: Backend = {
       const scale = window.devicePixelRatio || 1;
       callback(e.payload.paths, e.payload.position.x / scale, e.payload.position.y / scale);
     }),
-  claudeStatus: () => invoke("claude_status"),
-  claudeInstallDesktop: () => invoke("claude_install_desktop"),
+  aiStatus: () => invoke("ai_status"),
+  aiInstallClaudeDesktop: () => invoke("ai_install_claude_desktop"),
+  aiInstallCodex: () => invoke("ai_install_codex"),
   diagnosticReport: () => invoke("diagnostic_report"),
   logError: (message) => invoke("log_ui_error", { message }),
   onProjectChanged: async (callback) => listen<string>("project-changed", (e) => callback(e.payload)),

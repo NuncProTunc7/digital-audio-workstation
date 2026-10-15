@@ -1570,29 +1570,29 @@ button.tiny.power.on {
 
 /* ---- Phase 3: Claude ---- */
 
-.claude-button {
+.ai-button {
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
-.claude-dot {
+.ai-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
   background: var(--muted);
 }
 
-.claude-dot.ok {
+.ai-dot.ok {
   background: var(--accent-2);
 }
 
-.claude-dot.active {
+.ai-dot.active {
   background: var(--accent);
   animation: pulse 1s infinite;
 }
 
-.claude-panel {
+.ai-panel {
   position: fixed;
   right: 12px;
   bottom: 40px;
@@ -1650,37 +1650,37 @@ button.tiny.power.on {
   }
 }
 
-.claude-panel-header {
+.ai-panel-header {
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
-.claude-panel h3 {
+.ai-panel h3 {
   margin: 14px 0 4px;
   font-size: 13px;
   color: var(--accent);
 }
 
-.claude-panel p {
+.ai-panel p {
   margin: 4px 0;
 }
 
-.claude-state.ok {
+.ai-state.ok {
   color: var(--accent-2);
 }
 
-.claude-state.off {
+.ai-state.off {
   color: var(--danger);
 }
 
-.claude-command {
+.ai-command {
   display: flex;
   gap: 6px;
   align-items: center;
 }
 
-.claude-command code {
+.ai-command code {
   flex: 1;
   min-width: 0;
   overflow-x: auto;
@@ -1691,18 +1691,51 @@ button.tiny.power.on {
   font-size: 12px;
 }
 
-.claude-examples,
-.claude-activity {
+.ai-command.block {
+  align-items: flex-start;
+}
+
+.ai-command pre {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow-x: auto;
+  padding: 6px 8px;
+  background: var(--bg);
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.ai-app {
+  margin: 8px 0 4px;
+}
+
+.ai-app select {
+  flex: 1;
+  min-width: 0;
+}
+
+.ai-who {
+  margin-right: 6px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--accent-2);
+  font-size: 11px;
+}
+
+.ai-examples,
+.ai-activity {
   margin: 4px 0;
   padding-left: 18px;
 }
 
-.claude-activity {
+.ai-activity {
   list-style: none;
   padding-left: 0;
 }
 
-.claude-activity li {
+.ai-activity li {
   display: flex;
   justify-content: space-between;
   gap: 8px;

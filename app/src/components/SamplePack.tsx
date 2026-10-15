@@ -41,7 +41,7 @@ function Library({
       .catch(() => {});
   }, [library]);
   useEffect(refresh, [refresh]);
-  // Watch downloads (Claude may have started one too).
+  // Watch downloads (the AI may have started one too).
   const busy = packs?.some((p) => p.job && p.job.state !== "failed") ?? false;
   useEffect(() => {
     if (!busy) return;

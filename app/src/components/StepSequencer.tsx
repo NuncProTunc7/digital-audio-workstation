@@ -57,7 +57,7 @@ type Paint = { mode: "add" | "erase"; cells: Map<string, Cell> };
  * Drum grid: one row per drum, one column per step. Click or drag to add
  * or clear hits (a drag is one undo step); right-click a step for
  * velocity, rolls, and chance. Edits are ordinary note Commands, so the
- * piano roll, Claude, and undo all see the same notes.
+ * piano roll, the AI, and undo all see the same notes.
  */
 export default function StepSequencer(props: StepSequencerProps) {
   const { clip } = props;
