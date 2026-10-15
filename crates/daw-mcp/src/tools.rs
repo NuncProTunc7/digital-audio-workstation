@@ -1,5 +1,5 @@
-//! The tool list Claude sees. Project-editing tools are generated from the
-//! `Command` JSON Schema, so the UI and Claude can never drift apart; a few
+//! The tool list the AI sees. Project-editing tools are generated from the
+//! `Command` JSON Schema, so the UI and the AI can never drift apart; a few
 //! more tools cover reading the song, the transport, files, and analysis.
 
 use serde_json::{Map, Value, json};
@@ -486,7 +486,7 @@ fn extra_tools() -> Vec<ToolDef> {
         ),
         tool(
             READ_GUIDE,
-            "Read the Nunc Pro Tune user guide. Pages: README (contents), lessons (a course to teach the user), basics, writing-music, audio, mixing, sheet-music, godot, claude, composing (Claude's playbook: workflow, game-music recipes, mix targets), troubleshooting. Works without the app running.",
+            "Read the Nunc Pro Tune user guide. Pages: README (contents), lessons (a course to teach the user), basics, writing-music, audio, mixing, sheet-music, godot, ai (connecting AI apps, working with the user), composing (the AI's playbook: workflow, game-music recipes, mix targets), troubleshooting. Works without the app running.",
             object_schema(
                 json!({ "page": { "type": "string", "description": "Page name, e.g. \"composing\". Omit for the contents." } }),
                 &[],
@@ -503,6 +503,48 @@ fn extra_tools() -> Vec<ToolDef> {
 }
 
 /// Every tool, commands first.
+/// The tools offered with `--core`: enough to write, shape, hear, and save
+/// a song, for small local models that lose their way in a long list.
+pub const CORE_TOOLS: &[&str] = &[
+    "read_guide",
+    "get_song",
+    "get_track",
+    "get_clip",
+    "describe_instruments",
+    "batch",
+    "add_track",
+    "remove_track",
+    "rename_track",
+    "load_preset",
+    "set_instrument_param",
+    "create_clip",
+    "add_notes",
+    "edit_notes",
+    "remove_notes",
+    "delete_clip",
+    "duplicate_clip",
+    "set_tempo",
+    "set_key",
+    "set_track_mixer",
+    "add_effect",
+    "set_effect_param",
+    "play",
+    "stop",
+    "undo",
+    "redo",
+    "analyze_mix",
+    "save_project",
+    "export_wav",
+];
+
+/// The core tools only (see [`CORE_TOOLS`]).
+pub fn core_tools() -> Vec<ToolDef> {
+    all_tools()
+        .into_iter()
+        .filter(|t| CORE_TOOLS.contains(&t.name.as_str()))
+        .collect()
+}
+
 pub fn all_tools() -> Vec<ToolDef> {
     let mut tools = command_tools();
     tools.extend(extra_tools());
@@ -685,6 +727,15 @@ fn godot_options_properties() -> Value {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn every_core_tool_exists() {
+        let names: Vec<String> = all_tools().into_iter().map(|t| t.name).collect();
+        for core in CORE_TOOLS {
+            assert!(names.iter().any(|n| n == core), "no tool {core}");
+        }
+        assert_eq!(core_tools().len(), CORE_TOOLS.len());
+    }
+
     use super::*;
 
     #[test]

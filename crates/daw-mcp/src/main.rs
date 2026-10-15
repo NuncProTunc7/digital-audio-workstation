@@ -1,8 +1,11 @@
-//! `npt-mcp`: the MCP server Claude Desktop and Claude Code launch.
+//! `npt-mcp`: the MCP server AI apps launch (Claude Desktop, Claude Code,
+//! Codex, LM Studio, goose, or any other MCP client).
 //!
 //! It speaks MCP over stdin/stdout and forwards each tool call to the
-//! running Nunc Pro Tune app over its local control channel. It holds no
-//! state of its own, so the app can be restarted at any time.
+//! running Nunc Pro Tune app over its local control channel, naming the AI
+//! that asked. It holds no state of its own, so the app can be restarted at
+//! any time. `--core` offers a short tool list and text-only results, for
+//! small local models.
 
 mod guide;
 mod tools;
@@ -72,18 +75,30 @@ calibrate_recording (explain the clapping first) or set recording_delay.
 #[derive(Clone)]
 struct Bridge {
     tools: Arc<Vec<tools::ToolDef>>,
+    /// Text-only results (no spectrogram images) for small local models.
+    core: bool,
 }
 
 impl Bridge {
-    fn new() -> Self {
+    fn new(core: bool) -> Self {
         Self {
-            tools: Arc::new(tools::all_tools()),
+            tools: Arc::new(if core {
+                tools::core_tools()
+            } else {
+                tools::all_tools()
+            }),
+            core,
         }
     }
 
     /// Runs one tool call against the app. Never fails at the MCP level:
     /// problems come back as readable tool errors Claude can act on.
-    fn call_blocking(name: &str, args: serde_json::Map<String, Value>) -> CallToolResult {
+    fn call_blocking(
+        name: &str,
+        args: serde_json::Map<String, Value>,
+        ai: Option<&str>,
+        core: bool,
+    ) -> CallToolResult {
         // The guide is built in, so it works even when the app isn't running.
         if name == tools::READ_GUIDE {
             let page = args.get("page").and_then(Value::as_str);
@@ -97,16 +112,18 @@ impl Bridge {
             Err(e) => return CallToolResult::error(vec![ContentBlock::text(e)]),
         };
         // Discover on every call so restarting the app just works.
-        match ControlClient::call_discovered(&request) {
+        match ControlClient::call_discovered(&request, ai) {
             Err(e) => CallToolResult::error(vec![ContentBlock::text(e.to_string())]),
             Ok(Err(app_error)) => CallToolResult::error(vec![ContentBlock::text(app_error)]),
             Ok(Ok(mut value)) => {
                 let mut content = Vec::new();
-                // Spectrograms go back as images Claude can look at.
+                // Spectrograms go back as images the AI can look at
+                // (text-only models get the numbers alone).
                 if let Some(png) = value
                     .as_object_mut()
                     .and_then(|o| o.remove("spectrogram_png_base64"))
                     .and_then(|v| v.as_str().map(str::to_owned))
+                    .filter(|_| !core)
                 {
                     content.push(ContentBlock::image(png, "image/png"));
                 }
@@ -151,13 +168,24 @@ impl ServerHandler for Bridge {
     async fn call_tool(
         &self,
         request: CallToolRequestParams,
-        _context: RequestContext<RoleServer>,
+        context: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, ErrorData> {
         let name = request.name.to_string();
         let args = request.arguments.unwrap_or_default();
-        let result = tokio::task::spawn_blocking(move || Bridge::call_blocking(&name, args))
-            .await
-            .unwrap_or_else(|e| CallToolResult::error(vec![ContentBlock::text(e.to_string())]));
+        // The name the AI app gave when it connected, for the app's
+        // activity list ("Codex: set tempo").
+        let ai = context.peer.peer_info().map(|info| {
+            daw_control::ai::friendly_name(
+                &info.client_info.name,
+                info.client_info.title.as_deref(),
+            )
+        });
+        let core = self.core;
+        let result = tokio::task::spawn_blocking(move || {
+            Bridge::call_blocking(&name, args, ai.as_deref(), core)
+        })
+        .await
+        .unwrap_or_else(|e| CallToolResult::error(vec![ContentBlock::text(e.to_string())]));
         Ok(result.into())
     }
 }
@@ -168,7 +196,8 @@ async fn main() {
         println!("npt-mcp {}", env!("CARGO_PKG_VERSION"));
         return;
     }
-    let service = match Bridge::new().serve(rmcp::transport::stdio()).await {
+    let core = std::env::args().any(|a| a == daw_control::ai_setup::CORE_FLAG);
+    let service = match Bridge::new(core).serve(rmcp::transport::stdio()).await {
         Ok(s) => s,
         Err(e) => {
             eprintln!("npt-mcp: could not start: {e}");

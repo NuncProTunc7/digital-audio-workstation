@@ -18,7 +18,7 @@ pub trait Host: Send + Sync {
     /// The engine playing to the sound card, if audio is running.
     fn engine(&self) -> Option<Arc<Engine>>;
     /// Called after the project changed (by an edit, undo, open, ...), with a
-    /// short description such as "Claude: create clip". The app refreshes its
+    /// short description such as "Codex: create clip". The app refreshes its
     /// screens here.
     fn project_changed(&self, description: &str);
     fn project_path(&self) -> Option<PathBuf>;
@@ -38,11 +38,11 @@ pub trait Host: Send + Sync {
     fn metronome_on(&self) -> bool {
         false
     }
-    /// Records that Claude is changing the song and returns when it last
-    /// did in this run (`Some(None)`: not yet). Claude's first change after
-    /// a quiet spell saves a "Before Claude's changes" version first. Hosts
+    /// Records that an AI is changing the song and returns when one last
+    /// did in this run (`Some(None)`: not yet). The first AI change after
+    /// a quiet spell saves a "Before Codex's changes" version first. Hosts
     /// that return None never save versions automatically.
-    fn note_claude_edit(&self) -> Option<Option<std::time::Instant>> {
+    fn note_ai_edit(&self) -> Option<Option<std::time::Instant>> {
         None
     }
     /// Devices, load, and what happened recently, for
@@ -122,8 +122,8 @@ pub struct CalibrationResult {
 }
 
 /// A short label for the app's activity list, e.g. "Claude: set tempo" or
-/// "Claude: 4 changes (set tempo, create clip)".
-fn describe(command: &Command) -> String {
+/// "Codex: 4 changes (set tempo, create clip)".
+fn describe(command: &Command, ai: &str) -> String {
     let words = |c: &Command| c.name().replace('_', " ");
     match command {
         Command::Batch { commands } => {
@@ -137,24 +137,31 @@ fn describe(command: &Command) -> String {
             let more = if names.len() > 3 { ", ..." } else { "" };
             names.truncate(3);
             format!(
-                "Claude: {} changes ({}{more})",
+                "{ai}: {} changes ({}{more})",
                 commands.len(),
                 names.join(", ")
             )
         }
-        c => format!("Claude: {}", words(c)),
+        c => format!("{ai}: {}", words(c)),
     }
 }
 
-/// Handles one request. Errors come back as messages written for Claude.
+/// Handles one request from an unnamed AI (see [`handle_from`]).
 pub fn handle<H: Host>(host: &H, request: Request) -> Response {
+    handle_from(host, request, crate::ai::UNKNOWN_AI)
+}
+
+/// Handles one request from the AI called `ai` (as the bridge reported it;
+/// it labels the app's activity list and safety versions). Errors come
+/// back as messages written for the AI.
+pub fn handle_from<H: Host>(host: &H, request: Request, ai: &str) -> Response {
     let method = serde_json::to_value(&request)
         .ok()
         .and_then(|v| v.get("method").and_then(Value::as_str).map(str::to_owned))
         .unwrap_or_default();
-    let result = handle_inner(host, request);
+    let result = handle_inner(host, request, ai);
     if let Err(e) = &result {
-        crate::diagnostics::log_error(&format!("Claude's {method} failed: {e}"));
+        crate::diagnostics::log_error(&format!("{ai}'s {method} failed: {e}"));
     }
     result.into()
 }
@@ -278,16 +285,16 @@ pub fn diagnostic_report<H: Host>(host: &H) -> Result<String, String> {
     Ok(crate::diagnostics::report(&info, session.project()))
 }
 
-fn handle_inner<H: Host>(host: &H, request: Request) -> Result<Value, String> {
+fn handle_inner<H: Host>(host: &H, request: Request, ai: &str) -> Result<Value, String> {
     match request {
         Request::Ping => {
             Ok(json!({ "app": "Nunc Pro Tune", "version": env!("CARGO_PKG_VERSION") }))
         }
         Request::Execute { command } => {
             let name = command.name();
-            let description = describe(&command);
+            let description = describe(&command, ai);
             let mut session = host.session()?;
-            let command = with_safety_version(host, session.project(), command);
+            let command = with_safety_version(host, session.project(), command, ai);
             session.execute(command).map_err(|e| e.to_string())?;
             // Each remote edit is its own undo step.
             session.end_gesture();
@@ -305,7 +312,7 @@ fn handle_inner<H: Host>(host: &H, request: Request) -> Result<Value, String> {
             let summary = song_summary(session.project());
             drop(session);
             if done {
-                host.project_changed(if undo { "Claude: undo" } else { "Claude: redo" });
+                host.project_changed(&format!("{ai}: {}", if undo { "undo" } else { "redo" }));
             }
             Ok(json!({ "changed": done, "song": summary }))
         }
@@ -359,7 +366,7 @@ fn handle_inner<H: Host>(host: &H, request: Request) -> Result<Value, String> {
         Request::DiagnosticReport => Ok(json!({ "report": diagnostic_report(host)? })),
         Request::FreezeTrack { track_id } => {
             freeze_track(host, track_id)?;
-            host.project_changed("Claude froze a track");
+            host.project_changed(&format!("{ai} froze a track"));
             Ok(json!({ "frozen": track_id }))
         }
         Request::InspectExport(options) => {
@@ -367,7 +374,7 @@ fn handle_inner<H: Host>(host: &H, request: Request) -> Result<Value, String> {
         }
         Request::SavePreset { track_id, name } => {
             let list = save_user_preset(host, track_id, &name)?;
-            host.project_changed(&format!("Claude saved preset {}", name.trim()));
+            host.project_changed(&format!("{ai} saved preset {}", name.trim()));
             Ok(json!({ "saved": name.trim(), "presets": list }))
         }
         Request::UserPresets => {
@@ -375,7 +382,7 @@ fn handle_inner<H: Host>(host: &H, request: Request) -> Result<Value, String> {
         }
         Request::LoadUserPreset { track_id, name } => {
             load_user_preset(host, track_id, &name)?;
-            host.project_changed(&format!("Claude: load preset {name}"));
+            host.project_changed(&format!("{ai}: load preset {name}"));
             Ok(json!({ "track_id": track_id, "preset": name }))
         }
         Request::Plugins { rescan } => {
@@ -444,7 +451,7 @@ fn handle_inner<H: Host>(host: &H, request: Request) -> Result<Value, String> {
         }
         Request::SetCountIn { bars } => {
             let bars = host.set_count_in_bars(bars)?;
-            host.project_changed("Claude set the count-in");
+            host.project_changed(&format!("{ai} set the count-in"));
             Ok(json!({ "count_in_bars": bars }))
         }
         Request::Status => {
@@ -458,7 +465,7 @@ fn handle_inner<H: Host>(host: &H, request: Request) -> Result<Value, String> {
         }
         Request::Save { path } => {
             let saved = save_project(host, path.as_deref().map(Path::new))?;
-            host.project_changed("Claude saved the project");
+            host.project_changed(&format!("{ai} saved the project"));
             Ok(json!({
                 "saved_to": saved.path.display().to_string(),
                 "missing_audio": saved.missing_audio,
@@ -466,12 +473,12 @@ fn handle_inner<H: Host>(host: &H, request: Request) -> Result<Value, String> {
         }
         Request::Open { path } => {
             open_project(host, Path::new(&path))?;
-            host.project_changed("Claude opened a project");
+            host.project_changed(&format!("{ai} opened a project"));
             Ok(song_summary(host.session()?.project()))
         }
         Request::New => {
             new_project(host)?;
-            host.project_changed("Claude started a new project");
+            host.project_changed(&format!("{ai} started a new project"));
             Ok(song_summary(host.session()?.project()))
         }
         Request::Analyze {
@@ -525,7 +532,7 @@ fn handle_inner<H: Host>(host: &H, request: Request) -> Result<Value, String> {
             start_beats,
         } => {
             let clip_id = import_audio(host, Path::new(&path), track_id, start_beats)?;
-            host.project_changed("Claude imported audio");
+            host.project_changed(&format!("{ai} imported audio"));
             let session = host.session()?;
             let project = session.project();
             let (track_id, clip) = project
@@ -539,7 +546,7 @@ fn handle_inner<H: Host>(host: &H, request: Request) -> Result<Value, String> {
         }
         Request::ImportMidi { path } => {
             let tracks = crate::notation::import_midi_file(host, Path::new(&path))?;
-            host.project_changed("Claude imported a MIDI file");
+            host.project_changed(&format!("{ai} imported a MIDI file"));
             Ok(json!({ "new_track_ids": tracks, "song": song_summary(host.session()?.project()) }))
         }
         Request::ExportMidi { path } => {
@@ -556,7 +563,7 @@ fn handle_inner<H: Host>(host: &H, request: Request) -> Result<Value, String> {
                 (None, Some(x)) => crate::notation::import_musicxml_text(host, &x)?,
                 (None, None) => return Err("give either a path or MusicXML text".into()),
             };
-            host.project_changed("Claude imported sheet music");
+            host.project_changed(&format!("{ai} imported sheet music"));
             Ok(json!({ "new_track_ids": tracks, "song": song_summary(host.session()?.project()) }))
         }
         Request::ExportMusicXml { path, track_ids } => match path {
@@ -573,14 +580,14 @@ fn handle_inner<H: Host>(host: &H, request: Request) -> Result<Value, String> {
         Request::StopRecording => {
             let clip_id = host.stop_audio_recording()?;
             if clip_id.is_some() {
-                host.project_changed("Claude recorded audio");
+                host.project_changed(&format!("{ai} recorded audio"));
             }
             Ok(json!({ "recording": false, "clip_id": clip_id }))
         }
     }
 }
 
-/// How a sampler's pack is doing, as JSON for the UI and Claude.
+/// How a sampler's pack is doing, as JSON for the UI and the AI.
 pub fn sample_pack_status(path: &Path) -> Value {
     use daw_sampler::PackStatus as S;
     match daw_sampler::pack_status(path) {
@@ -676,20 +683,23 @@ fn newest_clip(project: &Project, track_id: TrackId) -> Result<ClipId, String> {
         .ok_or_else(|| format!("there is no clip on track {track_id}"))
 }
 
-/// Claude's first edit after this long without one saves a version first.
-pub const CLAUDE_QUIET: std::time::Duration = std::time::Duration::from_secs(10 * 60);
-/// Name of the versions saved before Claude starts changing things.
-pub const BEFORE_CLAUDE: &str = "Before Claude's changes";
+/// An AI's first edit after this long without one saves a version first.
+pub const AI_QUIET: std::time::Duration = std::time::Duration::from_secs(10 * 60);
 
-/// Puts "save a version" in front of Claude's first edit after a quiet
+/// Puts "save a version" in front of an AI's first edit after a quiet
 /// spell, as one undo step, so the user can always get back to their own
 /// work. Only for songs with something in them, and never for edits that
 /// only touch versions.
-fn with_safety_version<H: Host>(host: &H, project: &Project, command: Command) -> Command {
-    let Some(previous) = host.note_claude_edit() else {
+fn with_safety_version<H: Host>(
+    host: &H,
+    project: &Project,
+    command: Command,
+    ai: &str,
+) -> Command {
+    let Some(previous) = host.note_ai_edit() else {
         return command;
     };
-    let quiet = previous.is_none_or(|t| t.elapsed() >= CLAUDE_QUIET);
+    let quiet = previous.is_none_or(|t| t.elapsed() >= AI_QUIET);
     let has_music = project.tracks.iter().any(|t| !t.clips.is_empty());
     let about_versions = matches!(
         command,
@@ -703,15 +713,16 @@ fn with_safety_version<H: Host>(host: &H, project: &Project, command: Command) -
     if !quiet || !has_music || about_versions || full {
         return command;
     }
+    let before = crate::ai::before_changes(ai);
     let taken = project
         .snapshots
         .iter()
-        .filter(|s| s.name.starts_with(BEFORE_CLAUDE))
+        .filter(|s| s.name.starts_with(&before))
         .count();
     let name = if taken == 0 {
-        BEFORE_CLAUDE.to_owned()
+        before
     } else {
-        format!("{BEFORE_CLAUDE} ({})", taken + 1)
+        format!("{before} ({})", taken + 1)
     };
     Command::Batch {
         commands: vec![Command::TakeSnapshot { name }, command],
@@ -1188,7 +1199,7 @@ pub(crate) mod tests {
         fn plugin_folders(&self) -> Vec<PathBuf> {
             vec![self.presets.with_file_name("VST3")]
         }
-        fn note_claude_edit(&self) -> Option<Option<std::time::Instant>> {
+        fn note_ai_edit(&self) -> Option<Option<std::time::Instant>> {
             if !self.keep_versions {
                 return None;
             }
@@ -1518,7 +1529,7 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn claudes_first_change_after_a_while_saves_a_version_first() {
+    fn an_ais_first_change_after_a_while_saves_a_version_named_after_it() {
         let host = TestHost {
             keep_versions: true,
             ..TestHost::default()
@@ -1535,6 +1546,15 @@ pub(crate) mod tests {
                 notes: Vec::new(),
             })
             .expect("clip");
+        let codex = |h: &TestHost, bpm: f64| {
+            handle_from(
+                h,
+                Request::Execute {
+                    command: Command::SetTempo { bpm },
+                },
+                "Codex",
+            )
+        };
         let snapshots = |h: &TestHost| {
             h.session
                 .lock()
@@ -1545,20 +1565,23 @@ pub(crate) mod tests {
                 .map(|s| (s.name.clone(), s.song.tempo_bpm))
                 .collect::<Vec<_>>()
         };
-        ok(execute(&host, Command::SetTempo { bpm: 90.0 }));
-        assert_eq!(snapshots(&host), [(BEFORE_CLAUDE.to_owned(), 120.0)]);
-        // Claude keeps working: no more versions.
-        ok(execute(&host, Command::SetTempo { bpm: 95.0 }));
+        ok(codex(&host, 90.0));
+        assert_eq!(
+            snapshots(&host),
+            [("Before Codex's changes".to_owned(), 120.0)]
+        );
+        // The AI keeps working: no more versions.
+        ok(codex(&host, 95.0));
         assert_eq!(snapshots(&host).len(), 1);
         // After a quiet spell, the next change saves another one.
         *host.last_claude.lock().expect("time") =
-            std::time::Instant::now().checked_sub(CLAUDE_QUIET + std::time::Duration::from_secs(1));
-        ok(execute(&host, Command::SetTempo { bpm: 100.0 }));
+            std::time::Instant::now().checked_sub(AI_QUIET + std::time::Duration::from_secs(1));
+        ok(codex(&host, 100.0));
         assert_eq!(
             snapshots(&host),
             [
-                (BEFORE_CLAUDE.to_owned(), 120.0),
-                (format!("{BEFORE_CLAUDE} (2)"), 95.0)
+                ("Before Codex's changes".to_owned(), 120.0),
+                ("Before Codex's changes (2)".to_owned(), 95.0)
             ]
         );
         // One undo takes back the change and its version together.
@@ -1617,7 +1640,7 @@ pub(crate) mod tests {
         let v = ok(execute(&host, Command::SetTempo { bpm: 140.0 }));
         assert_eq!(v["applied"], "set_tempo");
         assert_eq!(v["song"]["tempo_bpm"], 140.0);
-        assert_eq!(host.changes.lock().expect("lock")[0], "Claude: set tempo");
+        assert_eq!(host.changes.lock().expect("lock")[0], "AI: set tempo");
     }
 
     #[test]
@@ -1630,8 +1653,8 @@ pub(crate) mod tests {
             commands: vec![tempo(100.0), rename, tempo(110.0)],
         };
         assert_eq!(
-            describe(&batch),
-            "Claude: 3 changes (set tempo, rename project)"
+            describe(&batch, "Codex"),
+            "Codex: 3 changes (set tempo, rename project)"
         );
     }
 

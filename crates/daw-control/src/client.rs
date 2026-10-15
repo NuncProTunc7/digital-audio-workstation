@@ -31,6 +31,8 @@ pub enum ClientError {
 pub struct ControlClient {
     port: u16,
     token: String,
+    /// The AI this client speaks for, told to the app with each request.
+    ai: Option<String>,
 }
 
 impl ControlClient {
@@ -48,8 +50,9 @@ impl ControlClient {
     /// Finds the running app and sends it a request (see [`Self::call_via`]).
     pub fn call_discovered(
         request: &Request,
+        ai: Option<&str>,
     ) -> Result<Result<serde_json::Value, String>, ClientError> {
-        Self::call_via(&control_file_path(), request)
+        Self::call_via(&control_file_path(), request, ai)
     }
 
     /// Sends a request to the app named in the discovery file at `path`.
@@ -61,9 +64,10 @@ impl ControlClient {
     pub fn call_via(
         path: &Path,
         request: &Request,
+        ai: Option<&str>,
     ) -> Result<Result<serde_json::Value, String>, ClientError> {
         let seen = std::fs::read(path).ok();
-        let why = match Self::from_file(path)?.call(request) {
+        let why = match Self::from_file(path)?.speaking_for(ai).call(request) {
             Err(ClientError::NoListener(why)) => why,
             other => return other,
         };
@@ -73,13 +77,25 @@ impl ControlClient {
             let _ = std::fs::remove_file(path);
         }
         match std::fs::read(path).ok() {
-            Some(now) if Some(&now) != seen.as_ref() => Self::from_file(path)?.call(request),
+            Some(now) if Some(&now) != seen.as_ref() => {
+                Self::from_file(path)?.speaking_for(ai).call(request)
+            }
             _ => Err(ClientError::NoListener(why)),
         }
     }
 
     pub fn new(port: u16, token: String) -> Self {
-        Self { port, token }
+        Self {
+            port,
+            token,
+            ai: None,
+        }
+    }
+
+    /// Names the AI behind this client's requests (shown in the app).
+    pub fn speaking_for(mut self, ai: Option<&str>) -> Self {
+        self.ai = ai.map(crate::ai::clean);
+        self
     }
 
     /// Sends a request and returns its result, or the app's error message.
@@ -95,8 +111,13 @@ impl ControlClient {
         stream
             .set_read_timeout(Some(READ_TIMEOUT))
             .map_err(|e| ClientError::Unreachable(e.to_string()))?;
+        let ai = self
+            .ai
+            .as_deref()
+            .map(|a| format!("{}: {a}\r\n", crate::ai::AI_HEADER))
+            .unwrap_or_default();
         let head = format!(
-            "POST /rpc HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            "POST /rpc HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer {}\r\n{ai}Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
             self.token,
             body.len()
         );
@@ -169,12 +190,12 @@ mod tests {
         }
         .write(&path)
         .expect("write");
-        let err = ControlClient::call_via(&path, &Request::Ping).expect_err("stale");
+        let err = ControlClient::call_via(&path, &Request::Ping, None).expect_err("stale");
         assert!(matches!(err, ClientError::NoListener(_)), "{err}");
         assert!(err.to_string().contains("isn't running"));
         assert!(!path.exists(), "the stale file is gone");
         // With no file at all, the usual "not running" message.
-        let err = ControlClient::call_via(&path, &Request::Ping).expect_err("none");
+        let err = ControlClient::call_via(&path, &Request::Ping, None).expect_err("none");
         assert!(matches!(err, ClientError::NotRunning(_)));
     }
 

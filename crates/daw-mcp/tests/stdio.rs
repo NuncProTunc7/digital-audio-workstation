@@ -1,4 +1,4 @@
-//! Runs the real `npt-mcp` binary the way Claude does (JSON-RPC over
+//! Runs the real `npt-mcp` binary the way an AI app does (JSON-RPC over
 //! stdin/stdout) against a control server backed by an in-memory project.
 
 use std::io::{BufRead, BufReader, Write};
@@ -17,6 +17,8 @@ use serde_json::{Value, json};
 struct MemoryHost {
     session: Mutex<Session>,
     path: Mutex<Option<PathBuf>>,
+    /// What the app's activity list would show.
+    changes: Mutex<Vec<String>>,
 }
 
 impl Host for MemoryHost {
@@ -26,7 +28,11 @@ impl Host for MemoryHost {
     fn engine(&self) -> Option<Arc<Engine>> {
         None
     }
-    fn project_changed(&self, _description: &str) {}
+    fn project_changed(&self, description: &str) {
+        if let Ok(mut c) = self.changes.lock() {
+            c.push(description.to_owned());
+        }
+    }
     fn project_path(&self) -> Option<PathBuf> {
         self.path.lock().ok().and_then(|p| p.clone())
     }
@@ -77,7 +83,7 @@ impl Mcp {
             json!({
                 "protocolVersion": "2025-06-18",
                 "capabilities": {},
-                "clientInfo": { "name": "test", "version": "1.0" }
+                "clientInfo": { "name": "codex-mcp-client", "version": "1.0" }
             }),
         );
         assert_eq!(
@@ -141,8 +147,8 @@ fn claude_can_list_tools_edit_the_song_and_analyze_it() {
     let control_file = dir.join("control.json");
     let host = Arc::new(MemoryHost::default());
     let server_host = Arc::clone(&host);
-    let server = ControlServer::start(&control_file, move |req| {
-        daw_control::handle(&*server_host, req)
+    let server = ControlServer::start(&control_file, move |req, ai| {
+        daw_control::handle_from(&*server_host, req, ai)
     })
     .expect("server");
 
@@ -170,6 +176,15 @@ fn claude_can_list_tools_edit_the_song_and_analyze_it() {
     assert_eq!(
         host.session.lock().expect("lock").project().tempo_bpm,
         133.0
+    );
+    // The app is told which AI made the change.
+    assert_eq!(
+        host.changes
+            .lock()
+            .expect("lock")
+            .last()
+            .map(String::as_str),
+        Some("Codex: set tempo")
     );
 
     let r = mcp.call(

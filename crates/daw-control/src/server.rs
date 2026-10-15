@@ -20,9 +20,11 @@ pub struct ControlServer {
 
 impl ControlServer {
     /// Starts on a free port and writes the discovery file at `file_path`.
+    /// `handler` gets each request and the name of the AI that sent it
+    /// ([`crate::ai::UNKNOWN_AI`] if it didn't say).
     pub fn start<F>(file_path: &Path, handler: F) -> std::io::Result<ControlServer>
     where
-        F: Fn(Request) -> Response + Send + Sync + 'static,
+        F: Fn(Request, &str) -> Response + Send + Sync + 'static,
     {
         let server = tiny_http::Server::http("127.0.0.1:0").map_err(std::io::Error::other)?;
         let port = server
@@ -98,7 +100,11 @@ fn respond(request: tiny_http::Request, status: u16, body: &Response) {
     );
 }
 
-fn serve<F: Fn(Request) -> Response>(mut request: tiny_http::Request, token: &str, handler: &F) {
+fn serve<F: Fn(Request, &str) -> Response>(
+    mut request: tiny_http::Request,
+    token: &str,
+    handler: &F,
+) {
     if request.method() != &tiny_http::Method::Post || request.url() != "/rpc" {
         return respond(request, 404, &Response::error("not found"));
     }
@@ -121,7 +127,15 @@ fn serve<F: Fn(Request) -> Response>(mut request: tiny_http::Request, token: &st
     }
     match serde_json::from_str::<Request>(&body) {
         Ok(parsed) => {
-            let reply = handler(parsed);
+            let ai = request
+                .headers()
+                .iter()
+                .find(|h| h.field.equiv(crate::ai::AI_HEADER))
+                .map_or_else(
+                    || crate::ai::UNKNOWN_AI.to_owned(),
+                    |h| crate::ai::clean(h.value.as_str()),
+                );
+            let reply = handler(parsed, &ai);
             respond(request, 200, &reply);
         }
         Err(e) => respond(request, 400, &Response::error(format!("bad request: {e}"))),
