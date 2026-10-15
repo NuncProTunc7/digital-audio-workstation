@@ -54,7 +54,7 @@ The strip under the bar numbers holds **section markers**: named points where a 
 - **Double-click** an empty spot on an instrument track to add a clip. Double-click a clip to open it in the piano roll.
 - Drag a clip to move it; drag its right edge to change its length, or its left edge to trim the start (the end stays put). Trimming the start removes notes before the new start once you let go; **Ctrl+Z** brings them back. Clips snap to beats (zoomed in) or bars (zoomed out). Use the zoom buttons to change.
 - **Ctrl+D** duplicates the selected clip right after itself: the fastest way to repeat a pattern.
-- **Ctrl+Shift+D** makes a *linked* copy (🔗 in its name): change the notes in any linked copy and all of them change. Use it for a melody or beat that comes back in several sections, so a fix in one is a fix everywhere. **Unlink** (in the piano roll) makes a copy independent; splitting or trimming a linked clip unlinks it too.
+- **Ctrl+Shift+D** (or the piano roll's **Linked copy** button; **Duplicate** beside it makes an ordinary copy) makes a *linked* copy (🔗 in its name): change the notes in any linked copy and all of them change. Use it for a melody or beat that comes back in several sections, so a fix in one is a fix everywhere. **Unlink** (in the piano roll) makes a copy independent; splitting or trimming a linked clip unlinks it too.
 
 ## Quiet, normal and boss versions of one theme
 

@@ -290,6 +290,26 @@ export default function PianoRoll(props: PianoRollProps) {
           />
           <span className="param-value">{selectedNotes.length > 0 ? velocity : "–"}</span>
         </label>
+        <div className="button-group" role="group" aria-label="Copy clip">
+          {[false, true].map((linked) => (
+            <button
+              key={String(linked)}
+              className="small"
+              onClick={() =>
+                void props
+                  .onCommand({ command: "duplicate_clip", clip_id: clip.id, start_beats: null, linked })
+                  .then(props.onEndGesture)
+              }
+              title={
+                linked
+                  ? "Put a linked copy right after this clip: editing either one changes both (Ctrl+Shift+D)"
+                  : "Put an independent copy right after this clip (Ctrl+D)"
+              }
+            >
+              {linked ? "Linked copy" : "Duplicate"}
+            </button>
+          ))}
+        </div>
         {clip.link && (
           <span className="linked-note" title="Editing these notes changes every linked copy too">
             🔗 Linked

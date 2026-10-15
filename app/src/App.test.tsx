@@ -912,6 +912,30 @@ describe("Quantize", () => {
 });
 
 describe("Linked clips", () => {
+  it("makes a linked copy from the piano roll's button", async () => {
+    const backend = createPreviewBackend();
+    await backend.execute({
+      command: "create_clip",
+      track_id: 1,
+      start_beats: 0,
+      length_beats: 4,
+      name: "Theme",
+      notes: [{ pitch: 60, start_beats: 0, length_beats: 1, velocity: 100 }],
+    });
+    await renderApp(backend);
+    fireEvent.pointerDown(screen.getByTitle(/^Theme/), { button: 0, clientX: 5 });
+    fireEvent.pointerUp(document.querySelector(".timeline") as HTMLElement);
+    fireEvent.click(screen.getByRole("tab", { name: /Piano roll/ }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Linked copy" }));
+    });
+    const clips = (await backend.getProject()).project.tracks[0].clips;
+    expect(clips.length).toBe(2);
+    expect(clips[1].start_beats).toBe(4);
+    expect(clips[1].link).toBe(clips[0].link);
+    expect(clips[0].link).toBeTruthy();
+  });
+
   it("duplicates a clip linked, edits both at once, and unlinks", async () => {
     const backend = createPreviewBackend();
     await backend.execute({
