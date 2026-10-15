@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { Catalog, LibraryPack, PluginList, PluginParam, PluginStatus, SamplePackStatus, Track, UserPreset } from "../types";
+import { noteName } from "../keymap";
 import DrumPads from "./DrumPads";
 import ParamControl from "./ParamControl";
 import PluginChooser from "./PluginChooser";
@@ -34,6 +35,30 @@ interface InstrumentPanelProps {
     onOpenWindow: () => void;
     onParam: (id: number, value: number) => void;
   };
+}
+
+const KIND_LABELS: Partial<Record<Track["instrument"]["kind"], string>> = {
+  drums: "Drum machine",
+  sampler: "Sampler",
+  guitar: "Guitar",
+};
+
+/** The guitar's open strings for its tuning and capo, and the notes it can play. */
+function GuitarStrings({ track, catalog }: { track: Track; catalog: Catalog }) {
+  const tunings = catalog.guitar_tunings ?? [];
+  const tuning = tunings[track.instrument.params["string.tuning"] ?? 0] ?? tunings[0];
+  if (!tuning) return null;
+  const capo = track.instrument.params["string.capo"] ?? 0;
+  const strings = tuning.strings.map((n) => n + capo);
+  const lowest = strings[0];
+  const highest = strings[strings.length - 1] + (catalog.guitar_frets ?? 22);
+  return (
+    <p className="guitar-strings" aria-label="Guitar strings">
+      Strings, low to high: <strong>{strings.map(noteName).join(" ")}</strong>
+      {capo > 0 && ` (capo on fret ${capo})`} · plays {noteName(lowest)} to {noteName(highest)}. Each note goes to the
+      highest string that can reach it, so chords ring like on a real guitar.
+    </p>
+  );
 }
 
 /** Preset picker plus every parameter of the selected track's instrument. */
@@ -107,7 +132,7 @@ export default function InstrumentPanel({
       <header className="instrument-header">
         <h2>{track.name}</h2>
         <span className="instrument-kind">
-          {track.instrument.kind === "drums" ? "Drum machine" : track.instrument.kind === "sampler" ? "Sampler" : "Synth"}
+          {KIND_LABELS[track.instrument.kind] ?? "Synth"}
         </span>
         <label className="field">
           <span>Preset</span>
@@ -195,6 +220,7 @@ export default function InstrumentPanel({
           <DrumPads pads={catalog.drum_pads} activeNotes={activeNotes} onHit={onPadHit} onRelease={onPadRelease} />
         )}
         <div className="param-groups">
+          {track.instrument.kind === "guitar" && <GuitarStrings track={track} catalog={catalog} />}
           {track.instrument.kind === "sampler" && (
             <SamplePack
               track={track}

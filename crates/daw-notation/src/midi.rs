@@ -19,7 +19,15 @@ const DRUM_CHANNEL: u8 = 9;
 /// sounds sensible in other apps.
 fn gm_program(preset: &str) -> u8 {
     let p = preset.to_ascii_lowercase();
-    if p.contains("bass") {
+    if p.contains("nylon") {
+        24 // Acoustic Guitar (nylon)
+    } else if p.contains("acoustic") {
+        25 // Acoustic Guitar (steel)
+    } else if p.contains("electric") {
+        27 // Electric Guitar (clean)
+    } else if p.contains("palm muted") {
+        28 // Electric Guitar (muted)
+    } else if p.contains("bass") {
         38 // Synth Bass 1
     } else if p.contains("square") || p.contains("chip") {
         80 // Lead 1 (square)
@@ -36,15 +44,19 @@ fn gm_program(preset: &str) -> u8 {
     }
 }
 
-/// Our synth preset closest to a General MIDI program.
+/// Our synth or guitar preset closest to a General MIDI program.
 pub(crate) fn preset_for_program(program: u8) -> &'static str {
     match program {
+        24 => "Nylon Guitar",
+        25 => "Acoustic Guitar",
+        26 | 27 | 29..=31 => "Clean Electric",
+        28 => "Palm Muted",
         32..=39 => "Fat Bass",
         80 => "Chip Square",
         81..=87 => "Bright Lead",
         88..=95 | 48..=55 => "Soft Pad",
         56..=63 => "Brass Stab",
-        24..=31 | 45..=47 => "Pluck",
+        45..=47 => "Pluck",
         _ => "Warm Keys",
     }
 }
@@ -381,6 +393,22 @@ mod tests {
         .apply(&mut p)
         .expect("drums");
         p
+    }
+
+    #[test]
+    fn guitar_sounds_map_to_general_midi_guitars_and_back() {
+        for preset in daw_model::instrument::GUITAR_PRESETS {
+            let program = gm_program(preset.name);
+            assert!((24..=31).contains(&program), "{}", preset.name);
+            let back = preset_for_program(program);
+            assert!(
+                daw_model::instrument::GUITAR_PRESETS
+                    .iter()
+                    .any(|g| g.name == back),
+                "{} came back as {back}",
+                preset.name
+            );
+        }
     }
 
     #[test]

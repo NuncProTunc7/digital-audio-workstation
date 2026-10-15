@@ -5,6 +5,7 @@
 - Add a track with the buttons under the track list:
   - **+ Synth track**: keys, pads, leads, basses, chiptune.
   - **+ Drum track**: beats.
+  - **+ Guitar track**: a six-string guitar with a choice of tunings (see [Guitar](#guitar) below).
   - **+ Sampler track**: a sample pack, i.e. a real recorded piano, bass, strings...
   - **+ Audio track**: recordings (see [audio](audio.md)).
 - Select a track, then open the **Instrument** tab to change its sound. Pick a **Preset** first, then adjust knobs. To set an exact value, double-click the number at the right of a slider, type it and press **Enter** (units are optional: `2.5k` or `2500 Hz`, `120 ms`, `35%`). A value outside the slider's range turns the box red and says what's allowed; **Esc** cancels.
@@ -19,10 +20,23 @@
 |---|---|---|
 | Synth | Warm Keys, Soft Pad, Bright Lead, Pluck, Chip Square, Brass Stab, Sub Bass, Fat Bass, Acid Bass, Pluck Bass, Wobble Bass, Chip Bass, Brass Bass (Init = blank) | Chords, leads, pads, basses, chiptune |
 | Drums | Classic Kit, Tight Kit, Boomy Kit | Beats: 16 pads (kick, snare, hats, toms, crash, ride...) |
+| Guitar | Acoustic Guitar, Strummed Acoustic, Nylon Guitar, Clean Electric, Palm Muted | Strummed chords, picked melodies, rhythm parts, in any of 10 tunings |
 | Sampler | Free instruments (pianos, cello, double bass, flute, tuba) or any SFZ pack | Realistic piano, strings, brass, woodwinds |
 | Plugin | A VST3 instrument you installed (see [Plugins](plugins.md)) | Whatever it does: orchestras, synths, pianos |
 
 Synth knobs, in plain terms: **Wave** is the basic tone (Sine soft, Saw bright and buzzy, Square hollow and 8-bit, Triangle mellow). **Cutoff** is brightness. **Resonance** adds a whistle at the cutoff. **Attack** is how slowly a note fades in. **Release** is how long it rings after you let go. **LFO** makes things wobble.
+
+### Guitar
+
+**+ Guitar track** adds a six-string guitar. Its panel has:
+
+- **Tuning**: Standard (E A D G B E), Drop D, Half step down, Whole step down, Drop C, DADGAD, Open G, Open D, Open E and Open C. The line above the settings shows the open strings, low to high, and the lowest and highest note the guitar can play.
+- **Capo**: clamps the strings at a fret, raising every string (Fret 2 makes Standard sound a whole step higher).
+- **Tone** (dark to bright), **Sustain** (how long a note rings), **Pick position** (near the bridge is thin and twangy, further out is round), **Palm mute** (short, chunky notes), **Strum** (how long a chord takes to strum from the low string up; 0 plays all strings at once), **Body** (the wooden boom of an acoustic).
+
+Each note you play goes to the highest string that can reach it, like a guitarist would. A chord shape gets one note per string, and playing a new note on a string that is still ringing cuts the old one, as on a real guitar. That is why the tuning matters: in Drop D or an open tuning the low notes are real open strings and chords ring together differently. Changing the preset keeps your tuning and capo.
+
+Notes below the lowest string still play (on the lowest string), but a real guitarist couldn't play them, so keep parts within the range shown.
 
 ### Sampler (real instruments)
 

@@ -1071,6 +1071,35 @@ describe("Track freeze", () => {
   });
 });
 
+describe("Guitar", () => {
+  it("adds a guitar, retunes it, and keeps the tuning when its sound changes", async () => {
+    const backend = await renderApp();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "+ Guitar track" }));
+    });
+    const guitar = (await backend.getProject()).project.tracks[3];
+    expect(guitar.instrument.kind).toBe("guitar");
+    expect(guitar.instrument.preset).toBe("Acoustic Guitar");
+    fireEvent.click(trackHeader("Guitar"));
+    expect((await screen.findByLabelText("Guitar strings")).textContent).toContain("E2 A2 D3 G3 B3 E4");
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText("Tuning"), { target: { value: "1" } });
+    });
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText("Capo"), { target: { value: "2" } });
+    });
+    const strings = screen.getByLabelText("Guitar strings").textContent ?? "";
+    expect(strings).toContain("E2 B2 E3 A3 C#4 F#4");
+    expect(strings).toContain("capo on fret 2");
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText("Preset"), { target: { value: "Palm Muted" } });
+    });
+    const params = (await backend.getProject()).project.tracks[3].instrument.params;
+    expect(params["string.tuning"]).toBe(1);
+    expect(params["string.capo"]).toBe(2);
+  });
+});
+
 describe("Sound browser", () => {
   it("searches, tries, favorites, and adds a track with a sound", async () => {
     const backend = spyBackend();

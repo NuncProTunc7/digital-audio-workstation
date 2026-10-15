@@ -37,6 +37,8 @@ How Claude writes music in Nunc Pro Tune. The user can read it too: it explains 
 | Orchestral exploration | 80–110 | Major or Lydian | Library cello (bowed), double bass (pizzicato), flute, Soft Pad | Cello melody, flute answering it, plucked bass on roots, pad for air; Reverb bus |
 | Epic boss (orchestral) | 140–170 | Harmonic minor | Library war tuba, cello (bowed), double bass (arco), Boomy Kit | Tuba and bass in octaves on driving 8ths, cello ostinato, toms; Compressor + Reverb |
 
+Guitar tracks: pick `string.tuning` for the style (Drop D or Drop C for heavy combat riffs, DADGAD or Open G for folk and fantasy towns, Standard otherwise) and keep notes between the lowest open string and about 22 frets above the top one. Write chords as guitar voicings, one note per string (an open E chord is 40 47 52 56 59 64), so each lands on its own string; use `strum.time_s` 0.015–0.04 for strummed chords and Palm Muted for chugging rhythm.
+
 Library instruments (sample_library) must be downloaded first: call `download_sample_pack`, tell the user how big it is, poll `sample_library` until `installed` lists its programs, then `add_track` a sampler and `load_sample_pack` with a program's path. Keep them in their natural ranges (cello C2–A5, double bass E1–G3, flute C4–C7, tuba D1–F4). Mention the credit line for CC-BY packs.
 
 Progressions that work: I–V–vi–IV (C G Am F), vi–IV–I–V (Am F C G), i–VI–III–VII (Am F C G), i–iv–v (Am Dm Em), i–♭VII–♭VI–♭VII (Am G F G).

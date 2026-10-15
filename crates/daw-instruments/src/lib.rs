@@ -5,12 +5,14 @@
 //! whose methods never allocate, lock, or do I/O.
 
 mod drums;
+mod guitar;
 mod plugin;
 mod sampler;
 mod synth;
 
 pub use daw_plugins::song::PluginLoad;
 pub use drums::{DRUM_PADS, DrumGroup, DrumMachine, DrumPad};
+pub use guitar::Guitar;
 pub use plugin::create_plugin;
 pub use synth::Synth;
 
@@ -53,6 +55,7 @@ pub fn create(instrument: &Instrument, sample_rate_hz: f32) -> Box<dyn Instrumen
     let mut processor: Box<dyn InstrumentProcessor> = match instrument.kind {
         InstrumentKind::Synth => Box::new(Synth::new(sample_rate_hz)),
         InstrumentKind::Drums => Box::new(DrumMachine::new(sample_rate_hz)),
+        InstrumentKind::Guitar => Box::new(Guitar::new(sample_rate_hz)),
         // Audio tracks get their sound from audio clips, played by the engine.
         InstrumentKind::Audio => Box::new(Silent),
         InstrumentKind::Sampler => Box::new(sampler::Sampler::new(
@@ -131,6 +134,10 @@ pub struct Catalog {
     pub instruments: Vec<daw_model::instrument::InstrumentDescription>,
     pub effects: Vec<daw_model::effect::EffectDescription>,
     pub drum_pads: &'static [DrumPad],
+    /// The guitar's tunings (open strings as MIDI notes, lowest first), in
+    /// the order of its `string.tuning` choice, and how many frets it has.
+    pub guitar_tunings: &'static [daw_model::instrument::Tuning],
+    pub guitar_frets: u8,
 }
 
 pub fn catalog() -> Catalog {
@@ -138,5 +145,7 @@ pub fn catalog() -> Catalog {
         instruments: daw_model::instrument::describe_instruments(),
         effects: daw_model::effect::describe_effects(),
         drum_pads: &DRUM_PADS,
+        guitar_tunings: daw_model::instrument::GUITAR_TUNINGS,
+        guitar_frets: daw_model::instrument::GUITAR_FRETS,
     }
 }

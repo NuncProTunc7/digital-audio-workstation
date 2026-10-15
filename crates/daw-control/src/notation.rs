@@ -49,8 +49,15 @@ pub fn import_song<H: Host>(host: &H, song: ImportedSong) -> Result<Vec<TrackId>
     }
     let mut new_tracks = Vec::new();
     for part in song.parts {
+        let guitar = part.preset.is_some_and(|p| {
+            daw_model::instrument::GUITAR_PRESETS
+                .iter()
+                .any(|g| g.name == p)
+        });
         let kind = if part.drums {
             InstrumentKind::Drums
+        } else if guitar {
+            InstrumentKind::Guitar
         } else {
             InstrumentKind::Synth
         };

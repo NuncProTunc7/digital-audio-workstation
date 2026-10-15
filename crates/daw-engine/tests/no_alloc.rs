@@ -486,6 +486,48 @@ fn audio_thread_never_allocates() {
     });
     assert_eq!(process_counting(&mut processor, &mut out), 0, "sampler");
 
+    // The guitar: strummed chords, more notes than strings, a tuning change.
+    session
+        .execute(Command::AddTrack {
+            name: "Guitar".into(),
+            instrument: InstrumentKind::Guitar,
+            preset: Some("Strummed Acoustic".into()),
+            index: None,
+        })
+        .expect("guitar");
+    let guitar = session.project().tracks.last().expect("guitar").id;
+    engine.sync(session.project());
+    process_counting(&mut processor, &mut out);
+    for n in 0..20 {
+        engine.note_on(guitar, 36 + n * 2, 0.9);
+    }
+    engine.send(EngineMessage::PitchBend {
+        track_id: guitar,
+        semitones: 1.0,
+    });
+    assert_eq!(
+        process_counting(&mut processor, &mut out),
+        0,
+        "guitar notes"
+    );
+    session
+        .execute(Command::SetInstrumentParam {
+            track_id: guitar,
+            param: "string.tuning".into(),
+            value: 5.0,
+        })
+        .expect("tuning");
+    engine.sync(session.project());
+    for n in 0..20 {
+        engine.note_off(guitar, 36 + n * 2);
+    }
+    engine.send(EngineMessage::ControlChange {
+        track_id: guitar,
+        controller: 123,
+        value: 0,
+    });
+    assert_eq!(process_counting(&mut processor, &mut out), 0, "guitar");
+
     // A plugin instrument: notes and parameter changes.
     let path = "in-process://no-alloc/NPT Test.vst3";
     // SAFETY: GetPluginFactory returns an owned factory reference.

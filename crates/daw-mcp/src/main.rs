@@ -59,6 +59,7 @@ over time (fade-ins, filter sweeps, swelling reverb); points are (beats, value).
 strings, brass, woodwinds. sample_library lists free ones the app can download \
 (download_sample_pack); load one with load_sample_pack and check sample_pack_status \
 in get_track.
+- Guitar tracks (instrument \"guitar\") are a six-string guitar: set string.tuning (Standard, Drop D, DADGAD, open tunings; describe_instruments lists them with their open strings) and string.capo. Each note goes to the highest string that can reach it, so write chords as real guitar shapes (one note per string, within the strings' range); strum.time_s strums chords low to high.
 - Plugins: the user's own VST3 instruments (plugins, load_plugin) and effects \
 (add_plugin_effect). Their controls are 0-1 values by id (plugin_params, \
 set_plugin_params); always check the display text. Audio clips can follow tempo changes with set_clip_tempo.

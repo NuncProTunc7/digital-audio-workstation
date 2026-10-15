@@ -66,6 +66,7 @@ const TRACK_ICONS: Record<Track["instrument"]["kind"], string> = {
   audio: "🎤",
   sampler: "🎻",
   plugin: "🔌",
+  guitar: "🎸",
 };
 
 type Drag =
@@ -734,6 +735,15 @@ export default function Timeline(props: TimelineProps) {
                 }
               >
                 + Drum track
+              </button>
+              <button
+                className="small"
+                onClick={() =>
+                  void props.onCommand({ command: "add_track", name: "Guitar", instrument: "guitar", preset: null, index: null })
+                }
+                title="A six-string guitar with a choice of tunings (Standard, Drop D, DADGAD, open tunings) and a capo"
+              >
+                + Guitar track
               </button>
               <button
                 className="small"

@@ -42,7 +42,8 @@ pub struct ImportedPart {
     pub name: String,
     /// Drum parts use General MIDI drum notes and go on a drum track.
     pub drums: bool,
-    /// Suggested synth preset for the part's sound (None for drums).
+    /// Suggested preset for the part's sound (None for drums): a synth
+    /// preset, or a guitar one for guitar parts.
     pub preset: Option<&'static str>,
     /// Notes with times in beats from the song start.
     pub notes: Vec<NoteInput>,

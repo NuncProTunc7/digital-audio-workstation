@@ -49,6 +49,19 @@ pub(super) fn load_preset(
         })?;
     // A preset changes the controls, not which samples are loaded.
     loaded.sample_pack = track.instrument.sample_pack.clone();
+    // Nor how the instrument is set up (a guitar's tuning and capo).
+    let sets = instrument::presets(kind)
+        .iter()
+        .find(|p| p.name == loaded.preset)
+        .map_or(&[][..], |p| p.values);
+    for id in instrument::KEPT_ACROSS_PRESETS {
+        if sets.iter().all(|(set, _)| set != id)
+            && let Some(v) = track.instrument.params.get(*id)
+            && loaded.params.contains_key(*id)
+        {
+            loaded.params.insert((*id).to_owned(), *v);
+        }
+    }
     let old = std::mem::replace(&mut track.instrument, loaded);
     Ok(Command::SetInstrument {
         track_id,

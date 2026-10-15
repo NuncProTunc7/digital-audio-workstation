@@ -17,6 +17,11 @@ const FACTORY_TAGS: Record<string, string[]> = {
   "Wobble Bass": ["aggressive", "bass", "electronic", "dark", "boss"],
   "Chip Bass": ["retro", "chiptune", "8-bit", "bass"],
   "Brass Bass": ["punchy", "bass", "brass", "epic"],
+  "Acoustic Guitar": ["guitar", "acoustic", "warm", "folk"],
+  "Strummed Acoustic": ["guitar", "acoustic", "strum", "chords"],
+  "Nylon Guitar": ["guitar", "soft", "classical", "calm"],
+  "Clean Electric": ["guitar", "bright", "electric"],
+  "Palm Muted": ["guitar", "punchy", "rock", "electric"],
   "Classic Kit": ["drums", "balanced"],
   "Tight Kit": ["drums", "tight", "fast", "dry"],
   "Boomy Kit": ["drums", "epic", "big", "boss"],
@@ -24,7 +29,7 @@ const FACTORY_TAGS: Record<string, string[]> = {
 };
 
 /** Filter chips offered above the list. */
-const CHIPS = ["warm", "dark", "bright", "soft", "retro", "epic", "punchy", "bass", "drums", "pad", "lead", "orchestral"];
+const CHIPS = ["warm", "dark", "bright", "soft", "retro", "epic", "punchy", "bass", "guitar", "drums", "pad", "lead", "orchestral"];
 
 const KIND_NAMES: Record<InstrumentKind, string> = {
   synth: "Synth",
@@ -32,6 +37,7 @@ const KIND_NAMES: Record<InstrumentKind, string> = {
   sampler: "Sampler",
   audio: "Audio",
   plugin: "Plugin",
+  guitar: "Guitar",
 };
 
 const FAVORITES_KEY = "npt.favoriteSounds";

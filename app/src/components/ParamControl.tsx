@@ -16,10 +16,37 @@ interface ParamControlProps {
  * choices, a row of buttons. Double-click a slider to reset it, or its
  * value to type one.
  */
+const MAX_CHOICE_BUTTONS = 5;
+
 export default function ParamControl({ spec, value, onChange, onCommit }: ParamControlProps) {
   // While dragging, show the local value so the slider never lags the engine.
   const [dragValue, setDragValue] = useState<number | null>(null);
   const shown = dragValue ?? value;
+
+  // Long lists (guitar tunings, capo frets) fit better as a menu.
+  if (spec.choices.length > MAX_CHOICE_BUTTONS) {
+    return (
+      <label className="param choice">
+        <span className="param-name">{spec.name}</span>
+        <select
+          aria-label={spec.name}
+          value={Math.round(value)}
+          onChange={(e) => {
+            onChange(Number(e.target.value));
+            onCommit();
+            // Hand the keyboard back to musical typing.
+            e.currentTarget.blur();
+          }}
+        >
+          {spec.choices.map((choice, index) => (
+            <option key={choice} value={index}>
+              {choice}
+            </option>
+          ))}
+        </select>
+      </label>
+    );
+  }
 
   if (spec.choices.length > 0) {
     return (

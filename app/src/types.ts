@@ -6,7 +6,7 @@ export interface TimeSignature {
   denominator: number;
 }
 
-export type InstrumentKind = "synth" | "drums" | "audio" | "sampler" | "plugin";
+export type InstrumentKind = "synth" | "drums" | "audio" | "sampler" | "plugin" | "guitar";
 export type EffectKind = "eq" | "compressor" | "reverb" | "delay" | "chorus" | "distortion" | "limiter" | "plugin";
 
 export interface Instrument {
@@ -575,6 +575,15 @@ export interface Catalog {
   instruments: InstrumentDescription[];
   effects: EffectDescription[];
   drum_pads: DrumPad[];
+  /** Guitar tunings in the order of the `string.tuning` choice. */
+  guitar_tunings: GuitarTuning[];
+  guitar_frets: number;
+}
+
+/** A guitar tuning: open strings as MIDI notes, lowest first. */
+export interface GuitarTuning {
+  name: string;
+  strings: number[];
 }
 
 export interface TransportStatus {

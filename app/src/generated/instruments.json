@@ -647,6 +647,168 @@
           "description": "Plays the loaded SFZ sample pack as recorded."
         }
       ]
+    },
+    {
+      "kind": "guitar",
+      "params": [
+        {
+          "id": "string.tuning",
+          "name": "Tuning",
+          "group": "Strings",
+          "min": 0.0,
+          "max": 9.0,
+          "default": 0.0,
+          "unit": "none",
+          "log_scale": false,
+          "choices": [
+            "Standard (E A D G B E)",
+            "Drop D (D A D G B E)",
+            "Half step down (Eb Ab Db Gb Bb Eb)",
+            "Whole step down (D G C F A D)",
+            "Drop C (C G C F A D)",
+            "DADGAD (D A D G A D)",
+            "Open G (D G D G B D)",
+            "Open D (D A D F# A D)",
+            "Open E (E B E G# B E)",
+            "Open C (C G C G C E)"
+          ]
+        },
+        {
+          "id": "string.capo",
+          "name": "Capo",
+          "group": "Strings",
+          "min": 0.0,
+          "max": 12.0,
+          "default": 0.0,
+          "unit": "none",
+          "log_scale": false,
+          "choices": [
+            "No capo",
+            "Fret 1",
+            "Fret 2",
+            "Fret 3",
+            "Fret 4",
+            "Fret 5",
+            "Fret 6",
+            "Fret 7",
+            "Fret 8",
+            "Fret 9",
+            "Fret 10",
+            "Fret 11",
+            "Fret 12"
+          ]
+        },
+        {
+          "id": "string.tone",
+          "name": "Tone",
+          "group": "Strings",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 0.5,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "string.sustain_s",
+          "name": "Sustain",
+          "group": "Strings",
+          "min": 0.3,
+          "max": 12.0,
+          "default": 3.0,
+          "unit": "seconds",
+          "log_scale": true,
+          "choices": []
+        },
+        {
+          "id": "string.pick_position",
+          "name": "Pick position",
+          "group": "Strings",
+          "min": 0.05,
+          "max": 0.5,
+          "default": 0.15,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "string.mute",
+          "name": "Palm mute",
+          "group": "Strings",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 0.0,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "strum.time_s",
+          "name": "Strum",
+          "group": "Playing",
+          "min": 0.0,
+          "max": 0.1,
+          "default": 0.0,
+          "unit": "seconds",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "body.level",
+          "name": "Body",
+          "group": "Playing",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 0.5,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "velocity.sensitivity",
+          "name": "Velocity",
+          "group": "Playing",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 0.7,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "master.gain_db",
+          "name": "Volume",
+          "group": "Output",
+          "min": -36.0,
+          "max": 6.0,
+          "default": -6.0,
+          "unit": "decibels",
+          "log_scale": false,
+          "choices": []
+        }
+      ],
+      "presets": [
+        {
+          "name": "Acoustic Guitar",
+          "description": "Steel-string acoustic: bright pick, warm body."
+        },
+        {
+          "name": "Strummed Acoustic",
+          "description": "Acoustic that strums chords from the low string up."
+        },
+        {
+          "name": "Nylon Guitar",
+          "description": "Soft, round classical guitar for gentle melodies."
+        },
+        {
+          "name": "Clean Electric",
+          "description": "Bright, long-ringing clean electric guitar."
+        },
+        {
+          "name": "Palm Muted",
+          "description": "Short, chunky muted notes for driving rhythm parts."
+        }
+      ]
     }
   ],
   "effects": [
@@ -1188,5 +1350,118 @@
       "name": "Ride",
       "group": "cymbals"
     }
-  ]
+  ],
+  "guitar_tunings": [
+    {
+      "name": "Standard (E A D G B E)",
+      "strings": [
+        40,
+        45,
+        50,
+        55,
+        59,
+        64
+      ]
+    },
+    {
+      "name": "Drop D (D A D G B E)",
+      "strings": [
+        38,
+        45,
+        50,
+        55,
+        59,
+        64
+      ]
+    },
+    {
+      "name": "Half step down (Eb Ab Db Gb Bb Eb)",
+      "strings": [
+        39,
+        44,
+        49,
+        54,
+        58,
+        63
+      ]
+    },
+    {
+      "name": "Whole step down (D G C F A D)",
+      "strings": [
+        38,
+        43,
+        48,
+        53,
+        57,
+        62
+      ]
+    },
+    {
+      "name": "Drop C (C G C F A D)",
+      "strings": [
+        36,
+        43,
+        48,
+        53,
+        57,
+        62
+      ]
+    },
+    {
+      "name": "DADGAD (D A D G A D)",
+      "strings": [
+        38,
+        45,
+        50,
+        55,
+        57,
+        62
+      ]
+    },
+    {
+      "name": "Open G (D G D G B D)",
+      "strings": [
+        38,
+        43,
+        50,
+        55,
+        59,
+        62
+      ]
+    },
+    {
+      "name": "Open D (D A D F# A D)",
+      "strings": [
+        38,
+        45,
+        50,
+        54,
+        57,
+        62
+      ]
+    },
+    {
+      "name": "Open E (E B E G# B E)",
+      "strings": [
+        40,
+        47,
+        52,
+        56,
+        59,
+        64
+      ]
+    },
+    {
+      "name": "Open C (C G C G C E)",
+      "strings": [
+        36,
+        43,
+        48,
+        55,
+        60,
+        64
+      ]
+    }
+  ],
+  "guitar_frets": 22
 }

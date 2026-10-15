@@ -169,7 +169,13 @@ export function applyCommand(project: Project, command: Command): Project {
       break;
     case "load_preset": {
       const t = track(command.track_id);
-      t.instrument = defaultInstrument(t.instrument.kind, command.preset);
+      const loaded = defaultInstrument(t.instrument.kind, command.preset);
+      // Like the app: a guitar keeps its tuning and capo (no built-in preset sets them).
+      for (const id of ["string.tuning", "string.capo"]) {
+        const kept = t.instrument.params[id];
+        if (kept !== undefined && id in loaded.params) loaded.params[id] = kept;
+      }
+      t.instrument = loaded;
       break;
     }
     case "set_instrument":

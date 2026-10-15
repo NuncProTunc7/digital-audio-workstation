@@ -25,14 +25,20 @@ pub enum InstrumentKind {
     /// with load_plugin (list them with plugins); it has no built-in
     /// parameters or presets, see plugin_params instead.
     Plugin,
+    /// Six-string plucked guitar (a modelled string per string). Each note
+    /// is played on the highest string that can reach it, so chords voice
+    /// like a real guitar; `string.tuning` picks the tuning (Standard,
+    /// Drop D, DADGAD, open tunings...) and `string.capo` raises it.
+    Guitar,
 }
 
 impl InstrumentKind {
-    pub const ALL: [InstrumentKind; 4] = [
+    pub const ALL: [InstrumentKind; 5] = [
         InstrumentKind::Synth,
         InstrumentKind::Drums,
         InstrumentKind::Audio,
         InstrumentKind::Sampler,
+        InstrumentKind::Guitar,
     ];
 
     /// Audio tracks hold audio clips; every other kind holds note clips.
@@ -581,7 +587,207 @@ pub fn param_specs(kind: InstrumentKind) -> &'static [ParamSpec] {
         InstrumentKind::Drums => DRUM_PARAMS,
         InstrumentKind::Audio | InstrumentKind::Plugin => &[],
         InstrumentKind::Sampler => SAMPLER_PARAMS,
+        InstrumentKind::Guitar => GUITAR_PARAMS,
     }
+}
+
+/// A guitar tuning: its name and the open strings as MIDI notes, lowest
+/// (6th) string first.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct Tuning {
+    pub name: &'static str,
+    pub strings: [u8; 6],
+}
+
+/// Guitar tunings, in the order of the `string.tuning` choice: append only.
+pub const GUITAR_TUNINGS: &[Tuning] = &[
+    Tuning {
+        name: "Standard (E A D G B E)",
+        strings: [40, 45, 50, 55, 59, 64],
+    },
+    Tuning {
+        name: "Drop D (D A D G B E)",
+        strings: [38, 45, 50, 55, 59, 64],
+    },
+    Tuning {
+        name: "Half step down (Eb Ab Db Gb Bb Eb)",
+        strings: [39, 44, 49, 54, 58, 63],
+    },
+    Tuning {
+        name: "Whole step down (D G C F A D)",
+        strings: [38, 43, 48, 53, 57, 62],
+    },
+    Tuning {
+        name: "Drop C (C G C F A D)",
+        strings: [36, 43, 48, 53, 57, 62],
+    },
+    Tuning {
+        name: "DADGAD (D A D G A D)",
+        strings: [38, 45, 50, 55, 57, 62],
+    },
+    Tuning {
+        name: "Open G (D G D G B D)",
+        strings: [38, 43, 50, 55, 59, 62],
+    },
+    Tuning {
+        name: "Open D (D A D F# A D)",
+        strings: [38, 45, 50, 54, 57, 62],
+    },
+    Tuning {
+        name: "Open E (E B E G# B E)",
+        strings: [40, 47, 52, 56, 59, 64],
+    },
+    Tuning {
+        name: "Open C (C G C G C E)",
+        strings: [36, 43, 48, 55, 60, 64],
+    },
+];
+
+/// The names of [`GUITAR_TUNINGS`], for the choice parameter (a `const`
+/// table can't be built from the other; a test keeps them in step).
+const GUITAR_TUNING_NAMES: &[&str] = &[
+    "Standard (E A D G B E)",
+    "Drop D (D A D G B E)",
+    "Half step down (Eb Ab Db Gb Bb Eb)",
+    "Whole step down (D G C F A D)",
+    "Drop C (C G C F A D)",
+    "DADGAD (D A D G A D)",
+    "Open G (D G D G B D)",
+    "Open D (D A D F# A D)",
+    "Open E (E B E G# B E)",
+    "Open C (C G C G C E)",
+];
+
+/// Where the capo sits; the value is the fret (0 = none), and raises every
+/// string by that many semitones.
+const CAPO_FRETS: &[&str] = &[
+    "No capo", "Fret 1", "Fret 2", "Fret 3", "Fret 4", "Fret 5", "Fret 6", "Fret 7", "Fret 8",
+    "Fret 9", "Fret 10", "Fret 11", "Fret 12",
+];
+
+/// Frets on the built-in guitar: the highest note is the top string's
+/// open note plus this.
+pub const GUITAR_FRETS: u8 = 22;
+
+/// Guitar parameters. The order is the engine's parameter index: append only.
+pub const GUITAR_PARAMS: &[ParamSpec] = &[
+    choice(
+        "string.tuning",
+        "Tuning",
+        "Strings",
+        GUITAR_TUNING_NAMES,
+        0.0,
+    ),
+    choice("string.capo", "Capo", "Strings", CAPO_FRETS, 0.0),
+    p(
+        "string.tone",
+        "Tone",
+        "Strings",
+        0.0,
+        1.0,
+        0.5,
+        Unit::Percent,
+        false,
+    ),
+    p(
+        "string.sustain_s",
+        "Sustain",
+        "Strings",
+        0.3,
+        12.0,
+        3.0,
+        Unit::Seconds,
+        true,
+    ),
+    p(
+        "string.pick_position",
+        "Pick position",
+        "Strings",
+        0.05,
+        0.5,
+        0.15,
+        Unit::Percent,
+        false,
+    ),
+    p(
+        "string.mute",
+        "Palm mute",
+        "Strings",
+        0.0,
+        1.0,
+        0.0,
+        Unit::Percent,
+        false,
+    ),
+    p(
+        "strum.time_s",
+        "Strum",
+        "Playing",
+        0.0,
+        0.1,
+        0.0,
+        Unit::Seconds,
+        false,
+    ),
+    p(
+        "body.level",
+        "Body",
+        "Playing",
+        0.0,
+        1.0,
+        0.5,
+        Unit::Percent,
+        false,
+    ),
+    p(
+        "velocity.sensitivity",
+        "Velocity",
+        "Playing",
+        0.0,
+        1.0,
+        0.7,
+        Unit::Percent,
+        false,
+    ),
+    p(
+        "master.gain_db",
+        "Volume",
+        "Output",
+        -36.0,
+        6.0,
+        -6.0,
+        Unit::Decibels,
+        false,
+    ),
+];
+
+/// Settings that describe how the instrument is set up rather than how it
+/// sounds, so loading another preset keeps them (unless the preset sets
+/// them itself): a guitar's tuning and capo.
+pub const KEPT_ACROSS_PRESETS: &[&str] = &["string.tuning", "string.capo"];
+
+/// The open strings of a guitar's settings, capo included, lowest first.
+pub fn guitar_strings(instrument: &Instrument) -> [u8; 6] {
+    strings_for(
+        instrument.value("string.tuning").unwrap_or(0.0),
+        instrument.value("string.capo").unwrap_or(0.0),
+    )
+}
+
+/// The open strings for a `string.tuning` index and capo, lowest first.
+pub fn strings_for(tuning: f64, capo: f64) -> [u8; 6] {
+    let index = if tuning.is_finite() && tuning >= 0.0 {
+        tuning as usize
+    } else {
+        0
+    };
+    let t = GUITAR_TUNINGS.get(index).unwrap_or(&GUITAR_TUNINGS[0]);
+    let capo = if capo.is_finite() {
+        capo.round().clamp(0.0, 12.0) as u8
+    } else {
+        0
+    };
+    t.strings.map(|n| n + capo)
 }
 
 /// Sampler parameters. The order is the engine's parameter index: append only.
@@ -943,8 +1149,51 @@ pub const DRUM_PRESETS: &[Preset] = &[
     },
 ];
 
+pub const GUITAR_PRESETS: &[Preset] = &[
+    Preset {
+        name: "Acoustic Guitar",
+        description: "Steel-string acoustic: bright pick, warm body.",
+        values: &[],
+    },
+    Preset {
+        name: "Strummed Acoustic",
+        description: "Acoustic that strums chords from the low string up.",
+        values: &[("strum.time_s", 0.025), ("body.level", 0.6)],
+    },
+    Preset {
+        name: "Nylon Guitar",
+        description: "Soft, round classical guitar for gentle melodies.",
+        values: &[
+            ("string.tone", 0.25),
+            ("string.pick_position", 0.3),
+            ("string.sustain_s", 2.2),
+            ("body.level", 0.7),
+        ],
+    },
+    Preset {
+        name: "Clean Electric",
+        description: "Bright, long-ringing clean electric guitar.",
+        values: &[
+            ("string.tone", 0.75),
+            ("string.pick_position", 0.1),
+            ("string.sustain_s", 6.0),
+            ("body.level", 0.15),
+        ],
+    },
+    Preset {
+        name: "Palm Muted",
+        description: "Short, chunky muted notes for driving rhythm parts.",
+        values: &[
+            ("string.mute", 0.75),
+            ("string.tone", 0.4),
+            ("body.level", 0.4),
+        ],
+    },
+];
+
 pub fn presets(kind: InstrumentKind) -> &'static [Preset] {
     match kind {
+        InstrumentKind::Guitar => GUITAR_PRESETS,
         InstrumentKind::Synth => SYNTH_PRESETS,
         InstrumentKind::Drums => DRUM_PRESETS,
         InstrumentKind::Audio => AUDIO_PRESETS,
@@ -1021,6 +1270,41 @@ mod tests {
                 assert_eq!(inst.params.len(), param_specs(kind).len());
             }
         }
+    }
+
+    #[test]
+    fn tuning_names_match_their_strings() {
+        assert_eq!(GUITAR_TUNINGS.len(), GUITAR_TUNING_NAMES.len());
+        const FLATS: [&str; 12] = [
+            "C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B",
+        ];
+        const SHARPS: [&str; 12] = [
+            "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
+        ];
+        for (t, name) in GUITAR_TUNINGS.iter().zip(GUITAR_TUNING_NAMES) {
+            assert_eq!(t.name, *name);
+            let inside = name
+                .split_once('(')
+                .and_then(|(_, rest)| rest.strip_suffix(')'))
+                .expect("notes in brackets");
+            let notes: Vec<&str> = inside.split(' ').collect();
+            assert_eq!(notes.len(), 6, "{name}");
+            for (note, midi) in notes.iter().zip(t.strings) {
+                let pc = usize::from(midi % 12);
+                assert!(
+                    *note == FLATS[pc] || *note == SHARPS[pc],
+                    "{name}: {note} is not MIDI {midi}"
+                );
+            }
+            assert!(t.strings.windows(2).all(|w| w[0] < w[1]), "{name}");
+        }
+    }
+
+    #[test]
+    fn capo_raises_every_string() {
+        assert_eq!(strings_for(1.0, 2.0), [40, 47, 52, 57, 61, 66]);
+        // Out-of-range values fall back safely.
+        assert_eq!(strings_for(99.0, f64::NAN), GUITAR_TUNINGS[0].strings);
     }
 
     #[test]

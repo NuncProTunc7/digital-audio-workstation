@@ -382,6 +382,46 @@ fn sample_commands(p: &Project) -> Vec<Command> {
 }
 
 #[test]
+fn a_guitar_keeps_its_tuning_and_capo_when_its_sound_changes() {
+    let mut s = Session::new(fixture());
+    s.execute(Command::AddTrack {
+        name: "Guitar".into(),
+        instrument: InstrumentKind::Guitar,
+        preset: None,
+        index: None,
+    })
+    .expect("guitar");
+    let id = s.project().tracks.last().expect("track").id;
+    for (param, value) in [("string.tuning", 5.0), ("string.capo", 2.0)] {
+        s.execute(Command::SetInstrumentParam {
+            track_id: id,
+            param: param.into(),
+            value,
+        })
+        .expect("set");
+    }
+    let before = s.project().clone();
+    let cmd = Command::LoadPreset {
+        track_id: id,
+        preset: "Palm Muted".into(),
+    };
+    let json = serde_json::to_string(&cmd).expect("json");
+    s.execute(serde_json::from_str(&json).expect("back"))
+        .expect("preset");
+    let inst = &s.project().tracks.last().expect("track").instrument;
+    assert_eq!(inst.preset, "Palm Muted");
+    assert_eq!(inst.value("string.mute"), Some(0.75));
+    assert_eq!(inst.value("string.tuning"), Some(5.0));
+    assert_eq!(inst.value("string.capo"), Some(2.0));
+    assert_eq!(
+        crate::instrument::guitar_strings(inst),
+        [40, 47, 52, 57, 59, 64]
+    );
+    assert!(s.undo());
+    assert_eq!(s.project(), &before);
+}
+
+#[test]
 fn chance_and_swing_survive_undo_of_deletes_and_saving() {
     let mut p = fixture();
     let clip = clip_id(&p);
