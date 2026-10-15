@@ -41,7 +41,7 @@ export default function PluginPanel({ track, status, params, onOpenWindow, onPar
     };
   }, [track.id, plugin?.uid, status]);
 
-  // Values change from the plugin's window, Claude, and undo: re-read them
+  // Values change from the plugin's window, the AI, and undo: re-read them
   // (with the plugin's own wording) whenever the song's copy changes.
   const values = JSON.stringify(plugin?.params ?? {});
   useEffect(() => {

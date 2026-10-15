@@ -4,7 +4,7 @@ Instructions for AI coding agents (Claude Code and others) working in this repos
 
 ## Project
 
-**Nunc Pro Tune**: an open-source (GPL-3.0-or-later) digital audio workstation for making game music, fully controllable by Claude through MCP. Full plan: [`docs/PLAN.md`](docs/PLAN.md). Read it before starting any feature work.
+**Nunc Pro Tune**: an open-source (GPL-3.0-or-later) digital audio workstation for making game music, fully controllable through MCP by Claude or any other MCP-capable AI (Codex, local models...). Full plan: [`docs/PLAN.md`](docs/PLAN.md). Read it before starting any feature work.
 
 ## Working with the owner
 
@@ -48,7 +48,7 @@ cargo test -p daw-export                     # Godot export: seamless loops, .im
 cargo build --release -p daw-mcp && npm --prefix app run tauri build -- --config src-tauri/tauri.installer.conf.json   # installer with the Claude bridge
 ```
 
-Claude connects through `npt-mcp`: run the app, then point Claude at the bridge (`claude mcp add --scope user nunc-pro-tune -- "<path to npt-mcp>"`, or the app's **Claude** button for Claude Desktop). `NPT_CONTROL_FILE` overrides where the app writes, and the bridge reads, the control discovery file. `NPT_VST3_PATH` adds plugin folders (looked through before the standard VST3 folders); `cargo build -p daw-test-plugin` builds a tiny test plugin (`target/debug/daw_test_plugin.dll`; copy it as `NPT Test.vst3`).
+AI apps connect through `npt-mcp`: run the app, then point the AI at the bridge (`claude mcp add --scope user nunc-pro-tune -- "<path to npt-mcp>"`, `codex mcp add nunc-pro-tune -- "<path>"`, or the app's **AI** button, which sets up Claude Desktop and Codex and shows a standard `mcpServers` snippet for others; `npt-mcp --core` offers a short tool list for small local models). The bridge sends the client's name (`X-NPT-AI`) so the app labels changes "Codex: set tempo"; user-facing text says "your AI" unless it is about one app. `NPT_CONTROL_FILE` overrides where the app writes, and the bridge reads, the control discovery file. `NPT_VST3_PATH` adds plugin folders (looked through before the standard VST3 folders); `cargo build -p daw-test-plugin` builds a tiny test plugin (`target/debug/daw_test_plugin.dll`; copy it as `NPT Test.vst3`).
 
 Dev builds optimize the audio crates (see `[profile.dev.package.*]` in `Cargo.toml`); unoptimized DSP cannot keep up in real time.
 

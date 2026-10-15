@@ -71,7 +71,7 @@ export default function Versions(props: VersionsProps) {
             </form>
             {snapshots.length === 0 && (
               <p className="muted versions-empty">
-                No versions yet. Save one before trying something big; Claude saves one by itself before it starts
+                No versions yet. Save one before trying something big; your AI saves one by itself before it starts
                 changing your song.
               </p>
             )}

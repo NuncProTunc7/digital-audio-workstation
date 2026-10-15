@@ -38,6 +38,9 @@ export interface SamplePackStatus {
   megabytes?: number;
   layers_kept?: number;
   layers_total?: number;
+  /** Lowest and highest notes that play something (MIDI), when ready. */
+  lowest_note?: number;
+  highest_note?: number;
   error?: string;
 }
 
@@ -642,12 +645,14 @@ export interface RemoteActivity {
 }
 
 /** Whether Claude can connect, and how to set it up. */
-export interface ClaudeStatus {
-  /** The control server is running, so Claude can connect. */
+export interface AiStatus {
+  /** The control server is running, so an AI can connect. */
   listening: boolean;
   error: string | null;
-  /** Seconds since Claude last did something (null = not this session). */
+  /** Seconds since an AI last did something (null = not this session). */
   last_activity_secs: number | null;
+  /** The AI that last did something ("Claude", "Codex"...). */
+  last_ai: string | null;
   /** Newest first. */
   activity: RemoteActivity[];
   bridge_path: string;
@@ -655,6 +660,12 @@ export interface ClaudeStatus {
   desktop_config_path: string;
   desktop_configured: boolean;
   claude_code_command: string;
+  codex_config_path: string;
+  codex_configured: boolean;
+  codex_command: string;
+  /** `mcpServers` JSON for any other MCP app; `_core` adds the short tool list for small local models. */
+  generic_config: string;
+  generic_config_core: string;
 }
 
 /** Options for exporting into a Godot project (mirrors daw_control::GodotOptions). */

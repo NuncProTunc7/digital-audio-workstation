@@ -1,4 +1,4 @@
-//! Runs the real `npt-mcp` binary the way Claude does (JSON-RPC over
+//! Runs the real `npt-mcp` binary the way an AI app does (JSON-RPC over
 //! stdin/stdout) against a control server backed by an in-memory project.
 
 use std::io::{BufRead, BufReader, Write};
@@ -17,6 +17,8 @@ use serde_json::{Value, json};
 struct MemoryHost {
     session: Mutex<Session>,
     path: Mutex<Option<PathBuf>>,
+    /// What the app's activity list would show.
+    changes: Mutex<Vec<String>>,
 }
 
 impl Host for MemoryHost {
@@ -26,7 +28,11 @@ impl Host for MemoryHost {
     fn engine(&self) -> Option<Arc<Engine>> {
         None
     }
-    fn project_changed(&self, _description: &str) {}
+    fn project_changed(&self, description: &str) {
+        if let Ok(mut c) = self.changes.lock() {
+            c.push(description.to_owned());
+        }
+    }
     fn project_path(&self) -> Option<PathBuf> {
         self.path.lock().ok().and_then(|p| p.clone())
     }
@@ -49,7 +55,12 @@ struct Mcp {
 
 impl Mcp {
     fn start(control_file: &PathBuf) -> Self {
+        Self::start_with(control_file, &[])
+    }
+
+    fn start_with(control_file: &PathBuf, args: &[&str]) -> Self {
         let mut child = Process::new(env!("CARGO_BIN_EXE_npt-mcp"))
+            .args(args)
             .env("NPT_CONTROL_FILE", control_file)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -77,7 +88,7 @@ impl Mcp {
             json!({
                 "protocolVersion": "2025-06-18",
                 "capabilities": {},
-                "clientInfo": { "name": "test", "version": "1.0" }
+                "clientInfo": { "name": "codex-mcp-client", "version": "1.0" }
             }),
         );
         assert_eq!(
@@ -141,8 +152,8 @@ fn claude_can_list_tools_edit_the_song_and_analyze_it() {
     let control_file = dir.join("control.json");
     let host = Arc::new(MemoryHost::default());
     let server_host = Arc::clone(&host);
-    let server = ControlServer::start(&control_file, move |req| {
-        daw_control::handle(&*server_host, req)
+    let server = ControlServer::start(&control_file, move |req, ai| {
+        daw_control::handle_from(&*server_host, req, ai)
     })
     .expect("server");
 
@@ -171,6 +182,15 @@ fn claude_can_list_tools_edit_the_song_and_analyze_it() {
         host.session.lock().expect("lock").project().tempo_bpm,
         133.0
     );
+    // The app is told which AI made the change.
+    assert_eq!(
+        host.changes
+            .lock()
+            .expect("lock")
+            .last()
+            .map(String::as_str),
+        Some("Codex: set tempo")
+    );
 
     let r = mcp.call(
         "batch",
@@ -193,6 +213,7 @@ fn claude_can_list_tools_edit_the_song_and_analyze_it() {
     );
     assert_eq!(r["isError"], json!(false), "{r}");
     assert!(text_of(&r).contains("integrated_lufs"));
+    assert!(text_of(&r).contains("Spectrogram in words"));
     assert_eq!(r["content"][1]["type"], "image");
     assert_eq!(r["content"][1]["mimeType"], "image/png");
 
@@ -206,5 +227,46 @@ fn claude_can_list_tools_edit_the_song_and_analyze_it() {
     let r = mcp.call("get_song", json!({}));
     assert_eq!(r["isError"], json!(true));
     assert!(text_of(&r).contains("isn't running"), "{}", text_of(&r));
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn core_mode_describes_the_spectrogram_in_words_without_an_image() {
+    let dir = std::env::temp_dir().join(format!("npt-mcp-core-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("dir");
+    let control_file = dir.join("control.json");
+    let host = Arc::new(MemoryHost::default());
+    let server_host = Arc::clone(&host);
+    let _server = ControlServer::start(&control_file, move |req, ai| {
+        daw_control::handle_from(&*server_host, req, ai)
+    })
+    .expect("server");
+
+    let mut mcp = Mcp::start_with(&control_file, &[daw_control::ai_setup::CORE_FLAG]);
+    let r = mcp.call(
+        "create_clip",
+        json!({ "track_id": 1, "start_beats": 0, "length_beats": 8,
+                "notes": [ { "pitch": 60, "start_beats": 0, "length_beats": 4 },
+                           { "pitch": 84, "start_beats": 4, "length_beats": 4 } ] }),
+    );
+    assert_eq!(r["isError"], json!(false), "{r}");
+
+    let r = mcp.call(
+        "analyze_mix",
+        json!({ "per_track": false, "spectrogram": true }),
+    );
+    assert_eq!(r["isError"], json!(false), "{r}");
+    // Small models get one text answer: no picture, the sound in words.
+    assert_eq!(r["content"].as_array().map(Vec::len), Some(1), "{r}");
+    let v: Value = serde_json::from_str(&text_of(&r)).expect("json");
+    assert!(v.get("spectrogram_png_base64").is_none());
+    let words: Vec<&str> = v["spectrogram_summary"]
+        .as_array()
+        .expect("summary")
+        .iter()
+        .filter_map(Value::as_str)
+        .collect();
+    assert!(words.iter().any(|l| l.starts_with("Bar 1:")), "{words:?}");
+    assert!(words.iter().any(|l| l.starts_with("Bar 2:")), "{words:?}");
     std::fs::remove_dir_all(&dir).ok();
 }

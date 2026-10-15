@@ -1,8 +1,11 @@
-//! `npt-mcp`: the MCP server Claude Desktop and Claude Code launch.
+//! `npt-mcp`: the MCP server AI apps launch (Claude Desktop, Claude Code,
+//! Codex, LM Studio, goose, or any other MCP client).
 //!
 //! It speaks MCP over stdin/stdout and forwards each tool call to the
-//! running Nunc Pro Tune app over its local control channel. It holds no
-//! state of its own, so the app can be restarted at any time.
+//! running Nunc Pro Tune app over its local control channel, naming the AI
+//! that asked. It holds no state of its own, so the app can be restarted at
+//! any time. `--core` offers a short tool list and text-only results, for
+//! small local models.
 
 mod guide;
 mod tools;
@@ -47,7 +50,8 @@ ranges, presets).
 - Use batch to make a multi-step change one undo step (e.g. add a track, load a preset, \
 create a clip with notes).
 - You cannot hear audio: after changes, call analyze_mix (and spectrogram=true when \
-judging tone) to check loudness, balance, and peaks. Game music usually sits around \
+judging tone: you get a picture and the same in words, bar by bar) to check loudness, \
+balance, and peaks. Game music usually sits around \
 -16 to -20 LUFS with peaks below -1 dBTP.
 - Use play/stop so the user can listen, and ask them how it sounds.
 - Sheet music: export_musicxml / import_musicxml (MuseScore and other notation apps); \
@@ -58,7 +62,7 @@ over time (fade-ins, filter sweeps, swelling reverb); points are (beats, value).
 - Sampler tracks (instrument \"sampler\") play an SFZ sample pack: real pianos, \
 strings, brass, woodwinds. sample_library lists free ones the app can download \
 (download_sample_pack); load one with load_sample_pack and check sample_pack_status \
-in get_track.
+in get_track (once ready, lowest_note/highest_note: notes outside them are silent).
 - Guitar tracks (instrument \"guitar\") are a six-string guitar: set string.tuning (Standard, Drop D, DADGAD, open tunings; describe_instruments lists them with their open strings) and string.capo. Each note goes to the highest string that can reach it, so write chords as real guitar shapes (one note per string, within the strings' range); strum.time_s strums chords low to high.
 - Plugins: the user's own VST3 instruments (plugins, load_plugin) and effects \
 (add_plugin_effect). Their controls are 0-1 values by id (plugin_params, \
@@ -72,18 +76,30 @@ calibrate_recording (explain the clapping first) or set recording_delay.
 #[derive(Clone)]
 struct Bridge {
     tools: Arc<Vec<tools::ToolDef>>,
+    /// Text-only results (no spectrogram images) for small local models.
+    core: bool,
 }
 
 impl Bridge {
-    fn new() -> Self {
+    fn new(core: bool) -> Self {
         Self {
-            tools: Arc::new(tools::all_tools()),
+            tools: Arc::new(if core {
+                tools::core_tools()
+            } else {
+                tools::all_tools()
+            }),
+            core,
         }
     }
 
     /// Runs one tool call against the app. Never fails at the MCP level:
     /// problems come back as readable tool errors Claude can act on.
-    fn call_blocking(name: &str, args: serde_json::Map<String, Value>) -> CallToolResult {
+    fn call_blocking(
+        name: &str,
+        args: serde_json::Map<String, Value>,
+        ai: Option<&str>,
+        core: bool,
+    ) -> CallToolResult {
         // The guide is built in, so it works even when the app isn't running.
         if name == tools::READ_GUIDE {
             let page = args.get("page").and_then(Value::as_str);
@@ -97,16 +113,18 @@ impl Bridge {
             Err(e) => return CallToolResult::error(vec![ContentBlock::text(e)]),
         };
         // Discover on every call so restarting the app just works.
-        match ControlClient::call_discovered(&request) {
+        match ControlClient::call_discovered(&request, ai) {
             Err(e) => CallToolResult::error(vec![ContentBlock::text(e.to_string())]),
             Ok(Err(app_error)) => CallToolResult::error(vec![ContentBlock::text(app_error)]),
             Ok(Ok(mut value)) => {
                 let mut content = Vec::new();
-                // Spectrograms go back as images Claude can look at.
+                // Spectrograms go back as images the AI can look at
+                // (text-only models get the numbers and spectrogram_summary).
                 if let Some(png) = value
                     .as_object_mut()
                     .and_then(|o| o.remove("spectrogram_png_base64"))
                     .and_then(|v| v.as_str().map(str::to_owned))
+                    .filter(|_| !core)
                 {
                     content.push(ContentBlock::image(png, "image/png"));
                 }
@@ -151,13 +169,24 @@ impl ServerHandler for Bridge {
     async fn call_tool(
         &self,
         request: CallToolRequestParams,
-        _context: RequestContext<RoleServer>,
+        context: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, ErrorData> {
         let name = request.name.to_string();
         let args = request.arguments.unwrap_or_default();
-        let result = tokio::task::spawn_blocking(move || Bridge::call_blocking(&name, args))
-            .await
-            .unwrap_or_else(|e| CallToolResult::error(vec![ContentBlock::text(e.to_string())]));
+        // The name the AI app gave when it connected, for the app's
+        // activity list ("Codex: set tempo").
+        let ai = context.peer.peer_info().map(|info| {
+            daw_control::ai::friendly_name(
+                &info.client_info.name,
+                info.client_info.title.as_deref(),
+            )
+        });
+        let core = self.core;
+        let result = tokio::task::spawn_blocking(move || {
+            Bridge::call_blocking(&name, args, ai.as_deref(), core)
+        })
+        .await
+        .unwrap_or_else(|e| CallToolResult::error(vec![ContentBlock::text(e.to_string())]));
         Ok(result.into())
     }
 }
@@ -168,7 +197,8 @@ async fn main() {
         println!("npt-mcp {}", env!("CARGO_PKG_VERSION"));
         return;
     }
-    let service = match Bridge::new().serve(rmcp::transport::stdio()).await {
+    let core = std::env::args().any(|a| a == daw_control::ai_setup::CORE_FLAG);
+    let service = match Bridge::new(core).serve(rmcp::transport::stdio()).await {
         Ok(s) => s,
         Err(e) => {
             eprintln!("npt-mcp: could not start: {e}");

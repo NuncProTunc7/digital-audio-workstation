@@ -1,6 +1,6 @@
 # Composing playbook
 
-How Claude writes music in Nunc Pro Tune. The user can read it too: it explains what Claude does and why.
+How an AI (Claude, Codex, or another) writes music in Nunc Pro Tune. The user can read it too: it explains what the AI does and why.
 
 ## Workflow
 
@@ -8,7 +8,7 @@ How Claude writes music in Nunc Pro Tune. The user can read it too: it explains 
 2. **Read first.** `get_song` (and `describe_instruments` before changing sounds). Don't overwrite the user's work: add tracks, or ask. Never `new_project` without asking.
 3. **Build in one undo step per idea**, with `batch`: e.g. add a track, load a preset, create a clip, add notes.
 4. **Order**: tempo and time signature → drums → bass → harmony → melody → texture (pads, arps, counter-melody) → mix → automation.
-5. **Check.** `analyze_mix` (with `spectrogram` when judging tone, `per_track` for balance). Fix clipping and masking.
+5. **Check.** `analyze_mix` (with `spectrogram` when judging tone: a picture plus `spectrogram_summary`, the same bar by bar in words; `per_track` for balance). Fix clipping and masking.
 6. **Play it for the user** (`play`, with the loop set) and ask how it sounds. Change one thing at a time from their feedback.
 7. **Save** (`save_project`), and export when asked (`export_godot` for games).
 
@@ -39,7 +39,7 @@ How Claude writes music in Nunc Pro Tune. The user can read it too: it explains 
 
 Guitar tracks: pick `string.tuning` for the style (Drop D or Drop C for heavy combat riffs, DADGAD or Open G for folk and fantasy towns, Standard otherwise) and keep notes between the lowest open string and about 22 frets above the top one. Write chords as guitar voicings, one note per string (an open E chord is 40 47 52 56 59 64), so each lands on its own string; use `strum.time_s` 0.015–0.04 for strummed chords and Palm Muted for chugging rhythm.
 
-Library instruments (sample_library) must be downloaded first: call `download_sample_pack`, tell the user how big it is, poll `sample_library` until `installed` lists its programs, then `add_track` a sampler and `load_sample_pack` with a program's path. Keep them in their natural ranges (cello C2–A5, double bass E1–G3, flute C4–C7, tuba D1–F4). Mention the credit line for CC-BY packs.
+Library instruments (sample_library) must be downloaded first: call `download_sample_pack`, tell the user how big it is, poll `sample_library` until `installed` lists its programs, then `add_track` a sampler and `load_sample_pack` with a program's path. Keep them in their natural ranges (cello C2–A5, double bass E1–G3, flute C4–C7, tuba D1–F4): once a pack has loaded, get_track's `sample_pack_status` gives `lowest_note` and `highest_note`, and notes outside them are silent. Sustained instruments (flute, strings, brass) hold a note as long as it lasts. Mention the credit line for CC-BY packs.
 
 Progressions that work: I–V–vi–IV (C G Am F), vi–IV–I–V (Am F C G), i–VI–III–VII (Am F C G), i–iv–v (Am Dm Em), i–♭VII–♭VI–♭VII (Am G F G).
 

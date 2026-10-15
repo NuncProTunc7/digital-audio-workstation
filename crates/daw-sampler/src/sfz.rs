@@ -5,8 +5,11 @@
 //! inheritance, `<region>`s with `sample`, `key`, `lokey`, `hikey`,
 //! `pitch_keycenter`, `lovel`, `hivel`, `volume`, `tune`, `transpose`,
 //! `offset`, `ampeg_attack`, `ampeg_release`, `amp_veltrack`, `loop_mode`,
-//! `loop_start`, `loop_end`, `trigger` (release-trigger regions are skipped),
-//! note names (`c4` = 60), `#define`, `#include`, and comments.
+//! `loop_start`, `loop_end`, `trigger` (release- and legato-trigger regions
+//! are skipped: every note plays as a fresh attack), `loccN`/`hiccN` checked
+//! once against the pack's starting controller values (`set_ccN`,
+//! `set_hdccN`; 0 when unset), note names (`c4` = 60), `#define`,
+//! `#include`, and comments.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -201,10 +204,33 @@ fn num<T: std::str::FromStr>(ops: &Opcodes, key: &str) -> Option<T> {
     ops.get(key).and_then(|v| v.trim().parse().ok())
 }
 
-fn region_from(ops: &Opcodes, sample_dir: &Path) -> Option<Region> {
+/// Controller values a pack starts with, 0-127, by controller number.
+type CcValues = HashMap<u32, f32>;
+
+/// Whether every `loccN`/`hiccN` range on the region holds the controller's
+/// starting value. Packs use these to switch playing styles (legato,
+/// staccato, a second flute) with a controller; nothing here moves
+/// controllers, so only the styles that are on at the start may sound.
+fn controllers_allow(ops: &Opcodes, cc: &CcValues) -> bool {
+    ops.keys()
+        .filter_map(|k| {
+            k.strip_prefix("locc")
+                .or_else(|| k.strip_prefix("hicc"))
+                .and_then(|n| n.parse::<u32>().ok())
+        })
+        .all(|n| {
+            let lo = num::<f32>(ops, &format!("locc{n}")).unwrap_or(0.0);
+            let hi = num::<f32>(ops, &format!("hicc{n}")).unwrap_or(127.0);
+            let value = cc.get(&n).copied().unwrap_or(0.0);
+            (lo..=hi).contains(&value)
+        })
+}
+
+fn region_from(ops: &Opcodes, sample_dir: &Path, cc: &CcValues) -> Option<Region> {
     if ops
         .get("trigger")
-        .is_some_and(|t| t != "attack" && t != "first" && t != "legato")
+        .is_some_and(|t| t != "attack" && t != "first")
+        || !controllers_allow(ops, cc)
     {
         return None;
     }
@@ -270,23 +296,25 @@ pub fn parse_sfz_file(path: &Path) -> Result<Vec<Region>, SamplerError> {
 pub fn parse_sfz(text: &str, dir: &Path) -> Result<Vec<Region>, SamplerError> {
     let text = preprocess(text, dir, &mut Vec::new(), 0)?;
     let mut default_path = String::new();
+    let mut cc = CcValues::new();
     // Opcodes in effect at each level; a header resets its level and below.
     let (mut global, mut master, mut group) = (Opcodes::new(), Opcodes::new(), Opcodes::new());
     let mut region: Option<Opcodes> = None;
     let mut level = "";
     let mut out = Vec::new();
-    let flush = |region: &mut Option<Opcodes>, out: &mut Vec<Region>, default_path: &str| {
-        if let Some(ops) = region.take()
-            && let Some(r) = region_from(&ops, &dir.join(default_path.replace('\\', "/")))
-        {
-            out.push(r);
-        }
-    };
+    let flush =
+        |region: &mut Option<Opcodes>, out: &mut Vec<Region>, default_path: &str, cc: &CcValues| {
+            if let Some(ops) = region.take()
+                && let Some(r) = region_from(&ops, &dir.join(default_path.replace('\\', "/")), cc)
+            {
+                out.push(r);
+            }
+        };
     for line in text.lines() {
         for t in tokens(line) {
             match t {
                 Token::Header(h) => {
-                    flush(&mut region, &mut out, &default_path);
+                    flush(&mut region, &mut out, &default_path, &cc);
                     level = match h.as_str() {
                         "control" => "control",
                         "global" => {
@@ -316,6 +344,16 @@ pub fn parse_sfz(text: &str, dir: &Path) -> Result<Vec<Region>, SamplerError> {
                 }
                 Token::Opcode(k, v) => match level {
                     "control" if k == "default_path" => default_path = v,
+                    "control" => {
+                        // set_cc7=100 (0-127) or set_hdcc7=0.8 (0-1).
+                        let (n, scale) = match k.strip_prefix("set_hdcc") {
+                            Some(n) => (n, 127.0),
+                            None => (k.strip_prefix("set_cc").unwrap_or(""), 1.0),
+                        };
+                        if let (Ok(n), Ok(v)) = (n.parse::<u32>(), v.trim().parse::<f32>()) {
+                            cc.insert(n, (v * scale).clamp(0.0, 127.0));
+                        }
+                    }
                     "global" => {
                         global.insert(k, v);
                     }
@@ -335,7 +373,7 @@ pub fn parse_sfz(text: &str, dir: &Path) -> Result<Vec<Region>, SamplerError> {
             }
         }
     }
-    flush(&mut region, &mut out, &default_path);
+    flush(&mut region, &mut out, &default_path, &cc);
     if out.is_empty() {
         return Err(SamplerError::Parse(
             "the SFZ file has no playable regions".into(),
@@ -401,6 +439,40 @@ block */ <region> sample=b.wav key=62";
         assert_eq!((r[2].lovel, r[2].hivel), (65, 127));
         assert_eq!(r[2].release_s, Some(0.2), "region overrides global");
         assert_eq!(r[2].loop_frames, Some((100, 900)));
+    }
+
+    #[test]
+    fn styles_switched_by_controllers_play_only_when_on_at_the_start() {
+        // Shaped like the Ixox Flute: normal, legato (sustain pedal) and
+        // staccato (CC 85) groups, and a second flute (CC 86) that is off.
+        let sfz = r#"
+<control> set_hdcc80=0.5 set_cc85=0 set_hdcc86=0
+<global> locc80=1
+<master> locc85=0 hicc85=42
+<group> group_label=normal
+<region> sample=nor.flac key=60
+<group> trigger=legato locc64=64
+<region> sample=nor.flac key=60
+<master> locc85=43 hicc85=84
+<group> group_label=staccato
+<region> sample=det.flac key=60
+<global> locc86=1
+<group> group_label=second
+<region> sample=3rd.flac key=64
+"#;
+        let r = parse_sfz(sfz, Path::new("p")).expect("parse");
+        assert_eq!(r.len(), 1, "{r:?}");
+        assert_eq!(r[0].sample, Path::new("p/nor.flac"));
+    }
+
+    #[test]
+    fn legato_regions_are_skipped_without_controllers_too() {
+        let r = parse_sfz(
+            "<region> sample=a.wav key=60 <region> sample=b.wav key=60 trigger=legato",
+            Path::new("."),
+        )
+        .expect("parse");
+        assert_eq!(r.len(), 1);
     }
 
     #[test]

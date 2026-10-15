@@ -7,7 +7,7 @@ import type { Backend } from "./backend";
 import type {
   AudioStatus,
   Catalog,
-  ClaudeStatus,
+  AiStatus,
   CompareSide,
   LibraryPack,
   PluginInfo,
@@ -774,16 +774,24 @@ export function createPreviewBackend(): PreviewBackend {
   });
   // Every "file" is a two-second tone; enough to draw and edit.
   const PREVIEW_SECONDS = 2;
-  const claude = (): ClaudeStatus => ({
+  const mcpConfig = (args: string[]) =>
+    JSON.stringify({ mcpServers: { "nunc-pro-tune": { command: "npt-mcp", args } } }, null, 2);
+  const ai = (): AiStatus => ({
     listening: false,
-    error: "Claude needs the desktop app",
+    error: "Connecting an AI needs the desktop app",
     last_activity_secs: null,
+    last_ai: null,
     activity: [],
     bridge_path: "npt-mcp",
     bridge_found: false,
     desktop_config_path: "",
     desktop_configured: false,
     claude_code_command: 'claude mcp add --scope user nunc-pro-tune -- "npt-mcp"',
+    codex_config_path: "",
+    codex_configured: false,
+    codex_command: 'codex mcp add nunc-pro-tune -- "npt-mcp"',
+    generic_config: mcpConfig([]),
+    generic_config_core: mcpConfig(["--core"]),
   });
 
   return {
@@ -1035,7 +1043,15 @@ export function createPreviewBackend(): PreviewBackend {
     exportMusicXml: noop,
     pickFolder: async () => null,
     pickSamplePack: async () => null,
-    samplePackStatus: async () => ({ state: "ready", name: "Preview", zones: 0, megabytes: 0 }),
+    // Free-library flutes play C4 to C7, as the real pack does.
+    samplePackStatus: async (path) => ({
+      state: "ready",
+      name: "Preview",
+      zones: 0,
+      megabytes: 0,
+      lowest_note: /flute/i.test(path) ? 60 : 21,
+      highest_note: /flute/i.test(path) ? 96 : 108,
+    }),
     plugins: async () => ({ plugins: structuredClone(previewPlugins), could_not_use: [] }),
     loadPlugin: async (trackId, uid) => {
       const p = previewPlugins.find((x) => x.uid === uid);
@@ -1167,9 +1183,12 @@ export function createPreviewBackend(): PreviewBackend {
     simulateFileDrop: (paths: string[], x: number, y: number) => {
       for (const l of dropListeners) l(paths, x, y);
     },
-    claudeStatus: async () => claude(),
-    claudeInstallDesktop: async () => {
+    aiStatus: async () => ai(),
+    aiInstallClaudeDesktop: async () => {
       throw new Error("Connecting Claude needs the desktop app");
+    },
+    aiInstallCodex: async () => {
+      throw new Error("Connecting Codex needs the desktop app");
     },
     diagnosticReport: async () =>
       [

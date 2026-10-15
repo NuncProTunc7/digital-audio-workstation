@@ -10,7 +10,7 @@
   - **+ Audio track**: recordings (see [audio](audio.md)).
 - Select a track, then open the **Instrument** tab to change its sound. Pick a **Preset** first, then adjust knobs. To set an exact value, double-click the number at the right of a slider, type it and press **Enter** (units are optional: `2.5k` or `2500 Hz`, `120 ms`, `35%`). A value outside the slider's range turns the box red and says what's allowed; **Esc** cancels.
 - **Sounds** tab: every built-in sound and every preset you saved, in one list. Search ("bass", "retro", "warm"), click a mood button to filter, and star your favorites (**★ Favorites** shows only those). **Try on …** puts the sound on the selected track and plays a short phrase so you hear it (**Ctrl+Z** puts the old sound back); sounds for a different kind of instrument offer **+ New track** instead.
-- **Your own presets**: when you like a sound, click **Save preset…**, name it ("Dungeon Pad") and click **Save**. It appears under **Your presets** in the Preset list of every track with the same kind of instrument, in every song. Saving with the same name updates it; **✕** next to the list deletes it (tracks using it keep their sound). Claude can save and load them too.
+- **Your own presets**: when you like a sound, click **Save preset…**, name it ("Dungeon Pad") and click **Save**. It appears under **Your presets** in the Preset list of every track with the same kind of instrument, in every song. Saving with the same name updates it; **✕** next to the list deletes it (tracks using it keep their sound). Your AI can save and load them too.
 - Double-click a track's name to rename it. Each track header has **M** (mute), **S** (solo), **❄** (freeze), **A** (automation) and a delete button.
 - **❄ Freeze** renders the track's instrument and effects to audio and plays that instead, to save CPU when the computer struggles. A frozen track shows a blue **❄ Frozen** badge by its name, and its clips look icy and striped. Its fader, pan, mute and sends still work. If you change its notes, sound, effects or the tempo, the ❄ turns dashed and the track plays live again; click it to freeze it again. Click a lit ❄ to unfreeze.
 
@@ -44,17 +44,19 @@ Notes below the lowest string still play (on the lowest string), but a real guit
 
 1. **+ Sampler track**, then in its panel open **Free instruments**. You'll find two grand pianos (Salamander, Headroom), a cello, a double bass, a flute and a war tuba.
 2. Click **Download** next to one. It comes straight from its publisher and stays on this computer for every song. Small ones take seconds; the Salamander piano (750 MB) can take several minutes. You can keep working while it downloads.
-3. When it's done, click **Use …** (e.g. **Use Bowed** or **Use Plucked** for the cello) to play it on this track. A track still called *Piano* (the name **+ Sampler track** gives it) takes the instrument's name, such as *Cello (Bowed)*. Claude can do all of this too: "add a cello playing the melody".
+3. When it's done, click **Use …** (e.g. **Use Bowed** or **Use Plucked** for the cello) to play it on this track. A track still called *Piano* (the name **+ Sampler track** gives it) takes the instrument's name, such as *Cello (Bowed)*. Your AI can do all of this too: "add a cello playing the melody".
 4. Some instruments ask for a **credit** in your game (the panel shows the line to copy, e.g. "Flute by Xavier Hosxe / Ixox (CC BY 4.0)"). The ones marked "no credit needed" are free for anything.
 5. Already have an SFZ pack? **Load sample pack file…** and choose its `.sfz` file.
 6. Big packs load in the background (the panel shows *loading…*). To save memory the app may keep only some of the pack's soft-to-loud layers; the panel tells you how many.
+7. **Range**: a real instrument only plays its own notes. The panel shows them (the flute *plays C4 to C7*; keys outside that are silent), and the first time you pick such an instrument the computer-keyboard keys move into its range ("Keys now start at C4"). **Z/X** still move them wherever you like.
+8. Held notes on a flute, strings or other sustained instrument keep sounding as long as you hold them, even past the end of the recording; pianos and plucked sounds fade naturally as recorded.
 
 ## Key and chords
 
 - **Key** (top bar): pick the song's key, e.g. **A** and **Minor**. In the piano roll, notes in the key get lighter rows (the home note, the tonic, a bit lighter still), so you can stay "in key" without knowing theory. The key is also written into MIDI and sheet-music files. Each mode has a mood: hover over it in the list.
 - **Chord track**: the strip under the section markers. **Double-click** it to add a chord at that bar (it starts as the key's home chord); a menu opens where you choose the **Root**, the **type** (major, m, 7, maj7, sus4...) and an optional **Bass** note (slash chords like C/E). Click a chord to change it again, drag it to move it, **Delete chord** to remove it. Each chord lasts until the next.
 - The chord track makes no sound. It guides: in the piano roll, the notes of the chord playing at that moment are marked with an orange band, a safe choice for bass lines and long melody notes.
-- Claude reads the key and chords too: "write a bass line that follows the chord track" works.
+- Your AI reads the key and chords too: "write a bass line that follows the chord track" works.
 
 ## Section markers
 
@@ -106,7 +108,7 @@ Drum clips open as a grid: one row per drum, one column per step (a sixteenth no
 
 ## Playing and recording notes (no MIDI keyboard needed)
 
-- Your computer keyboard is a piano: **A** = C, **W** = C#, **S** = D, and so on along the row. **Z/X** change octave, **C/V** change loudness.
+- Your computer keyboard is a piano: **A** = C, **W** = C#, **S** = D, and so on along the row. **Z/X** change octave, **C/V** change loudness. When you pick an instrument with a limited range (a flute, a guitar), the keys move into it by themselves.
 - You can also click the on-screen piano or drum pads, or plug in a MIDI keyboard (the status bar shows it).
 - To record: select the track, press **R**, wait for the count-in clicks (set **Count-in** in the top bar), play from the next beat, press **R** again. Your notes become a clip. Then quantize if the timing is loose.
 
@@ -114,4 +116,4 @@ Drum clips open as a grid: one row per drum, one column per step (a sixteenth no
 
 - Build 4 or 8 bars that sound good on loop, then duplicate and vary them.
 - Keep bass and kick simple and locked together; let one thing at a time be busy.
-- Ask Claude for parts you can't play: "add a bass line that follows these chords".
+- Ask your AI for parts you can't play: "add a bass line that follows these chords".

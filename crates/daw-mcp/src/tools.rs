@@ -1,5 +1,5 @@
-//! The tool list Claude sees. Project-editing tools are generated from the
-//! `Command` JSON Schema, so the UI and Claude can never drift apart; a few
+//! The tool list the AI sees. Project-editing tools are generated from the
+//! `Command` JSON Schema, so the UI and the AI can never drift apart; a few
 //! more tools cover reading the song, the transport, files, and analysis.
 
 use serde_json::{Map, Value, json};
@@ -340,13 +340,13 @@ fn extra_tools() -> Vec<ToolDef> {
         ),
         tool(
             "analyze_mix",
-            "Render the song (or a region) offline and measure it, since you can't hear it: integrated loudness (LUFS), true peak, stereo correlation, energy per frequency band, per-track levels, and plain-language hints. Set spectrogram=true to also get a picture of the sound (time left to right, log frequency 30 Hz-20 kHz bottom to top, dashed guides at 100 Hz, 1 kHz, 10 kHz). Use after making changes to check the result.",
+            "Render the song (or a region) offline and measure it, since you can't hear it: integrated loudness (LUFS), true peak, stereo correlation, energy per frequency band, per-track levels, and plain-language hints. Set spectrogram=true to also get a picture of the sound (time left to right, log frequency 30 Hz-20 kHz bottom to top, dashed guides at 100 Hz, 1 kHz, 10 kHz; left out for text-only AIs) and spectrogram_summary, the same in words: loudness and lows/mids/highs/brightness per stretch of bars, where the sound changes, and narrow frequency build-ups. Use after making changes to check the result.",
             object_schema(
                 json!({
                     "start_beats": num("Start of the region (default: song start)."),
                     "end_beats": num("End of the region (default: end of the last clip)."),
                     "per_track": { "type": "boolean", "description": "Also measure each track alone (default true)." },
-                    "spectrogram": { "type": "boolean", "description": "Also return a spectrogram image (default false)." }
+                    "spectrogram": { "type": "boolean", "description": "Also return a spectrogram image and its description in words (default false)." }
                 }),
                 &[],
             ),
@@ -486,7 +486,7 @@ fn extra_tools() -> Vec<ToolDef> {
         ),
         tool(
             READ_GUIDE,
-            "Read the Nunc Pro Tune user guide. Pages: README (contents), lessons (a course to teach the user), basics, writing-music, audio, mixing, sheet-music, godot, claude, composing (Claude's playbook: workflow, game-music recipes, mix targets), troubleshooting. Works without the app running.",
+            "Read the Nunc Pro Tune user guide. Pages: README (contents), lessons (a course to teach the user), basics, writing-music, audio, mixing, sheet-music, godot, ai (connecting AI apps, working with the user), composing (the AI's playbook: workflow, game-music recipes, mix targets), troubleshooting. Works without the app running.",
             object_schema(
                 json!({ "page": { "type": "string", "description": "Page name, e.g. \"composing\". Omit for the contents." } }),
                 &[],
@@ -503,6 +503,48 @@ fn extra_tools() -> Vec<ToolDef> {
 }
 
 /// Every tool, commands first.
+/// The tools offered with `--core`: enough to write, shape, hear, and save
+/// a song, for small local models that lose their way in a long list.
+pub const CORE_TOOLS: &[&str] = &[
+    "read_guide",
+    "get_song",
+    "get_track",
+    "get_clip",
+    "describe_instruments",
+    "batch",
+    "add_track",
+    "remove_track",
+    "rename_track",
+    "load_preset",
+    "set_instrument_param",
+    "create_clip",
+    "add_notes",
+    "edit_notes",
+    "remove_notes",
+    "delete_clip",
+    "duplicate_clip",
+    "set_tempo",
+    "set_key",
+    "set_track_mixer",
+    "add_effect",
+    "set_effect_param",
+    "play",
+    "stop",
+    "undo",
+    "redo",
+    "analyze_mix",
+    "save_project",
+    "export_wav",
+];
+
+/// The core tools only (see [`CORE_TOOLS`]).
+pub fn core_tools() -> Vec<ToolDef> {
+    all_tools()
+        .into_iter()
+        .filter(|t| CORE_TOOLS.contains(&t.name.as_str()))
+        .collect()
+}
+
 pub fn all_tools() -> Vec<ToolDef> {
     let mut tools = command_tools();
     tools.extend(extra_tools());
@@ -685,6 +727,15 @@ fn godot_options_properties() -> Value {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn every_core_tool_exists() {
+        let names: Vec<String> = all_tools().into_iter().map(|t| t.name).collect();
+        for core in CORE_TOOLS {
+            assert!(names.iter().any(|n| n == core), "no tool {core}");
+        }
+        assert_eq!(core_tools().len(), CORE_TOOLS.len());
+    }
+
     use super::*;
 
     #[test]

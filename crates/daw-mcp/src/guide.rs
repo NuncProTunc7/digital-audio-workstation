@@ -1,5 +1,5 @@
-//! The user guide (`docs/guide`), built into the bridge so Claude can read it
-//! wherever it runs: Claude Desktop has no copy of the repository.
+//! The user guide (`docs/guide`), built into the bridge so the AI can read
+//! it wherever it runs: AI apps have no copy of the repository.
 
 /// Each page: its name (the file name without `.md`) and text.
 pub const PAGES: &[(&str, &str)] = &[
@@ -18,7 +18,7 @@ pub const PAGES: &[(&str, &str)] = &[
         include_str!("../../../docs/guide/sheet-music.md"),
     ),
     ("godot", include_str!("../../../docs/guide/godot.md")),
-    ("claude", include_str!("../../../docs/guide/claude.md")),
+    ("ai", include_str!("../../../docs/guide/ai.md")),
     (
         "composing",
         include_str!("../../../docs/guide/composing.md"),
@@ -35,6 +35,12 @@ pub fn read(name: Option<&str>) -> Result<&'static str, String> {
         .map(|n| n.trim().trim_end_matches(".md"))
         .filter(|n| !n.is_empty())
         .unwrap_or("README");
+    // The page was called "claude" before any AI could connect.
+    let name = if name.eq_ignore_ascii_case("claude") {
+        "ai"
+    } else {
+        name
+    };
     PAGES
         .iter()
         .find(|(n, _)| n.eq_ignore_ascii_case(name))
@@ -48,6 +54,12 @@ pub fn read(name: Option<&str>) -> Result<&'static str, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_old_claude_page_name_still_works() {
+        assert_eq!(read(Some("claude")), read(Some("ai")));
+        assert!(read(Some("ai")).expect("page").contains("Codex"));
+    }
 
     #[test]
     fn every_page_in_the_folder_is_built_in_and_links_resolve() {

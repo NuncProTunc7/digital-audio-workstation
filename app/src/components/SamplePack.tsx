@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { isLimited, packRange, rangeText } from "../range";
 import type { LibraryPack, SamplePackStatus, Track } from "../types";
 
 const POLL_MS = 500;
@@ -41,7 +42,7 @@ function Library({
       .catch(() => {});
   }, [library]);
   useEffect(refresh, [refresh]);
-  // Watch downloads (Claude may have started one too).
+  // Watch downloads (the AI may have started one too).
   const busy = packs?.some((p) => p.job && p.job.state !== "failed") ?? false;
   useEffect(() => {
     if (!busy) return;
@@ -132,6 +133,7 @@ export default function SamplePack({ track, onChoose, status, library, onDownloa
       window.clearTimeout(timer);
     };
   }, [path, status]);
+  const range = packRange(state);
 
   return (
     <fieldset className="param-group sample-pack">
@@ -156,6 +158,11 @@ export default function SamplePack({ track, onChoose, status, library, onDownloa
         </p>
       ) : (
         <p className="muted">No sample pack loaded yet: this track is silent.</p>
+      )}
+      {path && range && isLimited(range) && (
+        <p className="pack-range">
+          Plays <strong>{rangeText(range)}</strong>; keys outside that are silent.
+        </p>
       )}
       {library && onDownload && onUse && <Library library={library} onDownload={onDownload} onUse={onUse} />}
       <button onClick={onChoose}>{path ? "Choose another file…" : "Load sample pack file…"}</button>

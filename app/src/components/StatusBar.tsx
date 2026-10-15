@@ -1,4 +1,4 @@
-import type { AppInfo, AudioStatus, ClaudeStatus, TransportStatus } from "../types";
+import type { AppInfo, AudioStatus, AiStatus, TransportStatus } from "../types";
 
 interface StatusBarProps {
   audio: AudioStatus | null;
@@ -11,12 +11,12 @@ interface StatusBarProps {
   onBufferSize: (frames: number | null) => void;
   onCopyReport: () => void;
   onRefreshMidi: () => void;
-  claude: ClaudeStatus | null;
-  onToggleClaude: () => void;
+  ai: AiStatus | null;
+  onToggleAi: () => void;
 }
 
-/** Claude counts as "working" for this long after its last request. */
-const CLAUDE_ACTIVE_SECS = 10;
+/** The AI counts as "working" for this long after its last request. */
+const AI_ACTIVE_SECS = 10;
 
 const DEFAULT_DEVICE = "__default__";
 const DEFAULT_BUFFER = "default";
@@ -44,12 +44,12 @@ export default function StatusBar({
   onBufferSize,
   onCopyReport,
   onRefreshMidi,
-  claude,
-  onToggleClaude,
+  ai,
+  onToggleAi,
 }: StatusBarProps) {
   const struggling = transport?.struggling ?? false;
-  const claudeActive = claude?.last_activity_secs != null && claude.last_activity_secs < CLAUDE_ACTIVE_SECS;
-  const claudeDot = !claude?.listening ? "off" : claudeActive ? "active" : "ok";
+  const aiActive = ai?.last_activity_secs != null && ai.last_activity_secs < AI_ACTIVE_SECS;
+  const aiDot = !ai?.listening ? "off" : aiActive ? "active" : "ok";
   const latencyMs =
     transport?.buffer_frames && audio?.sample_rate_hz
       ? (transport.buffer_frames / audio.sample_rate_hz) * 1000
@@ -144,18 +144,23 @@ export default function StatusBar({
       <button
         className="small"
         onClick={onCopyReport}
-        title="Copy a report about your sound card, CPU and recent errors, to paste to Claude when something goes wrong"
+        title="Copy a report about your sound card, CPU and recent errors, to paste to your AI when something goes wrong"
         aria-label="Copy diagnostic report"
       >
         Report
       </button>
       <button
-        className="small claude-button"
-        onClick={onToggleClaude}
-        title={claude?.listening ? "Claude can connect. Click for setup and activity." : (claude?.error ?? "Claude")}
+        className="small ai-button"
+        onClick={onToggleAi}
+        aria-label="AI connection"
+        title={
+          ai?.listening
+            ? "Your AI (Claude, Codex, or another) can connect. Click for setup and activity."
+            : (ai?.error ?? "AI connection")
+        }
       >
-        <span className={`claude-dot ${claudeDot}`} aria-hidden />
-        Claude
+        <span className={`ai-dot ${aiDot}`} aria-hidden />
+        AI{ai?.last_ai ? ` · ${ai.last_ai}` : ""}
       </button>
       <span className="status-item muted" title={filePath ?? "Not saved yet"}>
         {filePath ? filePath.split(/[\\/]/).pop() : "Not saved"}

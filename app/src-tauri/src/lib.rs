@@ -15,8 +15,8 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, RwLock};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
+use daw_control::ai_setup;
 use daw_control::autosave::{self, AutosaveSlot, Recoverable};
-use daw_control::claude_setup;
 use daw_control::compare::{self, Comparison, Side};
 use daw_control::diagnostics::{self, DiagnosticInfo};
 use daw_control::settings::{self, Settings};
@@ -84,6 +84,8 @@ struct AppState {
     control_error: Mutex<Option<String>>,
     /// When Claude last talked to the app, and what it did recently.
     last_remote: Mutex<Option<Instant>>,
+    /// The AI that last sent a request ("Claude", "Codex"...).
+    last_ai: Mutex<String>,
     remote_log: Mutex<VecDeque<RemoteActivity>>,
     /// This computer's settings (recording delays).
     settings: Mutex<Settings>,
@@ -136,6 +138,7 @@ impl Default for AppState {
             control: Mutex::new(None),
             control_error: Mutex::new(None),
             last_remote: Mutex::new(None),
+            last_ai: Mutex::new(String::new()),
             remote_log: Mutex::new(VecDeque::new()),
             settings: Mutex::new(Settings::load(&settings::settings_path())),
             autosave: Mutex::new(AutosaveSlot::new(autosave::autosave_dir())),
@@ -241,7 +244,7 @@ impl daw_control::Host for AppState {
         self.settings.lock().map_or(0, |s| s.count_in_bars)
     }
 
-    fn note_claude_edit(&self) -> Option<Option<Instant>> {
+    fn note_ai_edit(&self) -> Option<Option<Instant>> {
         let mut last = self.last_claude_edit.lock().ok()?;
         Some(last.replace(Instant::now()))
     }
@@ -1649,25 +1652,37 @@ fn bridge_path(app: &AppHandle) -> PathBuf {
 }
 
 #[derive(Serialize)]
-struct ClaudeStatus {
-    /// The control server is running, so Claude can connect.
+struct AiStatus {
+    /// The control server is running, so an AI can connect.
     listening: bool,
     error: Option<String>,
-    /// Seconds since Claude last did something (None = not this session).
+    /// Seconds since an AI last did something (None = not this session).
     last_activity_secs: Option<u64>,
+    /// The AI that last did something ("Claude", "Codex"...), if any.
+    last_ai: Option<String>,
     activity: Vec<RemoteActivity>,
     bridge_path: String,
     bridge_found: bool,
     desktop_config_path: String,
     desktop_configured: bool,
     claude_code_command: String,
+    codex_config_path: String,
+    codex_configured: bool,
+    codex_command: String,
+    /// `mcpServers` JSON for any other MCP app, and the same with the short
+    /// tool list for small local models.
+    generic_config: String,
+    generic_config_core: String,
 }
 
-#[tauri::command]
-fn claude_status(app: AppHandle, state: State<'_, AppState>) -> ClaudeStatus {
+/// How the AI connection is doing and how to set up each AI app. Async:
+/// it reads the AI apps' settings files.
+#[tauri::command(async)]
+fn ai_status(app: AppHandle, state: State<'_, AppState>) -> Result<AiStatus, String> {
     let bridge = bridge_path(&app);
-    let config = claude_setup::desktop_config_path();
-    ClaudeStatus {
+    let desktop = ai_setup::desktop_config_path();
+    let codex = ai_setup::codex_config_path();
+    Ok(AiStatus {
         listening: state.control.lock().is_ok_and(|c| c.is_some()),
         error: state.control_error.lock().ok().and_then(|e| e.clone()),
         last_activity_secs: state
@@ -1675,45 +1690,74 @@ fn claude_status(app: AppHandle, state: State<'_, AppState>) -> ClaudeStatus {
             .lock()
             .ok()
             .and_then(|t| t.map(|t| t.elapsed().as_secs())),
+        last_ai: state
+            .last_ai
+            .lock()
+            .ok()
+            .map(|n| n.clone())
+            .filter(|n| !n.is_empty()),
         activity: state
             .remote_log
             .lock()
             .map(|l| l.iter().rev().cloned().collect())
             .unwrap_or_default(),
         bridge_found: bridge.exists(),
-        desktop_configured: claude_setup::desktop_configured(&config, &bridge),
-        claude_code_command: claude_setup::claude_code_command(&bridge),
+        desktop_configured: ai_setup::desktop_configured(&desktop, &bridge),
+        claude_code_command: ai_setup::claude_code_command(&bridge),
+        codex_configured: ai_setup::codex_configured(&codex, &bridge),
+        codex_command: ai_setup::codex_command(&bridge),
+        generic_config: ai_setup::generic_config(&bridge, false),
+        generic_config_core: ai_setup::generic_config(&bridge, true),
         bridge_path: bridge.display().to_string(),
-        desktop_config_path: config.display().to_string(),
+        desktop_config_path: desktop.display().to_string(),
+        codex_config_path: codex.display().to_string(),
+    })
+}
+
+/// The bridge program, or a plain-language error if it's missing.
+fn existing_bridge(app: &AppHandle) -> Result<PathBuf, String> {
+    let bridge = bridge_path(app);
+    if bridge.exists() {
+        Ok(bridge)
+    } else {
+        Err(format!(
+            "the AI bridge program (npt-mcp) is missing ({})",
+            bridge.display()
+        ))
     }
 }
 
 /// Adds Nunc Pro Tune to Claude Desktop's settings (backing them up first).
-#[tauri::command]
-fn claude_install_desktop(
+#[tauri::command(async)]
+fn ai_install_claude_desktop(
     app: AppHandle,
     state: State<'_, AppState>,
-) -> Result<ClaudeStatus, String> {
-    let bridge = bridge_path(&app);
-    if !bridge.exists() {
-        return Err(format!(
-            "the Claude bridge program is missing ({})",
-            bridge.display()
-        ));
-    }
-    claude_setup::install_desktop(&claude_setup::desktop_config_path(), &bridge)?;
-    Ok(claude_status(app, state))
+) -> Result<AiStatus, String> {
+    let bridge = existing_bridge(&app)?;
+    ai_setup::install_desktop(&ai_setup::desktop_config_path(), &bridge)?;
+    ai_status(app, state)
 }
 
-/// Starts the control server Claude's bridge connects to.
+/// Adds Nunc Pro Tune to Codex's settings (backing them up first).
+#[tauri::command(async)]
+fn ai_install_codex(app: AppHandle, state: State<'_, AppState>) -> Result<AiStatus, String> {
+    let bridge = existing_bridge(&app)?;
+    ai_setup::install_codex(&ai_setup::codex_config_path(), &bridge)?;
+    ai_status(app, state)
+}
+
+/// Starts the control server the AI bridge (`npt-mcp`) connects to.
 fn start_control(app: &AppHandle) {
     let handle = app.clone();
-    let result = ControlServer::start(&daw_control::control_file_path(), move |request| {
+    let result = ControlServer::start(&daw_control::control_file_path(), move |request, ai| {
         let state = handle.state::<AppState>();
         if let Ok(mut t) = state.last_remote.lock() {
             *t = Some(Instant::now());
         }
-        daw_control::handle(&*state, request)
+        if let Ok(mut name) = state.last_ai.lock() {
+            ai.clone_into(&mut name);
+        }
+        daw_control::handle_from(&*state, request, ai)
     });
     let state = app.state::<AppState>();
     match result {
@@ -1838,8 +1882,9 @@ pub fn run() {
             audio_status,
             set_output_device,
             refresh_midi,
-            claude_status,
-            claude_install_desktop,
+            ai_status,
+            ai_install_claude_desktop,
+            ai_install_codex,
             import_audio,
             audio_peaks,
             input_status,
