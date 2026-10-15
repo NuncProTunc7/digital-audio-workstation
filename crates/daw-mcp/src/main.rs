@@ -50,7 +50,8 @@ ranges, presets).
 - Use batch to make a multi-step change one undo step (e.g. add a track, load a preset, \
 create a clip with notes).
 - You cannot hear audio: after changes, call analyze_mix (and spectrogram=true when \
-judging tone) to check loudness, balance, and peaks. Game music usually sits around \
+judging tone: you get a picture and the same in words, bar by bar) to check loudness, \
+balance, and peaks. Game music usually sits around \
 -16 to -20 LUFS with peaks below -1 dBTP.
 - Use play/stop so the user can listen, and ask them how it sounds.
 - Sheet music: export_musicxml / import_musicxml (MuseScore and other notation apps); \
@@ -118,7 +119,7 @@ impl Bridge {
             Ok(Ok(mut value)) => {
                 let mut content = Vec::new();
                 // Spectrograms go back as images the AI can look at
-                // (text-only models get the numbers alone).
+                // (text-only models get the numbers and spectrogram_summary).
                 if let Some(png) = value
                     .as_object_mut()
                     .and_then(|o| o.remove("spectrogram_png_base64"))

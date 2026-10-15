@@ -3,8 +3,10 @@
 //! Renders a project offline (exactly as it sounds in the app) and measures
 //! loudness, peaks, stereo image, tonal balance, and per-track levels, then
 //! turns the numbers into plain-language hints. Optionally draws a
-//! spectrogram so Claude can look at the sound.
+//! spectrogram so the AI can look at the sound, and describes it in words
+//! for AIs that can't see pictures.
 
+mod describe;
 mod measure;
 mod spectrogram;
 
@@ -15,6 +17,7 @@ use daw_engine::offline::render_region;
 use daw_model::Project;
 use serde::Serialize;
 
+pub use describe::{Timing, describe_spectrogram};
 pub use measure::{Band, Measurements, measure};
 pub use spectrogram::spectrogram_png;
 
@@ -31,7 +34,7 @@ pub struct AnalyzeOptions {
     pub end_beats: Option<f64>,
     /// Also measure each track on its own.
     pub per_track: bool,
-    /// Also draw a spectrogram PNG.
+    /// Also draw a spectrogram PNG and describe it in words.
     pub spectrogram: bool,
 }
 
@@ -67,6 +70,10 @@ pub struct Analysis {
     pub tracks: Vec<TrackLevel>,
     /// Plain-language observations, most important first.
     pub hints: Vec<String>,
+    /// The spectrogram in words (when one was asked for): loudness and tone
+    /// per stretch of bars, changes, and narrow build-ups.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spectrogram_summary: Option<Vec<String>>,
     #[serde(skip)]
     pub spectrogram_png: Option<Vec<u8>>,
 }
@@ -116,12 +123,22 @@ pub fn analyze(project: &Project, audio: &Arc<AudioPool>, options: &AnalyzeOptio
     let spectrogram_png = options
         .spectrogram
         .then(|| spectrogram_png(&rendered, SAMPLE_RATE_HZ, 900, 320));
+    let spectrogram_summary = options.spectrogram.then(|| {
+        let timing = Timing {
+            start_beats: start,
+            end_beats: end,
+            tempo_bpm: project.tempo_bpm,
+            beats_per_bar: project.beats_per_bar(),
+        };
+        describe_spectrogram(&rendered, SAMPLE_RATE_HZ, timing)
+    });
     Analysis {
         start_beats: start,
         end_beats: end,
         mix,
         tracks,
         hints,
+        spectrogram_summary,
         spectrogram_png,
     }
 }

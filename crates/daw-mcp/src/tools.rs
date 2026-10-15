@@ -340,13 +340,13 @@ fn extra_tools() -> Vec<ToolDef> {
         ),
         tool(
             "analyze_mix",
-            "Render the song (or a region) offline and measure it, since you can't hear it: integrated loudness (LUFS), true peak, stereo correlation, energy per frequency band, per-track levels, and plain-language hints. Set spectrogram=true to also get a picture of the sound (time left to right, log frequency 30 Hz-20 kHz bottom to top, dashed guides at 100 Hz, 1 kHz, 10 kHz). Use after making changes to check the result.",
+            "Render the song (or a region) offline and measure it, since you can't hear it: integrated loudness (LUFS), true peak, stereo correlation, energy per frequency band, per-track levels, and plain-language hints. Set spectrogram=true to also get a picture of the sound (time left to right, log frequency 30 Hz-20 kHz bottom to top, dashed guides at 100 Hz, 1 kHz, 10 kHz; left out for text-only AIs) and spectrogram_summary, the same in words: loudness and lows/mids/highs/brightness per stretch of bars, where the sound changes, and narrow frequency build-ups. Use after making changes to check the result.",
             object_schema(
                 json!({
                     "start_beats": num("Start of the region (default: song start)."),
                     "end_beats": num("End of the region (default: end of the last clip)."),
                     "per_track": { "type": "boolean", "description": "Also measure each track alone (default true)." },
-                    "spectrogram": { "type": "boolean", "description": "Also return a spectrogram image (default false)." }
+                    "spectrogram": { "type": "boolean", "description": "Also return a spectrogram image and its description in words (default false)." }
                 }),
                 &[],
             ),
