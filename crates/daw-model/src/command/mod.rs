@@ -364,13 +364,14 @@ pub enum Command {
         #[serde(default)]
         seed: Option<u64>,
     },
-    /// Replace a sound effect's recipe (send every field: missing ones take
-    /// the defaults, not the sound's current values). Fields are 0 to 1, or
-    /// -1 to 1 where noted; out-of-range values are clamped, NaN is an
-    /// error. Play it afterwards with play_sound.
+    /// Change a sound effect's settings. Give only the settings to change
+    /// (e.g. {"base_freq": 0.3, "decay": 0.5}); the rest keep their current
+    /// values (read them with get_sound). Fields are 0 to 1, or -1 to 1
+    /// where noted; volume_db is -24 to +6. Out-of-range values are
+    /// clamped, NaN is an error. Play it afterwards with play_sound.
     SetSound {
         sound_id: Id,
-        recipe: crate::sound::SoundRecipe,
+        recipe: crate::sound::SoundChanges,
     },
     /// A new take on a sound effect: its shaping settings each move a
     /// little (at most 0.05). Another seed gives another take.

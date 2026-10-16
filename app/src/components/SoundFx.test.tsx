@@ -87,6 +87,8 @@ describe("SoundFx", () => {
     expect(s.onPlay).toHaveBeenCalledTimes(1);
     const last = s.commands.at(-1);
     expect(last?.command === "set_sound" && last.recipe.base_freq).toBeCloseTo(0.4);
+    // Only the slider's own setting is sent, so other changes are kept.
+    expect(last?.command === "set_sound" && Object.keys(last.recipe)).toEqual(["base_freq"]);
   });
 
   it("vary changes the recipe", async () => {

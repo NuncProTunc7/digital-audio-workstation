@@ -165,6 +165,157 @@ impl Default for SoundRecipe {
     }
 }
 
+/// Changes to a sound's recipe: only the settings given change, the rest
+/// keep their current values. Same names and ranges as the recipe.
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize, JsonSchema)]
+pub struct SoundChanges {
+    /// The basic tone.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wave: Option<Wave>,
+    /// Fade-in time (0 = instant; length grows with the square).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attack: Option<f32>,
+    /// How long it holds at full volume.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sustain: Option<f32>,
+    /// Extra loudness at the start of the hold, for a "ping" (0 = none).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub punch: Option<f32>,
+    /// Fade-out time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decay: Option<f32>,
+    /// Starting pitch (0 = very low, 1 = very high; about 0.3 is middle).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_freq: Option<f32>,
+    /// Lowest pitch: if the pitch slides below it the sound stops (0 = no
+    /// limit).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub freq_limit: Option<f32>,
+    /// Pitch slide, -1 to 1: negative falls (lasers), positive rises (jumps).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub freq_ramp: Option<f32>,
+    /// Change of the slide over time, -1 to 1 (curves the slide).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub freq_dramp: Option<f32>,
+    /// Vibrato depth (pitch wobble).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vib_strength: Option<f32>,
+    /// Vibrato speed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vib_speed: Option<f32>,
+    /// Pitch jump, -1 to 1: positive jumps up (coin "ding-ding"), negative
+    /// down.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub arp_mod: Option<f32>,
+    /// When the pitch jump happens (higher = sooner; 0 = never... use
+    /// arp_mod 0 for no jump).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub arp_speed: Option<f32>,
+    /// Square wave width (0 = even and hollow, 1 = thin and nasal).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duty: Option<f32>,
+    /// Square width sweep, -1 to 1.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duty_ramp: Option<f32>,
+    /// Restarts the pitch slide and jump this often (0 = off): trills,
+    /// alarms, rolling explosions.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repeat_speed: Option<f32>,
+    /// Phaser (a swirling comb filter) offset, -1 to 1 (0 = off).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub phaser_offset: Option<f32>,
+    /// Phaser sweep, -1 to 1.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub phaser_ramp: Option<f32>,
+    /// Low-pass filter: lower is duller (1 = off).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lpf_freq: Option<f32>,
+    /// Low-pass sweep, -1 to 1.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lpf_ramp: Option<f32>,
+    /// Low-pass resonance (a whistling peak at the cut-off).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lpf_resonance: Option<f32>,
+    /// High-pass filter: higher is thinner (0 = off).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hpf_freq: Option<f32>,
+    /// High-pass sweep, -1 to 1.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hpf_ramp: Option<f32>,
+    /// Bit crush: lo-fi grit, fewer bits and a lower sample rate (0 = off).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub crush: Option<f32>,
+    /// Overall level in dB, -24 to +6.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub volume_db: Option<f32>,
+}
+
+impl SoundChanges {
+    /// `recipe` with these changes made.
+    pub fn applied_to(&self, recipe: &SoundRecipe) -> SoundRecipe {
+        SoundRecipe {
+            wave: self.wave.unwrap_or(recipe.wave),
+            attack: self.attack.unwrap_or(recipe.attack),
+            sustain: self.sustain.unwrap_or(recipe.sustain),
+            punch: self.punch.unwrap_or(recipe.punch),
+            decay: self.decay.unwrap_or(recipe.decay),
+            base_freq: self.base_freq.unwrap_or(recipe.base_freq),
+            freq_limit: self.freq_limit.unwrap_or(recipe.freq_limit),
+            freq_ramp: self.freq_ramp.unwrap_or(recipe.freq_ramp),
+            freq_dramp: self.freq_dramp.unwrap_or(recipe.freq_dramp),
+            vib_strength: self.vib_strength.unwrap_or(recipe.vib_strength),
+            vib_speed: self.vib_speed.unwrap_or(recipe.vib_speed),
+            arp_mod: self.arp_mod.unwrap_or(recipe.arp_mod),
+            arp_speed: self.arp_speed.unwrap_or(recipe.arp_speed),
+            duty: self.duty.unwrap_or(recipe.duty),
+            duty_ramp: self.duty_ramp.unwrap_or(recipe.duty_ramp),
+            repeat_speed: self.repeat_speed.unwrap_or(recipe.repeat_speed),
+            phaser_offset: self.phaser_offset.unwrap_or(recipe.phaser_offset),
+            phaser_ramp: self.phaser_ramp.unwrap_or(recipe.phaser_ramp),
+            lpf_freq: self.lpf_freq.unwrap_or(recipe.lpf_freq),
+            lpf_ramp: self.lpf_ramp.unwrap_or(recipe.lpf_ramp),
+            lpf_resonance: self.lpf_resonance.unwrap_or(recipe.lpf_resonance),
+            hpf_freq: self.hpf_freq.unwrap_or(recipe.hpf_freq),
+            hpf_ramp: self.hpf_ramp.unwrap_or(recipe.hpf_ramp),
+            crush: self.crush.unwrap_or(recipe.crush),
+            volume_db: self.volume_db.unwrap_or(recipe.volume_db),
+        }
+    }
+}
+
+impl From<SoundRecipe> for SoundChanges {
+    /// Every setting, so applying it gives exactly `r`.
+    fn from(r: SoundRecipe) -> Self {
+        SoundChanges {
+            wave: Some(r.wave),
+            attack: Some(r.attack),
+            sustain: Some(r.sustain),
+            punch: Some(r.punch),
+            decay: Some(r.decay),
+            base_freq: Some(r.base_freq),
+            freq_limit: Some(r.freq_limit),
+            freq_ramp: Some(r.freq_ramp),
+            freq_dramp: Some(r.freq_dramp),
+            vib_strength: Some(r.vib_strength),
+            vib_speed: Some(r.vib_speed),
+            arp_mod: Some(r.arp_mod),
+            arp_speed: Some(r.arp_speed),
+            duty: Some(r.duty),
+            duty_ramp: Some(r.duty_ramp),
+            repeat_speed: Some(r.repeat_speed),
+            phaser_offset: Some(r.phaser_offset),
+            phaser_ramp: Some(r.phaser_ramp),
+            lpf_freq: Some(r.lpf_freq),
+            lpf_ramp: Some(r.lpf_ramp),
+            lpf_resonance: Some(r.lpf_resonance),
+            hpf_freq: Some(r.hpf_freq),
+            hpf_ramp: Some(r.hpf_ramp),
+            crush: Some(r.crush),
+            volume_db: Some(r.volume_db),
+        }
+    }
+}
+
 /// Quietest and loudest `volume_db`.
 pub const MIN_SOUND_VOLUME_DB: f32 = -24.0;
 pub const MAX_SOUND_VOLUME_DB: f32 = 6.0;
@@ -236,6 +387,11 @@ impl SoundRecipe {
     /// Clamps without checking for NaN (generators never make one).
     fn clamp_all(self) -> SoundRecipe {
         self.clamped().unwrap_or_default()
+    }
+
+    /// Starting pitch in Hz (sfxr's period at 8× oversampling, 44.1 kHz).
+    pub fn start_hz(&self) -> f32 {
+        3528.0 * (self.base_freq * self.base_freq + 0.001)
     }
 
     /// Length in seconds: attack, hold, and fade (at most

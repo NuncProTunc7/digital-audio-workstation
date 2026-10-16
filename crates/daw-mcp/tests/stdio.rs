@@ -270,3 +270,63 @@ fn core_mode_describes_the_spectrogram_in_words_without_an_image() {
     assert!(words.iter().any(|l| l.starts_with("Bar 2:")), "{words:?}");
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// An AI making game sound effects end to end, as a small local model on
+/// the short tool list would: make, read, tweak one setting, export.
+#[test]
+fn an_ai_can_make_shape_and_export_sound_effects() {
+    let dir = std::env::temp_dir().join(format!("npt-mcp-sfx-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("dir");
+    let control_file = dir.join("control.json");
+    let godot = dir.join("game");
+    std::fs::create_dir_all(&godot).expect("godot");
+    std::fs::write(godot.join("project.godot"), "config_version=5\n").expect("godot");
+    let host = Arc::new(MemoryHost::default());
+    let server_host = Arc::clone(&host);
+    let _server = ControlServer::start(&control_file, move |req, ai| {
+        daw_control::handle_from(&*server_host, req, ai)
+    })
+    .expect("server");
+    let mut mcp = Mcp::start_with(&control_file, &["--core"]);
+
+    let r = mcp.call("add_sound", json!({ "category": "coin", "seed": 7 }));
+    assert_eq!(r["isError"], json!(false), "{r}");
+    let id = host.session.lock().expect("lock").project().sounds[0].id;
+
+    let r = mcp.call("get_sound", json!({ "sound_id": id }));
+    assert_eq!(r["isError"], json!(false), "{r}");
+    let sound: Value = serde_json::from_str(&text_of(&r)).expect("json");
+    assert_eq!(sound["name"], "coin");
+    let before = sound["recipe"].clone();
+    assert!(sound["start_hz"].as_f64().is_some_and(|hz| hz > 20.0));
+
+    // "Lower and softer": only the settings named change.
+    let r = mcp.call(
+        "set_sound",
+        json!({ "sound_id": id, "recipe": { "base_freq": 0.25, "punch": 0.1 } }),
+    );
+    assert_eq!(r["isError"], json!(false), "{r}");
+    let after: Value =
+        serde_json::from_str(&text_of(&mcp.call("get_sound", json!({ "sound_id": id }))))
+            .expect("json");
+    assert_eq!(after["recipe"]["base_freq"], json!(0.25));
+    assert_eq!(after["recipe"]["decay"], before["decay"], "kept");
+    assert_eq!(after["recipe"]["arp_mod"], before["arp_mod"], "kept");
+
+    let r = mcp.call(
+        "export_sounds",
+        json!({ "project_dir": godot.to_string_lossy() }),
+    );
+    assert_eq!(r["isError"], json!(false), "{r}");
+    assert!(text_of(&r).contains("res://sfx/coin.wav"), "{r}");
+    assert!(godot.join("sfx").join("coin.wav").is_file());
+    assert_eq!(
+        host.changes
+            .lock()
+            .expect("lock")
+            .first()
+            .map(String::as_str),
+        Some("Codex: add sound")
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}

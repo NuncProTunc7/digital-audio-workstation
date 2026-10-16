@@ -72,13 +72,17 @@ function valueOf(r: SoundRecipe, key: RecipeField | "length"): number {
   return key === "length" ? r.sustain + r.decay : r[key];
 }
 
-/** `r` with the slider for `key` at `v`. Length scales hold and fade together. */
-function withValue(r: SoundRecipe, key: RecipeField | "length", v: number): SoundRecipe {
-  if (key !== "length") return { ...r, [key]: v };
+/**
+ * The settings that change when the slider for `key` moves to `v` (only
+ * those are sent, so a change your AI made elsewhere isn't undone). Length
+ * scales hold and fade together.
+ */
+function changesFor(r: SoundRecipe, key: RecipeField | "length", v: number): Partial<SoundRecipe> {
+  if (key !== "length") return { [key]: v };
   const total = r.sustain + r.decay;
-  if (total <= 0) return { ...r, sustain: v / 2, decay: v / 2 };
+  if (total <= 0) return { sustain: v / 2, decay: v / 2 };
   const scale = v / total;
-  return { ...r, sustain: Math.min(1, r.sustain * scale), decay: Math.min(1, r.decay * scale) };
+  return { sustain: Math.min(1, r.sustain * scale), decay: Math.min(1, r.decay * scale) };
 }
 
 function format(key: RecipeField | "length", v: number, r: SoundRecipe): string {
@@ -123,7 +127,7 @@ export default function SoundFx({ project, onCommand, onEndGesture, onPlay, onEx
     if (after) onPlay(selected.id);
   };
 
-  const setRecipe = (recipe: SoundRecipe) => {
+  const setRecipe = (recipe: Partial<SoundRecipe>) => {
     if (!selected) return;
     setDragging(true);
     void onCommand({ command: "set_sound", sound_id: selected.id, recipe });
@@ -197,7 +201,7 @@ export default function SoundFx({ project, onCommand, onEndGesture, onPlay, onEx
           step={(max - min) / 200}
           value={v}
           aria-label={label}
-          onChange={(e) => setRecipe(withValue(r, key, Number(e.target.value)))}
+          onChange={(e) => setRecipe(changesFor(r, key, Number(e.target.value)))}
           onPointerUp={finishDrag}
           onKeyUp={finishDrag}
           onBlur={finishDrag}
@@ -298,7 +302,7 @@ export default function SoundFx({ project, onCommand, onEndGesture, onPlay, onEx
                         void onCommand({
                           command: "set_sound",
                           sound_id: selected.id,
-                          recipe: { ...selected.recipe, wave: e.target.value as Wave },
+                          recipe: { wave: e.target.value as Wave },
                         }).then(() => {
                           onEndGesture();
                           onPlay(selected.id);

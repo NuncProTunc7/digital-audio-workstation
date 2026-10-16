@@ -502,7 +502,8 @@ export type Command =
       category?: SoundCategory | null;
       seed?: number | null;
     }
-  | { command: "set_sound"; sound_id: number; recipe: SoundRecipe }
+  /** Only the settings given change. */
+  | { command: "set_sound"; sound_id: number; recipe: Partial<SoundRecipe> }
   | { command: "vary_sound"; sound_id: number; seed: number }
   | { command: "rename_sound"; sound_id: number; name: string }
   | { command: "remove_sound"; sound_id: number }

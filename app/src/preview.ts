@@ -377,7 +377,7 @@ export function applyCommand(project: Project, command: Command): Project {
     case "rename_sound": {
       const s = (p.sounds ?? []).find((x) => x.id === command.sound_id);
       if (!s) throw new Error(`there is no sound with id ${command.sound_id}`);
-      if (command.command === "set_sound") s.recipe = clampRecipe(command.recipe);
+      if (command.command === "set_sound") s.recipe = clampRecipe({ ...s.recipe, ...command.recipe });
       else if (command.command === "vary_sound") s.recipe = previewVary(s.recipe, command.seed);
       else {
         const name = command.name.trim();

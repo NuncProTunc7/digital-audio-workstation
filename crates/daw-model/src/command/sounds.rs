@@ -2,7 +2,7 @@
 
 use super::{Command, CommandError, invalid};
 use crate::project::{Id, Project};
-use crate::sound::{SoundCategory, SoundEffect, SoundRecipe, generate, vary};
+use crate::sound::{SoundCategory, SoundChanges, SoundEffect, SoundRecipe, generate, vary};
 
 /// Longest sound name, in characters.
 const MAX_NAME_CHARS: usize = 40;
@@ -77,14 +77,16 @@ pub(super) fn add(
 pub(super) fn set(
     project: &mut Project,
     sound_id: Id,
-    recipe: SoundRecipe,
+    changes: SoundChanges,
 ) -> Result<Command, CommandError> {
-    let recipe = recipe.clamped()?;
     let index = index_of(project, sound_id)?;
+    let recipe = changes
+        .applied_to(&project.sounds[index].recipe)
+        .clamped()?;
     let old = std::mem::replace(&mut project.sounds[index].recipe, recipe);
     Ok(Command::SetSound {
         sound_id,
-        recipe: old,
+        recipe: old.into(),
     })
 }
 
@@ -95,7 +97,7 @@ pub(super) fn vary_sound(
 ) -> Result<Command, CommandError> {
     let index = index_of(project, sound_id)?;
     let new = vary(&project.sounds[index].recipe, seed);
-    set(project, sound_id, new)
+    set(project, sound_id, new.into())
 }
 
 pub(super) fn rename(

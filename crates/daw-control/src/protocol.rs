@@ -39,6 +39,11 @@ pub enum Request {
     SetCountIn {
         bars: u32,
     },
+    /// One sound effect: every setting, plus its starting pitch, length,
+    /// and peak as rendered.
+    GetSound {
+        sound_id: daw_model::Id,
+    },
     /// Play one of the project's sound effects (the song keeps playing).
     PlaySound {
         sound_id: daw_model::Id,

@@ -363,6 +363,7 @@ fn handle_inner<H: Host>(host: &H, request: Request, ai: &str) -> Result<Value, 
             engine(host)?.set_metronome(on);
             Ok(json!({ "metronome": on }))
         }
+        Request::GetSound { sound_id } => get_sound(host, sound_id),
         Request::PlaySound { sound_id } => {
             let seconds = play_sound(host, sound_id)?;
             Ok(json!({ "playing": sound_id, "seconds": seconds }))
@@ -1058,6 +1059,39 @@ pub fn export_sounds<H: Host>(
     daw_export::export_sounds(&project, &spec).map_err(|e| e.to_string())
 }
 
+/// One sound effect in full, with facts an AI can't hear for itself: its
+/// starting pitch, how long it really lasts (a slide below "lowest pitch"
+/// ends it early), and its peak.
+fn get_sound<H: Host>(host: &H, sound_id: daw_model::Id) -> Result<Value, String> {
+    let sound = host
+        .session()?
+        .project()
+        .sound(sound_id)
+        .cloned()
+        .ok_or_else(|| format!("there is no sound with id {sound_id}"))?;
+    let rate = daw_export::GAME_SAMPLE_RATE_HZ;
+    let samples = daw_sfx::render(&sound.recipe, rate);
+    let peak = daw_sfx::peak(&samples);
+    let peak_dbfs = if peak > 0.0 {
+        (20.0 * f64::from(peak).log10()).max(-120.0)
+    } else {
+        -120.0
+    };
+    let round = |x: f64, places: i32| {
+        let m = 10f64.powi(places);
+        (x * m).round() / m
+    };
+    Ok(json!({
+        "id": sound.id,
+        "name": sound.name,
+        "recipe": sound.recipe,
+        "start_hz": round(f64::from(sound.recipe.start_hz()), 1),
+        "seconds": round(samples.len() as f64 / f64::from(rate), 3),
+        "peak_dbfs": round(peak_dbfs, 1),
+        "silent": peak < 0.001,
+    }))
+}
+
 /// Plays one of the project's sound effects on top of whatever is playing.
 /// Renders, so call it off the window thread. Returns its length in seconds.
 pub fn play_sound<H: Host>(host: &H, sound_id: daw_model::Id) -> Result<f64, String> {
@@ -1281,6 +1315,37 @@ pub(crate) mod tests {
         ));
         assert_eq!(report["files"][0]["res_path"], "res://sfx/laser.wav");
         assert!(godot.path().join("sfx/laser.wav").is_file());
+    }
+
+    #[test]
+    fn get_sound_shows_every_setting_and_what_it_sounds_like() {
+        let host = TestHost::default();
+        ok(handle(
+            &host,
+            Request::Execute {
+                command: Command::AddSound {
+                    name: None,
+                    recipe: None,
+                    category: Some(daw_model::SoundCategory::Coin),
+                    seed: Some(4),
+                },
+            },
+        ));
+        let sound = host.session.lock().expect("s").project().sounds[0].clone();
+        let v = ok(handle(&host, Request::GetSound { sound_id: sound.id }));
+        assert_eq!(v["name"], "coin");
+        let recipe: daw_model::SoundRecipe =
+            serde_json::from_value(v["recipe"].clone()).expect("recipe");
+        assert_eq!(recipe, sound.recipe);
+        let hz = v["start_hz"].as_f64().expect("hz");
+        assert!(hz > 20.0 && hz < 20_000.0, "{hz}");
+        assert!(v["seconds"].as_f64().expect("s") > 0.0);
+        assert!(v["peak_dbfs"].as_f64().expect("peak") < 0.0);
+        assert!(
+            handle(&host, Request::GetSound { sound_id: 999 })
+                .into_result()
+                .is_err()
+        );
     }
 
     #[test]

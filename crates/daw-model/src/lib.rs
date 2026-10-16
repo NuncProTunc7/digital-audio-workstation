@@ -30,4 +30,4 @@ pub use project::{
     Snapshot, SongSection, SongState, Swing, TimeSignature, Track, TrackId,
 };
 pub use session::Session;
-pub use sound::{SoundCategory, SoundEffect, SoundRecipe, Wave};
+pub use sound::{SoundCategory, SoundChanges, SoundEffect, SoundRecipe, Wave};

@@ -2118,7 +2118,7 @@ fn sound_commands_round_trip_as_json() {
         },
         Command::SetSound {
             sound_id: id,
-            recipe: generate(SoundCategory::Laser, 1),
+            recipe: generate(SoundCategory::Laser, 1).into(),
         },
         Command::VarySound {
             sound_id: id,
@@ -2191,7 +2191,8 @@ fn set_sound_clamps_and_rejects_nan() {
         recipe: SoundRecipe {
             base_freq: 3.0,
             ..SoundRecipe::default()
-        },
+        }
+        .into(),
     })
     .expect("set");
     assert_eq!(s.project().sounds[0].recipe.base_freq, 1.0);
@@ -2202,7 +2203,8 @@ fn set_sound_clamps_and_rejects_nan() {
             recipe: SoundRecipe {
                 attack: f32::NAN,
                 ..SoundRecipe::default()
-            },
+            }
+            .into(),
         })
         .is_err()
     );
@@ -2210,7 +2212,7 @@ fn set_sound_clamps_and_rejects_nan() {
     assert!(
         s.execute(Command::SetSound {
             sound_id: 999,
-            recipe: SoundRecipe::default(),
+            recipe: SoundRecipe::default().into(),
         })
         .is_err()
     );
@@ -2228,7 +2230,8 @@ fn set_sound_drags_coalesce() {
             recipe: SoundRecipe {
                 base_freq: f,
                 ..original
-            },
+            }
+            .into(),
         })
         .expect("drag");
     }
@@ -2237,7 +2240,7 @@ fn set_sound_drags_coalesce() {
     assert_eq!(s.project().sounds[0].recipe, original);
     let set = |id| Command::SetSound {
         sound_id: id,
-        recipe: SoundRecipe::default(),
+        recipe: SoundRecipe::default().into(),
     };
     assert!(set(a).coalesces_with(&set(a)));
     assert!(!set(a).coalesces_with(&set(b)));
@@ -2303,4 +2306,31 @@ fn projects_without_sounds_load_and_save_without_the_field() {
     assert!(!json.contains("\"sounds\""));
     let back: Project = serde_json::from_str(&json).expect("load");
     assert!(back.sounds.is_empty());
+}
+
+#[test]
+fn set_sound_keeps_settings_left_out() {
+    let mut s = Session::new(fixture());
+    let id = add_coin(&mut s, 5);
+    let original = s.project().sounds[0].recipe;
+    // What an AI sends to lower the pitch: one setting, the rest kept.
+    let command: Command = serde_json::from_str(&format!(
+        r#"{{"command":"set_sound","sound_id":{id},"recipe":{{"base_freq":0.2,"wave":"sine"}}}}"#
+    ))
+    .expect("parse");
+    s.execute(command).expect("set");
+    let r = s.project().sounds[0].recipe;
+    assert_eq!(r.base_freq, 0.2);
+    assert_eq!(r.wave, crate::sound::Wave::Sine);
+    assert_eq!(
+        SoundRecipe {
+            base_freq: original.base_freq,
+            wave: original.wave,
+            ..r
+        },
+        original,
+        "nothing else changed"
+    );
+    s.undo();
+    assert_eq!(s.project().sounds[0].recipe, original);
 }

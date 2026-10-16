@@ -159,7 +159,7 @@ fn extra_tools() -> Vec<ToolDef> {
     vec![
         tool(
             "get_song",
-            "Overview of the open song: tempo, time signature, length, loop, master, and every track with its clips (ids, positions, note counts, muted). Each track says frozen: \"frozen\", \"out of date (plays live)\", or \"no\". Muted clips are kept but silent (e.g. unused recording takes stacked under the one that plays). Start here.",
+            "Overview of the open song: tempo, time signature, length, loop, master, and every track with its clips (ids, positions, note counts, muted). Each track says frozen: \"frozen\", \"out of date (plays live)\", or \"no\". Muted clips are kept but silent (e.g. unused recording takes stacked under the one that plays). Also lists the game sound effects (sounds: id, name, wave, seconds; details with get_sound). Start here.",
             object_schema(json!({}), &[]),
             true,
         ),
@@ -225,6 +225,12 @@ fn extra_tools() -> Vec<ToolDef> {
             "Turn the metronome click on or off.",
             object_schema(json!({ "on": { "type": "boolean" } }), &["on"]),
             false,
+        ),
+        tool(
+            "get_sound",
+            "One game sound effect in full: its recipe (every setting, to change with set_sound), start_hz (its starting pitch in Hz), seconds (how long it really lasts: a slide below freq_limit ends it early), peak_dbfs, and silent (true if it makes no sound). You can't hear sounds: use these facts, then ask the user.",
+            object_schema(json!({ "sound_id": { "type": "integer" } }), &["sound_id"]),
+            true,
         ),
         tool(
             "play_sound",
@@ -555,6 +561,12 @@ pub const CORE_TOOLS: &[&str] = &[
     "analyze_mix",
     "save_project",
     "export_wav",
+    "add_sound",
+    "get_sound",
+    "set_sound",
+    "vary_sound",
+    "play_sound",
+    "export_sounds",
 ];
 
 /// The core tools only (see [`CORE_TOOLS`]).
@@ -602,6 +614,9 @@ pub fn to_request(name: &str, args: Map<String, Value>) -> Result<Request, Strin
         },
         "set_metronome" => Request::SetMetronome {
             on: get_bool("on").ok_or("on is required")?,
+        },
+        "get_sound" => Request::GetSound {
+            sound_id: get_id("sound_id")?,
         },
         "play_sound" => Request::PlaySound {
             sound_id: get_id("sound_id")?,
@@ -821,6 +836,19 @@ mod tests {
             assert!(names.iter().any(|n| n == name), "{name} missing");
         }
         assert!(!names.iter().any(|n| n == "restore_sound"), "undo-only");
+        assert!(names.iter().any(|n| n == "get_sound"));
+        // Small local models get enough to make, shape, hear and export.
+        let core: Vec<String> = core_tools().into_iter().map(|t| t.name).collect();
+        for name in [
+            "add_sound",
+            "get_sound",
+            "set_sound",
+            "vary_sound",
+            "play_sound",
+            "export_sounds",
+        ] {
+            assert!(core.iter().any(|n| n == name), "{name} not in core");
+        }
     }
 
     #[test]
