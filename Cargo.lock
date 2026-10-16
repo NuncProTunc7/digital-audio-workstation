@@ -965,6 +965,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "daw-sfx"
+version = "0.4.0"
+dependencies = [
+ "daw-model",
+]
+
+[[package]]
 name = "daw-test-plugin"
 version = "0.4.0"
 dependencies = [

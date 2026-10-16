@@ -6,6 +6,7 @@ See `AGENTS.md` §4 for the rules.
 
 | Source project | Original file(s) | License | Used in |
 |---|---|---|---|
+| [sfxr](https://www.drpetter.se/project_sfxr.html) by Tomas Pettersson | `sfxr.cpp` (synthesizer `SynthSample`/`ResetSample`; category generators, Randomize, Mutate) | MIT | `crates/daw-sfx/src/lib.rs`, `crates/daw-model/src/sound.rs` (adapted to Rust; triangle wave, bit crush, dB volume added) |
 | [vst3-rs](https://github.com/coupler-rs/vst3-rs) | `examples/gain.rs` (plugin skeleton: factory, processor, controller) | MIT OR Apache-2.0 | `crates/daw-test-plugin/src/lib.rs` (test-only plugin, not shipped) |
 
 ## Published algorithms (no code copied)
