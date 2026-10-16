@@ -12,6 +12,7 @@ How to use the app, written for people who make music, not code. Your AI reads t
 | [Mixing](mixing.md) | Volume, pan, effects, automation, loudness. |
 | [Sheet music and MIDI](sheet-music.md) | Notation view, MusicXML, MIDI files, photos of scores. |
 | [Godot](godot.md) | Seamless loops, stems, adaptive music. |
+| [Sound effects](sound-effects.md) | Coins, jumps, lasers and more for your game, exported to Godot. |
 | [Working with your AI](ai.md) | Connecting Claude, Codex or another AI app, what to ask, giving useful feedback. |
 | [Composing playbook](composing.md) | How your AI builds a song: workflow, game-music recipes, checks. |
 | [Troubleshooting](troubleshooting.md) | No sound, crackles, missing audio, your AI can't connect. |

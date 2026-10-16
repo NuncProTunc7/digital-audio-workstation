@@ -18,6 +18,10 @@ pub const PAGES: &[(&str, &str)] = &[
         include_str!("../../../docs/guide/sheet-music.md"),
     ),
     ("godot", include_str!("../../../docs/guide/godot.md")),
+    (
+        "sound-effects",
+        include_str!("../../../docs/guide/sound-effects.md"),
+    ),
     ("ai", include_str!("../../../docs/guide/ai.md")),
     (
         "composing",

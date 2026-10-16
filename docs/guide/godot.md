@@ -1,5 +1,7 @@
 # Godot
 
+For game sound effects (coins, jumps, lasers...), see [Sound effects](sound-effects.md).
+
 ## Try it like the game first: Game preview
 
 Click **🎮 Game preview** in the top bar. The song plays the way your game will play the export:
