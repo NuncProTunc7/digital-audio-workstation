@@ -182,3 +182,28 @@ fn a_project_without_sounds_has_nothing_to_export() {
     let dir = godot_project();
     assert!(export_sounds(&Project::default(), &spec(dir.path())).is_err());
 }
+
+#[test]
+fn exporting_one_sound_keeps_the_name_it_gets_when_exporting_all() {
+    let dir = godot_project();
+    let mut p = Project::default();
+    add(&mut p, "Coin!", None, Some(SoundCategory::Coin));
+    let second = add(&mut p, "coin", None, Some(SoundCategory::Laser));
+    export_sounds(&p, &spec(dir.path())).expect("all");
+    let first_file = std::fs::read(dir.path().join("sfx/coin.wav")).expect("coin");
+    // Exporting only the second sound must not overwrite the first's file.
+    let report = export_sounds(
+        &p,
+        &SoundExport {
+            sound_ids: Some(vec![second, second]),
+            ..spec(dir.path())
+        },
+    )
+    .expect("one");
+    assert_eq!(report.files.len(), 1, "duplicate ids write one file");
+    assert_eq!(report.files[0].res_path, "res://sfx/coin_2.wav");
+    assert_eq!(
+        std::fs::read(dir.path().join("sfx/coin.wav")).expect("coin"),
+        first_file
+    );
+}

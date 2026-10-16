@@ -132,6 +132,24 @@ describe("SoundFx", () => {
     expect(within(document.querySelector(".sound-report") as HTMLElement).getByText(/res:\/\/sfx\/coin.wav/)).toBeTruthy();
   });
 
+  it("keys in the panel don't reach the song's shortcuts", async () => {
+    setup();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Coin" })));
+    const heard: string[] = [];
+    const listener = (e: KeyboardEvent) => heard.push(e.key);
+    window.addEventListener("keydown", listener);
+    try {
+      const slider = screen.getByLabelText("Pitch");
+      fireEvent.keyDown(slider, { key: "Delete" });
+      fireEvent.keyDown(slider, { key: "r" });
+      fireEvent.keyDown(slider, { key: "z", ctrlKey: true });
+    } finally {
+      window.removeEventListener("keydown", listener);
+    }
+    // Undo still works; Delete and the record key stay in the panel.
+    expect(heard).toEqual(["z"]);
+  });
+
   it("space plays the selected sound", async () => {
     const s = setup();
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Coin" })));

@@ -68,17 +68,31 @@ pub fn export_sounds(
         return Err(ExportError::NotGodotProject(spec.project_dir.clone()));
     }
     let folder = godot::check_folder(&spec.folder)?;
-    let chosen: Vec<&daw_model::SoundEffect> = match &spec.sound_ids {
-        None => project.sounds.iter().collect(),
-        Some(ids) => ids
-            .iter()
-            .map(|&id| {
-                project
-                    .sound(id)
-                    .ok_or_else(|| ExportError::Empty(format!("there is no sound with id {id}")))
-            })
-            .collect::<Result<_, _>>()?,
-    };
+    if let Some(ids) = &spec.sound_ids
+        && let Some(id) = ids.iter().find(|&&id| project.sound(id).is_none())
+    {
+        return Err(ExportError::Empty(format!(
+            "there is no sound with id {id}"
+        )));
+    }
+    // File names come from the whole list in project order, so a sound
+    // always gets the same file whatever else is exported with it (and
+    // exporting one never overwrites another's file).
+    let mut used: Vec<String> = Vec::new();
+    let chosen: Vec<(&daw_model::SoundEffect, String)> = project
+        .sounds
+        .iter()
+        .map(|sound| {
+            let stem = file_stem(&sound.name, &used);
+            used.push(stem.clone());
+            (sound, stem)
+        })
+        .filter(|(sound, _)| {
+            spec.sound_ids
+                .as_ref()
+                .is_none_or(|ids| ids.contains(&sound.id))
+        })
+        .collect();
     if chosen.is_empty() {
         return Err(ExportError::Empty(
             "the project has no sound effects yet".into(),
@@ -87,10 +101,8 @@ pub fn export_sounds(
     let dir = spec.project_dir.join(&folder);
     std::fs::create_dir_all(&dir).map_err(|e| io_err(&dir, e))?;
 
-    // Stems already taken, so two names that slug alike don't overwrite.
-    let mut used: Vec<String> = Vec::new();
     let mut files = Vec::new();
-    for sound in chosen {
+    for (sound, stem) in chosen {
         let mono = daw_sfx::render(&sound.recipe, GAME_SAMPLE_RATE_HZ);
         let peak = f64::from(daw_sfx::peak(&mono));
         let peak_db = if peak > 0.0 {
@@ -101,9 +113,7 @@ pub fn export_sounds(
         let turned_down_db = (peak_db - MAX_PEAK_DBFS).max(0.0);
         let gain = 10f64.powf(-turned_down_db / 20.0) as f32;
         let stereo: Vec<f32> = mono.iter().flat_map(|&s| [s * gain, s * gain]).collect();
-        let stem = file_stem(&sound.name, &used);
         let file = format!("{stem}.wav");
-        used.push(stem);
         write_wav(&dir.join(&file), &stereo, GAME_SAMPLE_RATE_HZ, None)?;
         files.push(SoundFile {
             sound_id: sound.id,

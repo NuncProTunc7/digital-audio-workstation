@@ -173,6 +173,15 @@ export default function SoundFx({ project, onCommand, onEndGesture, onPlay, onEx
     onPlay(selected.id);
   };
 
+  // Keys pressed in the panel stay in it (after the slider or field has
+  // used them), so Delete, R or note keys don't act on the song behind.
+  // Ctrl/Cmd shortcuts (undo, redo, save) still reach the app.
+  const keepKeysInPanel = (e: KeyboardEvent) => {
+    if (e.ctrlKey || e.metaKey) return;
+    e.stopPropagation();
+    if (e.key === "Escape") onClose();
+  };
+
   const slider = (key: RecipeField | "length", label: string, hint: string) => {
     if (!selected) return null;
     const r = selected.recipe;
@@ -200,7 +209,7 @@ export default function SoundFx({ project, onCommand, onEndGesture, onPlay, onEx
 
   return (
     <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="dialog sound-fx" role="dialog" aria-label="Sound effects" onKeyDownCapture={onKeyDown}>
+      <div className="dialog sound-fx" role="dialog" aria-label="Sound effects" onKeyDownCapture={onKeyDown} onKeyDown={keepKeysInPanel}>
         <div className="sound-fx-header">
           <strong>Sound effects</strong>
           <span className="muted">for your game</span>
@@ -233,7 +242,11 @@ export default function SoundFx({ project, onCommand, onEndGesture, onPlay, onEx
                     onBlur={() => void finishRename(s)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") void finishRename(s);
-                      if (e.key === "Escape") setRenaming(null);
+                      if (e.key === "Escape") {
+                        // Cancels the rename only, not the whole panel.
+                        e.stopPropagation();
+                        setRenaming(null);
+                      }
                     }}
                   />
                 ) : (
