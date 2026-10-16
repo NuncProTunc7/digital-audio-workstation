@@ -452,6 +452,19 @@ fn extra_tools() -> Vec<ToolDef> {
             false,
         ),
         tool(
+            "export_sounds",
+            "Write the project's game sound effects (all, or sound_ids) as 16-bit 44.1 kHz WAV files into the user's Godot project, in folder (default sfx), one file per sound named after it (coin -> res://sfx/coin.wav). Sounds that would peak above -1 dBFS are turned down. Returns each file's res:// path, length, peak, and how much it was turned down. Ask the user for their Godot project folder if you don't know it.",
+            object_schema(
+                json!({
+                    "project_dir": { "type": "string", "description": "The Godot project folder (the one containing project.godot)." },
+                    "folder": { "type": "string", "description": "Folder inside the project, default sfx." },
+                    "sound_ids": { "type": "array", "items": { "type": "integer" }, "description": "Only these sounds (default: all)." }
+                }),
+                &["project_dir"],
+            ),
+            false,
+        ),
+        tool(
             "import_musicxml",
             "Turn sheet music into tracks. Give either the path of a MusicXML file (.musicxml, .xml, or compressed .mxl, as saved by MuseScore and most notation apps) or MusicXML text in `xml`. To import a photo or PDF of printed music: read the notes from the image yourself, write them as a partwise MusicXML score (one <part> per instrument; include divisions, time signature, and <sound tempo>), and pass it as `xml`; check the result with get_clip. Each part becomes a new track; an empty song also takes the tempo and meter. One undo step.",
             object_schema(
@@ -680,6 +693,10 @@ pub fn to_request(name: &str, args: Map<String, Value>) -> Result<Request, Strin
         "export_godot" => Request::ExportGodot(
             serde_json::from_value(Value::Object(args))
                 .map_err(|e| format!("invalid arguments for export_godot: {e}"))?,
+        ),
+        "export_sounds" => Request::ExportSounds(
+            serde_json::from_value(Value::Object(args))
+                .map_err(|e| format!("invalid arguments for export_sounds: {e}"))?,
         ),
         "import_musicxml" => Request::ImportMusicXml {
             path: get_str("path"),

@@ -1191,6 +1191,21 @@ export function createPreviewBackend(): PreviewBackend {
       }
       return { files, integrated_lufs: options.normalize === false ? null : (options.target_lufs ?? -16), gain_db: 0, seconds: 8, looped: options.looped ?? true };
     },
+    exportSounds: async (options) => {
+      if (!options.project_dir) throw new Error("choose your Godot project folder first");
+      const folder = options.folder ?? "sfx";
+      const chosen = (project.sounds ?? []).filter((x) => !options.sound_ids || options.sound_ids.includes(x.id));
+      if (chosen.length === 0) throw new Error("nothing to export: the project has no sound effects yet");
+      const used: string[] = [];
+      const files = chosen.map((x) => {
+        const base = x.name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "sound";
+        let stem = base;
+        for (let n = 2; used.includes(stem); n++) stem = `${base}_${n}`;
+        used.push(stem);
+        return { sound_id: x.id, res_path: `res://${folder}/${stem}.wav`, seconds: recipeSeconds(x.recipe), peak_dbfs: -6, turned_down_db: 0 };
+      });
+      return { files };
+    },
     // A one-bar score per track, so the view has something to draw.
     sheetMusic: async (trackIds) => {
       const tracks = project.tracks.filter((t) => t.instrument.kind !== "audio" && (!trackIds || trackIds.includes(t.id)));

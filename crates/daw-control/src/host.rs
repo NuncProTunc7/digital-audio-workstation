@@ -561,6 +561,10 @@ fn handle_inner<H: Host>(host: &H, request: Request, ai: &str) -> Result<Value, 
             let report = export_godot(host, &options)?;
             serde_json::to_value(report).map_err(|e| e.to_string())
         }
+        Request::ExportSounds(options) => {
+            let report = export_sounds(host, &options)?;
+            serde_json::to_value(report).map_err(|e| e.to_string())
+        }
         Request::ImportMusicXml { path, xml } => {
             let tracks = match (path, xml) {
                 (Some(p), _) => crate::notation::import_musicxml_file(host, Path::new(&p))?,
@@ -1040,6 +1044,20 @@ pub fn export_godot<H: Host>(
     daw_export::export_to_godot(&project, &host.audio(), &spec).map_err(|e| e.to_string())
 }
 
+/// Writes the project's sound effects (or some) as WAVs into a Godot project.
+pub fn export_sounds<H: Host>(
+    host: &H,
+    options: &crate::protocol::SoundExportOptions,
+) -> Result<daw_export::SoundExportReport, String> {
+    let project = host.session()?.project().clone();
+    let spec = daw_export::SoundExport {
+        project_dir: PathBuf::from(&options.project_dir),
+        folder: options.folder.clone().unwrap_or_else(|| "sfx".into()),
+        sound_ids: options.sound_ids.clone(),
+    };
+    daw_export::export_sounds(&project, &spec).map_err(|e| e.to_string())
+}
+
 /// Plays one of the project's sound effects on top of whatever is playing.
 /// Renders, so call it off the window thread. Returns its length in seconds.
 pub fn play_sound<H: Host>(host: &H, sound_id: daw_model::Id) -> Result<f64, String> {
@@ -1235,6 +1253,34 @@ pub(crate) mod tests {
 
     fn ok(r: Response) -> Value {
         r.into_result().expect("request succeeded")
+    }
+
+    #[test]
+    fn sounds_export_into_a_godot_project() {
+        let host = TestHost::default();
+        ok(handle(
+            &host,
+            Request::Execute {
+                command: Command::AddSound {
+                    name: None,
+                    recipe: None,
+                    category: Some(daw_model::SoundCategory::Laser),
+                    seed: None,
+                },
+            },
+        ));
+        let godot = tempfile::tempdir().expect("tmp");
+        std::fs::write(godot.path().join("project.godot"), "").expect("godot");
+        let report = ok(handle(
+            &host,
+            Request::ExportSounds(crate::protocol::SoundExportOptions {
+                project_dir: godot.path().to_string_lossy().into_owned(),
+                folder: None,
+                sound_ids: None,
+            }),
+        ));
+        assert_eq!(report["files"][0]["res_path"], "res://sfx/laser.wav");
+        assert!(godot.path().join("sfx/laser.wav").is_file());
     }
 
     #[test]

@@ -156,11 +156,26 @@ pub enum Request {
     /// Render seamless loops (and stems, adaptive-music resources) into a
     /// Godot project.
     ExportGodot(GodotOptions),
+    /// Write the project's sound effects as WAV files into a Godot project.
+    ExportSounds(SoundExportOptions),
     /// The song (or some tracks) as MusicXML; written to `path` if given.
     ExportMusicXml {
         path: Option<String>,
         track_ids: Option<Vec<TrackId>>,
     },
+}
+
+/// Options for [`Request::ExportSounds`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SoundExportOptions {
+    /// The Godot project folder (the one containing project.godot).
+    pub project_dir: String,
+    /// Folder inside the project (default "sfx").
+    #[serde(default)]
+    pub folder: Option<String>,
+    /// The sounds to write (default: all).
+    #[serde(default)]
+    pub sound_ids: Option<Vec<daw_model::Id>>,
 }
 
 /// Options for [`Request::ExportGodot`]; omitted fields use sensible defaults.

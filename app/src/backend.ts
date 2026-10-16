@@ -19,6 +19,8 @@ import type {
   Command,
   ExportReport,
   GodotOptions,
+  SoundExportOptions,
+  SoundExportReport,
   InputStatus,
   Peaks,
   ProjectView,
@@ -182,6 +184,8 @@ export interface Backend {
   /** Shows a folder picker; null if cancelled. */
   pickFolder(title: string): Promise<string | null>;
   exportGodot(options: GodotOptions): Promise<ExportReport>;
+  /** Writes sound effects as WAVs into a Godot project. */
+  exportSounds(options: SoundExportOptions): Promise<SoundExportReport>;
   /** The song (or some tracks) as MusicXML, for the sheet music view. */
   sheetMusic(trackIds: number[] | null): Promise<string>;
   /** Files dropped on the window, with the drop point in CSS pixels. */
@@ -324,6 +328,7 @@ export const tauriBackend: Backend = {
     return typeof picked === "string" ? picked : null;
   },
   exportGodot: (options) => invoke("export_godot", { options }),
+  exportSounds: (options) => invoke("export_sounds", { options }),
   inputStatus: () => invoke("input_status"),
   monitorInput: (on) => invoke("monitor_input", { on }),
   setInputDevice: (name) => invoke("set_input_device", { name }),

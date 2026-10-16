@@ -888,6 +888,7 @@ dependencies = [
  "daw-audio",
  "daw-engine",
  "daw-model",
+ "daw-sfx",
  "serde",
  "tempfile",
  "thiserror 2.0.21",

@@ -222,6 +222,29 @@ export interface SoundRecipe {
   volume_db: number;
 }
 
+/** Options for writing sound effects into a Godot project. */
+export interface SoundExportOptions {
+  project_dir: string;
+  /** Folder inside the project (default "sfx"). */
+  folder?: string | null;
+  /** Only these sounds (default: all). */
+  sound_ids?: number[] | null;
+}
+
+/** One sound effect file written. */
+export interface SoundFile {
+  sound_id: number;
+  res_path: string;
+  seconds: number;
+  peak_dbfs: number;
+  /** How much it was turned down so it doesn't clip (0 = not at all). */
+  turned_down_db: number;
+}
+
+export interface SoundExportReport {
+  files: SoundFile[];
+}
+
 /** One game sound effect. */
 export interface SoundEffect {
   id: number;

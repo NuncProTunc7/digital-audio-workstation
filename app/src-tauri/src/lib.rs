@@ -1296,6 +1296,15 @@ fn export_godot(
     daw_control::export_godot(&*state, &options)
 }
 
+/// Writes the project's sound effects as WAVs into a Godot project.
+#[tauri::command(async)]
+fn export_sounds(
+    state: State<'_, AppState>,
+    options: daw_control::SoundExportOptions,
+) -> Result<daw_export::SoundExportReport, String> {
+    daw_control::export_sounds(&*state, &options)
+}
+
 /// Whether a sampler's pack has loaded (or why not).
 #[tauri::command]
 fn sample_pack_status(path: String) -> serde_json::Value {
@@ -1906,6 +1915,7 @@ pub fn run() {
             export_musicxml,
             sheet_music,
             export_godot,
+            export_sounds,
             sample_pack_status,
             recovery_check,
             recovery_resolve,
