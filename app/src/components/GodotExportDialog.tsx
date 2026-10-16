@@ -1,21 +1,13 @@
 import { useState, type KeyboardEvent } from "react";
+import { rememberGodotDir, rememberedGodotDir } from "../godotDir";
 import type { ExportReport, GodotOptions, Inspection, Project } from "../types";
 
-const STORAGE_KEY = "npt.godotProjectDir";
 const LOUDNESS = [
   { label: "-14 LUFS (loud, like streaming)", value: -14 },
   { label: "-16 LUFS (game music, recommended)", value: -16 },
   { label: "-18 LUFS", value: -18 },
   { label: "-20 LUFS (quiet background)", value: -20 },
 ];
-
-function rememberedDir(): string {
-  try {
-    return window.localStorage.getItem(STORAGE_KEY) ?? "";
-  } catch {
-    return "";
-  }
-}
 
 function slug(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "music";
@@ -46,7 +38,7 @@ export default function GodotExportDialog({
   onStop,
   onClose,
 }: GodotExportDialogProps) {
-  const [dir, setDir] = useState(rememberedDir);
+  const [dir, setDir] = useState(rememberedGodotDir);
   const [folder, setFolder] = useState("music");
   const [name, setName] = useState(slug(project.name));
   const [format, setFormat] = useState<"ogg" | "wav">("ogg");
@@ -109,11 +101,7 @@ export default function GodotExportDialog({
   const run = async () => {
     setBusy(true);
     setReport(null);
-    try {
-      window.localStorage.setItem(STORAGE_KEY, dir);
-    } catch {
-      // Remembering the folder is a convenience only.
-    }
+    rememberGodotDir(dir);
     const result = await onExport(options());
     setBusy(false);
     if (result) setReport(result);

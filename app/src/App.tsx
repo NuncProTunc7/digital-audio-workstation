@@ -6,6 +6,7 @@ import type { ExportKind } from "./backend";
 import AudioPanel from "./components/AudioPanel";
 import AiPanel from "./components/AiPanel";
 import GodotExportDialog from "./components/GodotExportDialog";
+import SoundFx from "./components/SoundFx";
 import InstrumentPanel from "./components/InstrumentPanel";
 import Mixer from "./components/Mixer";
 import Piano from "./components/Piano";
@@ -440,6 +441,7 @@ export default function App({ backend }: AppProps) {
 
   const [exportOpen, setExportOpen] = useState(false);
   const [godotOpen, setGodotOpen] = useState(false);
+  const [soundFxOpen, setSoundFxOpen] = useState(false);
   const exportAs = useCallback(
     async (kind: ExportKind) => {
       setExportOpen(false);
@@ -885,6 +887,15 @@ export default function App({ backend }: AppProps) {
                 >
                   To Godot (loops, stems)…
                 </button>
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setExportOpen(false);
+                    setSoundFxOpen(true);
+                  }}
+                >
+                  Sound effects to Godot…
+                </button>
               </div>
             )}
           </div>
@@ -904,6 +915,15 @@ export default function App({ backend }: AppProps) {
           title="Play the song the way your game will: switch sections on the bar and fade layers in and out"
         >
           🎮 Game preview
+        </button>
+
+        <button
+          className={soundFxOpen ? "small toggle on" : "small"}
+          aria-pressed={soundFxOpen}
+          onClick={() => setSoundFxOpen((o) => !o)}
+          title="Make sound effects for your game (coins, jumps, lasers...) and export them to Godot"
+        >
+          🔊 Sound FX
         </button>
 
         <Versions
@@ -1453,6 +1473,17 @@ export default function App({ backend }: AppProps) {
           playing={transport?.playing ?? false}
           onStop={() => void run(() => backend.stop())}
           onClose={() => setGodotOpen(false)}
+        />
+      )}
+      {soundFxOpen && (
+        <SoundFx
+          project={project}
+          onCommand={execute}
+          onEndGesture={endGesture}
+          onPlay={(id) => void run(() => backend.playSound(id))}
+          onExport={(options) => run(() => backend.exportSounds(options))}
+          onPickFolder={() => backend.pickFolder("Choose your Godot project folder")}
+          onClose={() => setSoundFxOpen(false)}
         />
       )}
       {aiOpen && (
