@@ -12,6 +12,7 @@ authors = ["Nunc Pro Tune contributors"]
 [workspace.dependencies]
 daw-model = { path = "crates/daw-model" }
 daw-audio = { path = "crates/daw-audio" }
+daw-sfx = { path = "crates/daw-sfx" }
 daw-engine = { path = "crates/daw-engine", default-features = false }
 cpal = "0.18"
 hound = "3.5"
@@ -48,4 +49,7 @@ opt-level = 3
 opt-level = 3
 
 [profile.dev.package.daw-audio]
+opt-level = 3
+
+[profile.dev.package.daw-sfx]
 opt-level = 3

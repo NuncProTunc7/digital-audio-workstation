@@ -182,6 +182,74 @@ export interface Project {
   key?: Key | null;
   /** The chord track, in time order. */
   chords?: Chord[];
+  /** Game sound effects, exported to Godot as files. */
+  sounds?: SoundEffect[];
+}
+
+/** The basic tone of a sound effect. */
+export type Wave = "square" | "saw" | "sine" | "triangle" | "noise";
+
+/** A kind of sound effect to generate. */
+export type SoundCategory = "coin" | "jump" | "laser" | "explosion" | "hit" | "power_up" | "blip" | "random";
+
+/** How to make a sound effect (sfxr-style; 0..1, or -1..1 for ramps and the pitch jump). */
+export interface SoundRecipe {
+  wave: Wave;
+  attack: number;
+  sustain: number;
+  punch: number;
+  decay: number;
+  base_freq: number;
+  freq_limit: number;
+  freq_ramp: number;
+  freq_dramp: number;
+  vib_strength: number;
+  vib_speed: number;
+  arp_mod: number;
+  arp_speed: number;
+  duty: number;
+  duty_ramp: number;
+  repeat_speed: number;
+  phaser_offset: number;
+  phaser_ramp: number;
+  lpf_freq: number;
+  lpf_ramp: number;
+  lpf_resonance: number;
+  hpf_freq: number;
+  hpf_ramp: number;
+  crush: number;
+  /** -24..+6 dB. */
+  volume_db: number;
+}
+
+/** Options for writing sound effects into a Godot project. */
+export interface SoundExportOptions {
+  project_dir: string;
+  /** Folder inside the project (default "sfx"). */
+  folder?: string | null;
+  /** Only these sounds (default: all). */
+  sound_ids?: number[] | null;
+}
+
+/** One sound effect file written. */
+export interface SoundFile {
+  sound_id: number;
+  res_path: string;
+  seconds: number;
+  peak_dbfs: number;
+  /** How much it was turned down so it doesn't clip (0 = not at all). */
+  turned_down_db: number;
+}
+
+export interface SoundExportReport {
+  files: SoundFile[];
+}
+
+/** One game sound effect. */
+export interface SoundEffect {
+  id: number;
+  name: string;
+  recipe: SoundRecipe;
 }
 
 export type Mode =
@@ -427,6 +495,18 @@ export type Command =
   | { command: "rename_marker"; marker_id: number; name: string }
   | { command: "remove_marker"; marker_id: number }
   | { command: "restore_marker"; marker: Marker }
+  | {
+      command: "add_sound";
+      name?: string | null;
+      recipe?: Partial<SoundRecipe> | null;
+      category?: SoundCategory | null;
+      seed?: number | null;
+    }
+  | { command: "set_sound"; sound_id: number; recipe: SoundRecipe }
+  | { command: "vary_sound"; sound_id: number; seed: number }
+  | { command: "rename_sound"; sound_id: number; name: string }
+  | { command: "remove_sound"; sound_id: number }
+  | { command: "restore_sound"; sound: SoundEffect; index: number }
   | { command: "take_snapshot"; name: string }
   | { command: "load_snapshot"; snapshot_id: number }
   | { command: "rename_snapshot"; snapshot_id: number; name: string }

@@ -884,6 +884,13 @@ fn inspect_export(
     daw_control::inspect_export(&*state, &options)
 }
 
+/// Plays one of the project's sound effects; returns its length in seconds.
+/// Renders, so off the main thread.
+#[tauri::command(async)]
+fn play_sound(state: State<'_, AppState>, sound_id: daw_model::Id) -> Result<f64, String> {
+    daw_control::play_sound(&*state, sound_id)
+}
+
 /// Plays the end of a loop into its start, over and over (Stop ends it).
 #[tauri::command]
 fn audition_seam(
@@ -1287,6 +1294,15 @@ fn export_godot(
     options: daw_control::GodotOptions,
 ) -> Result<daw_export::ExportReport, String> {
     daw_control::export_godot(&*state, &options)
+}
+
+/// Writes the project's sound effects as WAVs into a Godot project.
+#[tauri::command(async)]
+fn export_sounds(
+    state: State<'_, AppState>,
+    options: daw_control::SoundExportOptions,
+) -> Result<daw_export::SoundExportReport, String> {
+    daw_control::export_sounds(&*state, &options)
 }
 
 /// Whether a sampler's pack has loaded (or why not).
@@ -1861,6 +1877,7 @@ pub fn run() {
             compare_stop,
             inspect_export,
             audition_seam,
+            play_sound,
             freeze_track,
             user_presets,
             plugins,
@@ -1898,6 +1915,7 @@ pub fn run() {
             export_musicxml,
             sheet_music,
             export_godot,
+            export_sounds,
             sample_pack_status,
             recovery_check,
             recovery_resolve,

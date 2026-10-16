@@ -2087,3 +2087,220 @@ fn clips_that_follow_tempo_measure_the_file_in_their_own_tempo() {
         "note clips can't be stretched"
     );
 }
+
+// ---- Sound effects ----
+
+use crate::sound::{SoundCategory, SoundRecipe, generate, vary};
+
+fn add_coin(s: &mut Session, seed: u64) -> Id {
+    s.execute(Command::AddSound {
+        name: None,
+        recipe: None,
+        category: Some(SoundCategory::Coin),
+        seed: Some(seed),
+    })
+    .expect("add");
+    s.end_gesture();
+    s.project().sounds.last().expect("sound").id
+}
+
+#[test]
+fn sound_commands_round_trip_as_json() {
+    let mut s = Session::new(fixture());
+    let id = add_coin(&mut s, 7);
+    let sound = s.project().sounds[0].clone();
+    for command in [
+        Command::AddSound {
+            name: Some("zap".into()),
+            recipe: Some(SoundRecipe::default()),
+            category: Some(SoundCategory::PowerUp),
+            seed: Some(3),
+        },
+        Command::SetSound {
+            sound_id: id,
+            recipe: generate(SoundCategory::Laser, 1),
+        },
+        Command::VarySound {
+            sound_id: id,
+            seed: 4,
+        },
+        Command::RenameSound {
+            sound_id: id,
+            name: "ding".into(),
+        },
+        Command::RemoveSound { sound_id: id },
+        Command::RestoreSound { sound, index: 0 },
+    ] {
+        let json = serde_json::to_string(&command).expect("serialize");
+        assert_eq!(
+            command,
+            serde_json::from_str::<Command>(&json).expect("back"),
+            "{json}"
+        );
+    }
+}
+
+#[test]
+fn adding_a_coin_and_undoing_removes_it() {
+    let mut s = Session::new(fixture());
+    let id = add_coin(&mut s, 7);
+    assert_eq!(s.project().sounds.len(), 1);
+    assert_eq!(s.project().sounds[0].name, "coin");
+    assert_eq!(
+        s.project().sounds[0].recipe,
+        generate(SoundCategory::Coin, 7)
+    );
+    s.undo();
+    assert!(s.project().sounds.is_empty());
+    s.redo();
+    assert_eq!(s.project().sounds[0].id, id);
+}
+
+#[test]
+fn names_are_made_unique() {
+    let mut s = Session::new(fixture());
+    add_coin(&mut s, 1);
+    add_coin(&mut s, 2);
+    s.execute(Command::AddSound {
+        name: None,
+        recipe: None,
+        category: None,
+        seed: None,
+    })
+    .expect("plain");
+    let names: Vec<&str> = s.project().sounds.iter().map(|x| x.name.as_str()).collect();
+    assert_eq!(names, ["coin", "coin_2", "sound"]);
+    assert_eq!(s.project().sounds[2].recipe, SoundRecipe::default());
+    // Renaming onto a taken name is refused.
+    let id = s.project().sounds[1].id;
+    assert!(
+        s.execute(Command::RenameSound {
+            sound_id: id,
+            name: "coin".into()
+        })
+        .is_err()
+    );
+}
+
+#[test]
+fn set_sound_clamps_and_rejects_nan() {
+    let mut s = Session::new(fixture());
+    let id = add_coin(&mut s, 1);
+    s.execute(Command::SetSound {
+        sound_id: id,
+        recipe: SoundRecipe {
+            base_freq: 3.0,
+            ..SoundRecipe::default()
+        },
+    })
+    .expect("set");
+    assert_eq!(s.project().sounds[0].recipe.base_freq, 1.0);
+    let before = s.project().clone();
+    assert!(
+        s.execute(Command::SetSound {
+            sound_id: id,
+            recipe: SoundRecipe {
+                attack: f32::NAN,
+                ..SoundRecipe::default()
+            },
+        })
+        .is_err()
+    );
+    assert_eq!(s.project(), &before);
+    assert!(
+        s.execute(Command::SetSound {
+            sound_id: 999,
+            recipe: SoundRecipe::default(),
+        })
+        .is_err()
+    );
+}
+
+#[test]
+fn set_sound_drags_coalesce() {
+    let mut s = Session::new(fixture());
+    let a = add_coin(&mut s, 1);
+    let b = add_coin(&mut s, 2);
+    let original = s.project().sounds[0].recipe;
+    for f in [0.1, 0.2, 0.3] {
+        s.execute(Command::SetSound {
+            sound_id: a,
+            recipe: SoundRecipe {
+                base_freq: f,
+                ..original
+            },
+        })
+        .expect("drag");
+    }
+    s.end_gesture();
+    s.undo();
+    assert_eq!(s.project().sounds[0].recipe, original);
+    let set = |id| Command::SetSound {
+        sound_id: id,
+        recipe: SoundRecipe::default(),
+    };
+    assert!(set(a).coalesces_with(&set(a)));
+    assert!(!set(a).coalesces_with(&set(b)));
+}
+
+#[test]
+fn remove_and_restore_keep_id_and_position() {
+    let mut s = Session::new(fixture());
+    add_coin(&mut s, 1);
+    let middle = add_coin(&mut s, 2);
+    add_coin(&mut s, 3);
+    let kept = s.project().sounds[1].clone();
+    s.execute(Command::RemoveSound { sound_id: middle })
+        .expect("remove");
+    assert_eq!(s.project().sounds.len(), 2);
+    s.undo();
+    assert_eq!(s.project().sounds[1], kept);
+}
+
+#[test]
+fn vary_sound_is_undoable_and_seeded() {
+    let mut s = Session::new(fixture());
+    let id = add_coin(&mut s, 1);
+    let original = s.project().sounds[0].recipe;
+    s.execute(Command::VarySound {
+        sound_id: id,
+        seed: 42,
+    })
+    .expect("vary");
+    assert_eq!(s.project().sounds[0].recipe, vary(&original, 42));
+    s.undo();
+    assert_eq!(s.project().sounds[0].recipe, original);
+}
+
+#[test]
+fn sound_ids_are_reserved_and_survive_loading_a_version() {
+    let mut s = Session::new(fixture());
+    let id = add_coin(&mut s, 1);
+    assert!(s.project().id_in_use(id));
+    s.execute(Command::TakeSnapshot { name: "v".into() })
+        .expect("take");
+    let version = s.project().snapshots[0].id;
+    s.execute(Command::RemoveSound { sound_id: id })
+        .expect("remove");
+    s.execute(Command::LoadSnapshot {
+        snapshot_id: version,
+    })
+    .expect("load");
+    // Sounds aren't part of a saved version of the music.
+    assert!(s.project().sounds.is_empty());
+    s.undo(); // the load
+    s.undo(); // the removal
+    assert_eq!(s.project().sounds[0].id, id);
+    // A new id never reuses the sound's.
+    let other = add_coin(&mut s, 2);
+    assert_ne!(other, id);
+}
+
+#[test]
+fn projects_without_sounds_load_and_save_without_the_field() {
+    let p = Project::default();
+    let json = serde_json::to_string(&p).expect("save");
+    assert!(!json.contains("\"sounds\""));
+    let back: Project = serde_json::from_str(&json).expect("load");
+    assert!(back.sounds.is_empty());
+}

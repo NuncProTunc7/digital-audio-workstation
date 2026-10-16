@@ -835,6 +835,7 @@ dependencies = [
  "daw-notation",
  "daw-plugins",
  "daw-sampler",
+ "daw-sfx",
  "dirs 6.0.0",
  "getrandom 0.3.4",
  "hound",
@@ -887,6 +888,7 @@ dependencies = [
  "daw-audio",
  "daw-engine",
  "daw-model",
+ "daw-sfx",
  "serde",
  "tempfile",
  "thiserror 2.0.21",
@@ -962,6 +964,13 @@ dependencies = [
  "daw-audio",
  "tempfile",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "daw-sfx"
+version = "0.4.0"
+dependencies = [
+ "daw-model",
 ]
 
 [[package]]

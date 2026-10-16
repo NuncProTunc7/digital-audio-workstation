@@ -12,6 +12,7 @@ daw-analysis = { path = "../daw-analysis" }
 daw-audio.workspace = true
 daw-engine.workspace = true
 daw-model.workspace = true
+daw-sfx.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 vorbis_rs = { version = "0.5.6", default-features = false }
@@ -20,5 +21,6 @@ vorbis_rs = { version = "0.5.6", default-features = false }
 workspace = true
 
 [dev-dependencies]
+daw-sfx.workspace = true
 tempfile = "3.27.0"
 daw-audio.workspace = true

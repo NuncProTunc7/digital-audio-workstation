@@ -11,6 +11,7 @@ mod encode;
 mod godot;
 mod inspect;
 mod render;
+mod sounds;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -23,6 +24,7 @@ use thiserror::Error;
 pub use encode::{write_ogg, write_wav};
 pub use inspect::{Finding, Inspection, Level, inspect};
 pub use render::{RenderedLoop, render_loop, render_with_intro};
+pub use sounds::{SoundExport, SoundExportReport, SoundFile, export_sounds};
 
 /// Sample rate for game audio: Godot mixes at 44.1 kHz by default.
 pub const GAME_SAMPLE_RATE_HZ: u32 = 44_100;

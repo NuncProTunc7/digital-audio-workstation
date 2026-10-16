@@ -139,6 +139,7 @@ Only use sample content that is CC0, CC-BY, or similar, and record its license i
 | Adaptive music | Optionally generate a Godot resource (`.tres`) for `AudioStreamSynchronized` (layered stems) or `AudioStreamInteractive` (sections with transitions) |
 | Loudness | Normalize to a target LUFS so every track in the game matches |
 | Export to project | Point at a Godot project folder; files land in `res://music/...` |
+| Sound effects | **Built (Oct 2026):** sfxr-style game sound effects (coin, jump, laser, explosion, hit, power-up, blip, random; Vary; ~25 settings) kept as recipes in the project (`daw-model/src/sound.rs`), rendered by `daw-sfx`, exported as WAVs to `res://sfx/` |
 
 **Built (Phase 5).** Formats were checked against the Godot 4.6 source (`docs/godot-formats.md`) and the exporter's output was imported by a real Godot 4.6 headless run: loops, BPM/beat counts, layer and section resources all load as intended. Loops are rendered with their reverb/echo tail folded back onto the start, at 44.1 kHz (Godot's mix rate), normalized to -16 LUFS by default without peaks above -1 dBFS. Re-exporting keeps the `uid` Godot assigned, so scenes referencing the music don't break.
 

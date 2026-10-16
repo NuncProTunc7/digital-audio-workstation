@@ -363,6 +363,10 @@ fn handle_inner<H: Host>(host: &H, request: Request, ai: &str) -> Result<Value, 
             engine(host)?.set_metronome(on);
             Ok(json!({ "metronome": on }))
         }
+        Request::PlaySound { sound_id } => {
+            let seconds = play_sound(host, sound_id)?;
+            Ok(json!({ "playing": sound_id, "seconds": seconds }))
+        }
         Request::DiagnosticReport => Ok(json!({ "report": diagnostic_report(host)? })),
         Request::FreezeTrack { track_id } => {
             freeze_track(host, track_id)?;
@@ -555,6 +559,10 @@ fn handle_inner<H: Host>(host: &H, request: Request, ai: &str) -> Result<Value, 
         }
         Request::ExportGodot(options) => {
             let report = export_godot(host, &options)?;
+            serde_json::to_value(report).map_err(|e| e.to_string())
+        }
+        Request::ExportSounds(options) => {
+            let report = export_sounds(host, &options)?;
             serde_json::to_value(report).map_err(|e| e.to_string())
         }
         Request::ImportMusicXml { path, xml } => {
@@ -1036,6 +1044,37 @@ pub fn export_godot<H: Host>(
     daw_export::export_to_godot(&project, &host.audio(), &spec).map_err(|e| e.to_string())
 }
 
+/// Writes the project's sound effects (or some) as WAVs into a Godot project.
+pub fn export_sounds<H: Host>(
+    host: &H,
+    options: &crate::protocol::SoundExportOptions,
+) -> Result<daw_export::SoundExportReport, String> {
+    let project = host.session()?.project().clone();
+    let spec = daw_export::SoundExport {
+        project_dir: PathBuf::from(&options.project_dir),
+        folder: options.folder.clone().unwrap_or_else(|| "sfx".into()),
+        sound_ids: options.sound_ids.clone(),
+    };
+    daw_export::export_sounds(&project, &spec).map_err(|e| e.to_string())
+}
+
+/// Plays one of the project's sound effects on top of whatever is playing.
+/// Renders, so call it off the window thread. Returns its length in seconds.
+pub fn play_sound<H: Host>(host: &H, sound_id: daw_model::Id) -> Result<f64, String> {
+    let recipe = host
+        .session()?
+        .project()
+        .sound(sound_id)
+        .map(|s| s.recipe)
+        .ok_or_else(|| format!("there is no sound with id {sound_id}"))?;
+    let engine = engine(host)?;
+    let rate = engine.sample_rate_hz().round() as u32;
+    let samples = daw_sfx::render(&recipe, rate);
+    let seconds = samples.len() as f64 / f64::from(rate.max(1));
+    engine.play_one_shot(samples);
+    Ok(seconds)
+}
+
 /// Checks what `export_godot` with `options` would write, without writing.
 pub fn inspect_export<H: Host>(
     host: &H,
@@ -1214,6 +1253,60 @@ pub(crate) mod tests {
 
     fn ok(r: Response) -> Value {
         r.into_result().expect("request succeeded")
+    }
+
+    #[test]
+    fn sounds_export_into_a_godot_project() {
+        let host = TestHost::default();
+        ok(handle(
+            &host,
+            Request::Execute {
+                command: Command::AddSound {
+                    name: None,
+                    recipe: None,
+                    category: Some(daw_model::SoundCategory::Laser),
+                    seed: None,
+                },
+            },
+        ));
+        let godot = tempfile::tempdir().expect("tmp");
+        std::fs::write(godot.path().join("project.godot"), "").expect("godot");
+        let report = ok(handle(
+            &host,
+            Request::ExportSounds(crate::protocol::SoundExportOptions {
+                project_dir: godot.path().to_string_lossy().into_owned(),
+                folder: None,
+                sound_ids: None,
+            }),
+        ));
+        assert_eq!(report["files"][0]["res_path"], "res://sfx/laser.wav");
+        assert!(godot.path().join("sfx/laser.wav").is_file());
+    }
+
+    #[test]
+    fn play_sound_needs_a_real_sound() {
+        let host = TestHost::default();
+        let err = handle(&host, Request::PlaySound { sound_id: 999 })
+            .into_result()
+            .expect_err("no such sound");
+        assert!(err.contains("no sound with id 999"), "{err}");
+        // A real sound gets as far as the (missing) audio output.
+        ok(handle(
+            &host,
+            Request::Execute {
+                command: Command::AddSound {
+                    name: None,
+                    recipe: None,
+                    category: Some(daw_model::SoundCategory::Coin),
+                    seed: None,
+                },
+            },
+        ));
+        let id = host.session.lock().expect("s").project().sounds[0].id;
+        let err = handle(&host, Request::PlaySound { sound_id: id })
+            .into_result()
+            .expect_err("no audio in tests");
+        assert!(err.contains("audio isn't running"), "{err}");
     }
 
     #[test]

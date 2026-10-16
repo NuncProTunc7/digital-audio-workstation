@@ -15,6 +15,7 @@ mod notes;
 mod snapshots;
 pub use snapshots::MAX_SNAPSHOTS;
 mod song;
+mod sounds;
 mod tracks;
 
 #[cfg(test)]
@@ -344,6 +345,46 @@ pub enum Command {
     RemoveMarker { marker_id: Id },
     /// Put back a deleted marker exactly as it was (used by undo).
     RestoreMarker { marker: crate::project::Marker },
+
+    // ---- Game sound effects ----
+    /// Add a game sound effect (kept in the project, exported to Godot with
+    /// export_sounds). Give a category (coin, jump, laser, explosion, hit,
+    /// power_up, blip, random) to generate one, with a seed for a different
+    /// take (same seed, same sound); or a full or partial recipe (missing
+    /// fields take a short square blip's values). Name defaults to the
+    /// category ("coin", then "coin_2"...). Returns nothing; read the id
+    /// with get_song (sounds).
+    AddSound {
+        #[serde(default)]
+        name: Option<String>,
+        #[serde(default)]
+        recipe: Option<crate::sound::SoundRecipe>,
+        #[serde(default)]
+        category: Option<crate::sound::SoundCategory>,
+        #[serde(default)]
+        seed: Option<u64>,
+    },
+    /// Replace a sound effect's recipe (send every field: missing ones take
+    /// the defaults, not the sound's current values). Fields are 0 to 1, or
+    /// -1 to 1 where noted; out-of-range values are clamped, NaN is an
+    /// error. Play it afterwards with play_sound.
+    SetSound {
+        sound_id: Id,
+        recipe: crate::sound::SoundRecipe,
+    },
+    /// A new take on a sound effect: its shaping settings each move a
+    /// little (at most 0.05). Another seed gives another take.
+    VarySound { sound_id: Id, seed: u64 },
+    /// Rename a sound effect (also its exported file name). Names are unique.
+    RenameSound { sound_id: Id, name: String },
+    /// Delete a sound effect.
+    RemoveSound { sound_id: Id },
+    /// Put back a deleted sound effect exactly as it was, at `index` in the
+    /// list (used by undo).
+    RestoreSound {
+        sound: crate::sound::SoundEffect,
+        index: usize,
+    },
 
     // ---- Saved versions ----
     /// Save the song as it is now as a named version (kept in the song
@@ -857,6 +898,17 @@ impl Command {
             C::RenameMarker { marker_id, name } => markers::rename(project, marker_id, name),
             C::RemoveMarker { marker_id } => markers::remove(project, marker_id),
             C::RestoreMarker { marker } => markers::restore(project, marker),
+            C::AddSound {
+                name,
+                recipe,
+                category,
+                seed,
+            } => sounds::add(project, name, recipe, category, seed),
+            C::SetSound { sound_id, recipe } => sounds::set(project, sound_id, recipe),
+            C::VarySound { sound_id, seed } => sounds::vary_sound(project, sound_id, seed),
+            C::RenameSound { sound_id, name } => sounds::rename(project, sound_id, name),
+            C::RemoveSound { sound_id } => sounds::remove(project, sound_id),
+            C::RestoreSound { sound, index } => sounds::restore(project, sound, index),
             C::TakeSnapshot { name } => snapshots::take(project, name),
             C::LoadSnapshot { snapshot_id } => snapshots::load(project, snapshot_id),
             C::RenameSnapshot { snapshot_id, name } => {
@@ -1133,6 +1185,7 @@ impl Command {
                 ta == tb && ba == bb && la.is_some() == lb.is_some() && pa.is_some() == pb.is_some()
             }
             (C::MoveMarker { marker_id: a, .. }, C::MoveMarker { marker_id: b, .. }) => a == b,
+            (C::SetSound { sound_id: a, .. }, C::SetSound { sound_id: b, .. }) => a == b,
             (C::MoveChord { chord_id: a, .. }, C::MoveChord { chord_id: b, .. }) => a == b,
             (C::TrimClipStart { clip_id: a, .. }, C::TrimClipStart { clip_id: b, .. }) => a == b,
             (

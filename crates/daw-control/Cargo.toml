@@ -18,6 +18,7 @@ daw-instruments = { path = "../daw-instruments" }
 daw-model.workspace = true
 daw-notation = { path = "../daw-notation" }
 daw-sampler = { path = "../daw-sampler" }
+daw-sfx.workspace = true
 dirs = "6"
 getrandom = "0.3"
 hound.workspace = true

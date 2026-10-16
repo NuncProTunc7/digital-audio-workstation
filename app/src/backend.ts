@@ -19,6 +19,8 @@ import type {
   Command,
   ExportReport,
   GodotOptions,
+  SoundExportOptions,
+  SoundExportReport,
   InputStatus,
   Peaks,
   ProjectView,
@@ -103,6 +105,8 @@ export interface Backend {
   inspectExport(options: GodotOptions): Promise<Inspection>;
   /** Plays the end of a loop into its start, over and over; stop() ends it. */
   auditionSeam(startBeats: number, endBeats: number): Promise<void>;
+  /** Plays one of the project's sound effects; resolves to its length in seconds. */
+  playSound(soundId: number): Promise<number>;
   /** The user's own presets. */
   userPresets(): Promise<UserPreset[]>;
   /** Saves a track's sound as the user's preset `name`; returns the list. */
@@ -180,6 +184,8 @@ export interface Backend {
   /** Shows a folder picker; null if cancelled. */
   pickFolder(title: string): Promise<string | null>;
   exportGodot(options: GodotOptions): Promise<ExportReport>;
+  /** Writes sound effects as WAVs into a Godot project. */
+  exportSounds(options: SoundExportOptions): Promise<SoundExportReport>;
   /** The song (or some tracks) as MusicXML, for the sheet music view. */
   sheetMusic(trackIds: number[] | null): Promise<string>;
   /** Files dropped on the window, with the drop point in CSS pixels. */
@@ -253,6 +259,7 @@ export const tauriBackend: Backend = {
   },
   inspectExport: (options) => invoke("inspect_export", { options }),
   auditionSeam: (startBeats, endBeats) => invoke("audition_seam", { startBeats, endBeats }),
+  playSound: (soundId) => invoke("play_sound", { soundId }),
   userPresets: () => invoke("user_presets"),
   savePreset: (trackId, name) => invoke("save_preset", { trackId, name }),
   deletePreset: (kind, name) => invoke("delete_preset", { kind, name }),
@@ -321,6 +328,7 @@ export const tauriBackend: Backend = {
     return typeof picked === "string" ? picked : null;
   },
   exportGodot: (options) => invoke("export_godot", { options }),
+  exportSounds: (options) => invoke("export_sounds", { options }),
   inputStatus: () => invoke("input_status"),
   monitorInput: (on) => invoke("monitor_input", { on }),
   setInputDevice: (name) => invoke("set_input_device", { name }),

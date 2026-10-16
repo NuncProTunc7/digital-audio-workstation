@@ -2,6 +2,19 @@ import { describe, expect, it } from "vitest";
 import { applyCommand, defaultProject } from "./preview";
 
 describe("preview reducer", () => {
+  it("adds, names, and removes sound effects", () => {
+    let p = defaultProject();
+    p = applyCommand(p, { command: "add_sound", category: "coin", seed: 3 });
+    p = applyCommand(p, { command: "add_sound", category: "coin", seed: 4 });
+    expect(p.sounds?.map((s) => s.name)).toEqual(["coin", "coin_2"]);
+    const id = p.sounds![0].id;
+    p = applyCommand(p, { command: "set_sound", sound_id: id, recipe: { ...p.sounds![0].recipe, base_freq: 5 } });
+    expect(p.sounds![0].recipe.base_freq).toBe(1);
+    p = applyCommand(p, { command: "remove_sound", sound_id: id });
+    p = applyCommand(p, { command: "remove_sound", sound_id: p.sounds![0].id });
+    expect(p.sounds).toEqual([]);
+  });
+
   it("applies a batch all-or-nothing", () => {
     const p = defaultProject();
     const ok = applyCommand(p, {

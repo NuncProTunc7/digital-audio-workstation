@@ -2465,3 +2465,120 @@ button.tiny.power.on {
   filter: saturate(0.35) brightness(1.1);
   outline: 1px solid rgba(159, 216, 255, 0.6);
 }
+
+/* Sound effects panel */
+.dialog.sound-fx {
+  width: min(760px, calc(100vw - 32px));
+}
+
+/* The dialog scrolls as a whole; its sections keep their height. */
+.dialog.sound-fx > * {
+  flex-shrink: 0;
+}
+
+.sound-fx-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.sound-more {
+  align-self: flex-start;
+}
+
+.sound-make {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.sound-body {
+  display: grid;
+  grid-template-columns: minmax(120px, 180px) 1fr;
+  gap: 12px;
+  min-height: 220px;
+}
+
+.sound-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow-y: auto;
+  max-height: 340px;
+}
+
+.sound-list li {
+  border-radius: 4px;
+}
+
+.sound-list li.muted {
+  padding: 6px;
+  font-size: 12px;
+}
+
+.sound-list li.selected {
+  background: var(--panel-raised);
+  outline: 1px solid var(--accent);
+}
+
+.sound-list .sound-name {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--text);
+  padding: 4px 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sound-list input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.sound-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.sound-sliders {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 4px 12px;
+}
+
+.sound-export {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.sound-export .dialog-row {
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.sound-report {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+}
+
+@media (max-width: 560px) {
+  .sound-body {
+    grid-template-columns: 1fr;
+  }
+  .sound-list {
+    min-height: 60px;
+    max-height: 140px;
+  }
+}

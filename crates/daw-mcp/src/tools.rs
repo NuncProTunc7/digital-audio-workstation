@@ -16,6 +16,7 @@ const HIDDEN_COMMANDS: &[&str] = &[
     "restore_marker",
     "restore_bus",
     "restore_chord",
+    "restore_sound",
     "set_song_state",
     "set_clip_link",
     "set_clip_notes",
@@ -224,6 +225,12 @@ fn extra_tools() -> Vec<ToolDef> {
             "Turn the metronome click on or off.",
             object_schema(json!({ "on": { "type": "boolean" } }), &["on"]),
             false,
+        ),
+        tool(
+            "play_sound",
+            "Play one of the project's game sound effects (see get_song's sounds) so the user can hear it; the song keeps playing. Returns its length in seconds. You can't hear it: ask the user how it sounds.",
+            object_schema(json!({ "sound_id": { "type": "integer" } }), &["sound_id"]),
+            true,
         ),
         tool(
             "diagnostic_report",
@@ -446,6 +453,19 @@ fn extra_tools() -> Vec<ToolDef> {
             false,
         ),
         tool(
+            "export_sounds",
+            "Write the project's game sound effects (all, or sound_ids) as 16-bit 44.1 kHz WAV files into the user's Godot project, in folder (default sfx), one file per sound named after it (coin -> res://sfx/coin.wav). Sounds that would peak above -1 dBFS are turned down. Returns each file's res:// path, length, peak, and how much it was turned down. Ask the user for their Godot project folder if you don't know it.",
+            object_schema(
+                json!({
+                    "project_dir": { "type": "string", "description": "The Godot project folder (the one containing project.godot)." },
+                    "folder": { "type": "string", "description": "Folder inside the project, default sfx." },
+                    "sound_ids": { "type": "array", "items": { "type": "integer" }, "description": "Only these sounds (default: all)." }
+                }),
+                &["project_dir"],
+            ),
+            false,
+        ),
+        tool(
             "import_musicxml",
             "Turn sheet music into tracks. Give either the path of a MusicXML file (.musicxml, .xml, or compressed .mxl, as saved by MuseScore and most notation apps) or MusicXML text in `xml`. To import a photo or PDF of printed music: read the notes from the image yourself, write them as a partwise MusicXML score (one <part> per instrument; include divisions, time signature, and <sound tempo>), and pass it as `xml`; check the result with get_clip. Each part becomes a new track; an empty song also takes the tempo and meter. One undo step.",
             object_schema(
@@ -583,6 +603,9 @@ pub fn to_request(name: &str, args: Map<String, Value>) -> Result<Request, Strin
         "set_metronome" => Request::SetMetronome {
             on: get_bool("on").ok_or("on is required")?,
         },
+        "play_sound" => Request::PlaySound {
+            sound_id: get_id("sound_id")?,
+        },
         "diagnostic_report" => Request::DiagnosticReport,
         "save_preset" => Request::SavePreset {
             track_id: get_id("track_id")?,
@@ -671,6 +694,10 @@ pub fn to_request(name: &str, args: Map<String, Value>) -> Result<Request, Strin
         "export_godot" => Request::ExportGodot(
             serde_json::from_value(Value::Object(args))
                 .map_err(|e| format!("invalid arguments for export_godot: {e}"))?,
+        ),
+        "export_sounds" => Request::ExportSounds(
+            serde_json::from_value(Value::Object(args))
+                .map_err(|e| format!("invalid arguments for export_sounds: {e}"))?,
         ),
         "import_musicxml" => Request::ImportMusicXml {
             path: get_str("path"),
@@ -777,6 +804,23 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn sound_tools_are_offered() {
+        let names: Vec<String> = all_tools().into_iter().map(|t| t.name).collect();
+        for name in [
+            "add_sound",
+            "set_sound",
+            "vary_sound",
+            "rename_sound",
+            "remove_sound",
+            "play_sound",
+            "export_sounds",
+        ] {
+            assert!(names.iter().any(|n| n == name), "{name} missing");
+        }
+        assert!(!names.iter().any(|n| n == "restore_sound"), "undo-only");
     }
 
     #[test]

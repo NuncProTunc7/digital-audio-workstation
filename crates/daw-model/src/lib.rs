@@ -12,6 +12,7 @@ pub mod music;
 pub mod plugin;
 mod project;
 mod session;
+pub mod sound;
 pub mod summary;
 
 pub use command::{
@@ -29,3 +30,4 @@ pub use project::{
     Snapshot, SongSection, SongState, Swing, TimeSignature, Track, TrackId,
 };
 pub use session::Session;
+pub use sound::{SoundCategory, SoundEffect, SoundRecipe, Wave};
