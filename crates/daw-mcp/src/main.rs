@@ -69,6 +69,7 @@ in get_track (once ready, lowest_note/highest_note: notes outside them are silen
 set_plugin_params); always check the display text. Audio clips can follow tempo changes with set_clip_tempo.
 - Games: export_godot writes seamless loops (plus optional stems and adaptive-music \
 resources) straight into the user's Godot project, already set to loop.
+- Game sound effects (coin, jump, laser, explosion, hit, power-up, blip): add_sound with a category (each seed is a different take), shape it with set_sound or vary_sound, let the user hear it with play_sound, and write WAVs into their Godot project with export_sounds. read_guide(\"sound-effects\") explains every setting.
 - Recording timing: if the user's takes land late (common with Bluetooth headsets), run \
 calibrate_recording (explain the clapping first) or set recording_delay.
 - Don't open or start a new project without asking if the user may have unsaved work.";

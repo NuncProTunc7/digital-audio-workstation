@@ -16,6 +16,7 @@ const HIDDEN_COMMANDS: &[&str] = &[
     "restore_marker",
     "restore_bus",
     "restore_chord",
+    "restore_sound",
     "set_song_state",
     "set_clip_link",
     "set_clip_notes",
@@ -803,6 +804,23 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn sound_tools_are_offered() {
+        let names: Vec<String> = all_tools().into_iter().map(|t| t.name).collect();
+        for name in [
+            "add_sound",
+            "set_sound",
+            "vary_sound",
+            "rename_sound",
+            "remove_sound",
+            "play_sound",
+            "export_sounds",
+        ] {
+            assert!(names.iter().any(|n| n == name), "{name} missing");
+        }
+        assert!(!names.iter().any(|n| n == "restore_sound"), "undo-only");
     }
 
     #[test]
