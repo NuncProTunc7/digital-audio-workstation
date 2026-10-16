@@ -14,7 +14,7 @@ fn note(pitch: u8, start: f64, len: f64) -> NoteInput {
     }
 }
 
-fn region(file: &str, seconds: f64) -> crate::project::AudioRegion {
+pub(super) fn region(file: &str, seconds: f64) -> crate::project::AudioRegion {
     crate::project::AudioRegion {
         file: file.into(),
         file_seconds: seconds,
@@ -29,7 +29,7 @@ fn region(file: &str, seconds: f64) -> crate::project::AudioRegion {
 /// Default project plus a clip (id 4) with notes (ids 5, 6, 7) on Keys and
 /// a reverb (id 8) on Keys and a limiter (id 9) on the master, and an audio
 /// track "Vox" (id 10) holding a 4-second audio clip (id 11) at beat 0.
-fn fixture() -> Project {
+pub(super) fn fixture() -> Project {
     let mut p = Project::default();
     Command::CreateClip {
         track_id: 1,
@@ -1640,7 +1640,7 @@ fn schema_carries_descriptions_for_claude() {
         "set_tempo",
         "create_clip",
         "quantize_notes",
-        "Set the project tempo in beats per minute",
+        "Set the song's starting tempo in beats per minute",
         "60 = middle C",
     ] {
         assert!(schema.contains(needle), "schema is missing {needle}");

@@ -136,9 +136,22 @@ pub(crate) fn check_clip_fits(kind: InstrumentKind, clip: &Clip) -> Result<(), C
     }
 }
 
-/// Clip length that plays the rest of the file at this tempo.
-pub(crate) fn natural_length_beats(region: &AudioRegion, tempo_bpm: f64) -> f64 {
-    (region.remaining_seconds() / region.file_seconds_per_beat(tempo_bpm)).max(MIN_LENGTH_BEATS)
+/// Clip length that plays the rest of the file from `start_beats`, through
+/// any tempo changes on the way.
+pub(crate) fn natural_length_beats(
+    project: &Project,
+    region: &AudioRegion,
+    start_beats: f64,
+) -> f64 {
+    let seconds = region.remaining_seconds();
+    let beats = match region.source_bpm {
+        Some(src) => seconds * src / 60.0,
+        None => {
+            let map = project.tempo_map();
+            map.beats_at(map.seconds_at(start_beats) + seconds) - start_beats
+        }
+    };
+    beats.max(MIN_LENGTH_BEATS)
 }
 
 pub(super) fn add(
@@ -163,7 +176,7 @@ pub(super) fn add(
         ));
     }
     check_region(&audio)?;
-    let length = length_beats.unwrap_or_else(|| natural_length_beats(&audio, project.tempo_bpm));
+    let length = length_beats.unwrap_or_else(|| natural_length_beats(project, &audio, start_beats));
     check_length("clip length", length)?;
     let name = match name {
         Some(n) => check_name(n)?,
@@ -299,7 +312,10 @@ pub(super) fn split(
     }
     let mut first = clip.clone();
     let mut second = clip.clone();
-    let tempo_bpm = project.tempo_bpm;
+    let skipped = clip
+        .audio
+        .as_ref()
+        .map(|a| project.file_seconds_between(a, clip.start_beats, at_beats));
     first.length_beats = cut;
     second.start_beats = at_beats;
     second.length_beats = clip.length_beats - cut;
@@ -309,8 +325,10 @@ pub(super) fn split(
     for n in &mut second.notes {
         n.start_beats -= cut;
     }
-    if let (Some(a), Some(b)) = (first.audio.as_mut(), second.audio.as_mut()) {
-        b.offset_seconds = a.offset_seconds + cut * a.file_seconds_per_beat(tempo_bpm);
+    if let (Some(a), Some(b), Some(skipped)) =
+        (first.audio.as_mut(), second.audio.as_mut(), skipped)
+    {
+        b.offset_seconds = a.offset_seconds + skipped;
         a.fade_out_seconds = 0.0;
         b.fade_in_seconds = 0.0;
         if b.offset_seconds >= b.file_seconds {
@@ -336,12 +354,16 @@ pub(super) fn trim_start(
         .ok_or(CommandError::UnknownClip(clip_id))?;
     let end = clip.start_beats + clip.length_beats;
     let delta = start_beats - clip.start_beats;
+    let skipped = clip
+        .audio
+        .as_ref()
+        .map(|a| project.file_seconds_between(a, clip.start_beats, start_beats));
     let mut edited = clip.clone();
     edited.start_beats = start_beats;
     edited.length_beats = end - start_beats;
     check_length("clip length", edited.length_beats)?;
-    if let Some(a) = edited.audio.as_mut() {
-        let offset = a.offset_seconds + delta * a.file_seconds_per_beat(project.tempo_bpm);
+    if let (Some(a), Some(skipped)) = (edited.audio.as_mut(), skipped) {
+        let offset = a.offset_seconds + skipped;
         // Allow a hair of float error when dragging back to the file start.
         if offset < -1e-6 {
             return Err(invalid(
