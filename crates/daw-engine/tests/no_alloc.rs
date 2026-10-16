@@ -280,6 +280,16 @@ fn audio_thread_never_allocates() {
         0,
         "preview reset"
     );
+
+    // A sound effect playing, replaced, and finishing.
+    engine.play_one_shot(vec![0.1f32; 300]);
+    assert_eq!(process_counting(&mut processor, &mut out), 0, "one-shot");
+    engine.play_one_shot(vec![0.1f32; 50]);
+    assert_eq!(
+        process_counting(&mut processor, &mut out),
+        0,
+        "one-shot replaced and finished"
+    );
     engine.note_off(1, 60);
     engine.stop_recording();
     engine.stop();

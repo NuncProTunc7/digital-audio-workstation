@@ -39,6 +39,10 @@ pub enum Request {
     SetCountIn {
         bars: u32,
     },
+    /// Play one of the project's sound effects (the song keeps playing).
+    PlaySound {
+        sound_id: daw_model::Id,
+    },
     /// Plain-text report on devices, load, the song, and recent log lines.
     DiagnosticReport,
     /// Render a track's sound to audio and play that instead (saves CPU).

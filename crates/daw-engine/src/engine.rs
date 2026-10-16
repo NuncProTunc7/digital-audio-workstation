@@ -438,6 +438,12 @@ impl Engine {
 
     /// Plays the last `span_beats` of a loop into its first `span_beats`,
     /// over and over, to judge the loop point.
+    /// Plays mono audio once on top of everything (a sound effect being
+    /// tried out), replacing any still playing. The transport isn't touched.
+    pub fn play_one_shot(&self, mono: impl Into<Arc<[f32]>>) {
+        self.send(EngineMessage::PlayOneShot(mono.into()));
+    }
+
     pub fn audition_seam(&self, start_beats: f64, end_beats: f64, span_beats: f64) {
         self.send(EngineMessage::AuditionSeam {
             start_beats,
@@ -1497,6 +1503,46 @@ mod tests {
         engine.locate(0.0);
         let (after, before) = windows(&render(&mut p, 1.0));
         assert!(after < 0.5 * before, "ducked {after} vs {before}");
+    }
+
+    #[test]
+    fn a_one_shot_plays_on_top_of_the_song() {
+        let s = Session::default();
+        let (engine, mut p) = Engine::new(s.project(), SR);
+        engine.set_metronome(false);
+        engine.play_one_shot(vec![0.25f32; 100]);
+        let out = render(&mut p, 0.01);
+        // Both channels carry it, then silence.
+        assert!((out[0] - out[1]).abs() < 1e-6);
+        assert!(out[0] > 0.2, "{}", out[0]);
+        assert!(out[2 * 99] > 0.2);
+        assert!(peak(&out[2 * 100..]) < 1e-6);
+        // While the song plays, the song keeps going under it.
+        let s = kick_session();
+        let (engine, mut p) = Engine::new(s.project(), SR);
+        engine.set_metronome(false);
+        engine.play();
+        let song = render(&mut p, 0.2);
+        engine.locate(0.0);
+        engine.play_one_shot(vec![0.0f32; 10]);
+        let both = render(&mut p, 0.2);
+        assert!((peak(&both) - peak(&song)).abs() < 0.05, "song still plays");
+    }
+
+    #[test]
+    fn a_new_one_shot_replaces_the_old_and_the_old_comes_back() {
+        let s = Session::default();
+        let (engine, mut p) = Engine::new(s.project(), SR);
+        engine.set_metronome(false);
+        let first: Arc<[f32]> = vec![0.25f32; 48_000].into();
+        engine.play_one_shot(Arc::clone(&first));
+        render(&mut p, 0.01);
+        engine.play_one_shot(vec![-0.5f32; 48_000]);
+        let out = render(&mut p, 0.01);
+        assert!(out[0] < -0.4, "the new sound plays: {}", out[0]);
+        // The next message collects the old buffer, freed off the audio thread.
+        engine.play_one_shot(vec![0.0f32; 1]);
+        assert_eq!(Arc::strong_count(&first), 1);
     }
 
     #[test]

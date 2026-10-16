@@ -274,10 +274,15 @@ pub enum Garbage {
     Sequence(#[allow(dead_code)] Box<Sequence>),
     Instrument(#[allow(dead_code)] Box<dyn daw_instruments::InstrumentProcessor>),
     Effect(#[allow(dead_code)] Box<dyn EffectProcessor>),
+    OneShot(#[allow(dead_code)] std::sync::Arc<[f32]>),
 }
 
 /// Everything the audio thread can be told. Sent through a lock-free queue.
 pub enum EngineMessage {
+    /// Play mono samples once on top of the output (a sound effect),
+    /// replacing any one-shot still playing. The old one comes back as
+    /// garbage.
+    PlayOneShot(std::sync::Arc<[f32]>),
     NoteOn {
         track_id: TrackId,
         note: u8,

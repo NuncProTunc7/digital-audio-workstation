@@ -226,6 +226,12 @@ fn extra_tools() -> Vec<ToolDef> {
             false,
         ),
         tool(
+            "play_sound",
+            "Play one of the project's game sound effects (see get_song's sounds) so the user can hear it; the song keeps playing. Returns its length in seconds. You can't hear it: ask the user how it sounds.",
+            object_schema(json!({ "sound_id": { "type": "integer" } }), &["sound_id"]),
+            true,
+        ),
+        tool(
             "diagnostic_report",
             "Plain-text report for troubleshooting: app and Windows version, audio output and input devices, sample rate, buffer and latency, recording delay, CPU load and peak, overloads (each one is likely an audible crackle), MIDI keyboards, sample packs, the song's size, recent errors, and the last 50 log lines. Use it when the user reports a problem (crackles, silence, late recordings, a failed action) before guessing at causes. It contains no folder paths.",
             object_schema(json!({}), &[]),
@@ -582,6 +588,9 @@ pub fn to_request(name: &str, args: Map<String, Value>) -> Result<Request, Strin
         },
         "set_metronome" => Request::SetMetronome {
             on: get_bool("on").ok_or("on is required")?,
+        },
+        "play_sound" => Request::PlaySound {
+            sound_id: get_id("sound_id")?,
         },
         "diagnostic_report" => Request::DiagnosticReport,
         "save_preset" => Request::SavePreset {

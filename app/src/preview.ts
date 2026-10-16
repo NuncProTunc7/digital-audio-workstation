@@ -3,7 +3,7 @@
 // loosely validates; the Rust Commands are the source of truth.
 
 import catalogJson from "./generated/instruments.json";
-import { DEFAULT_RECIPE, clampRecipe, previewGenerate, previewVary } from "./sound";
+import { DEFAULT_RECIPE, clampRecipe, previewGenerate, previewVary, recipeSeconds } from "./sound";
 import type { Backend } from "./backend";
 import type {
   AudioStatus,
@@ -970,6 +970,12 @@ export function createPreviewBackend(): PreviewBackend {
       startBeats = Math.max(0, endBeats - 4);
       startedAt = performance.now();
       playing = true;
+    },
+    playSound: async (soundId) => {
+      // No sound in the browser preview; report the length like the app.
+      const s = (project.sounds ?? []).find((x) => x.id === soundId);
+      if (!s) throw new Error(`there is no sound with id ${soundId}`);
+      return recipeSeconds(s.recipe);
     },
     userPresets: async () => structuredClone(userPresets),
     savePreset: async (trackId, name) => {

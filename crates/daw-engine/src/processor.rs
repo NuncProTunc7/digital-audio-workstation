@@ -70,6 +70,8 @@ pub struct AudioProcessor {
     seam_after_join: bool,
     /// When the next output buffer reaches the speakers (device clock, ns).
     output_time_ns: Option<u64>,
+    /// A sound effect being tried out, and how far it has played.
+    one_shot: Option<(Arc<[f32]>, usize)>,
 }
 
 /// Initial transport and mix state for a new processor.
@@ -123,6 +125,7 @@ impl AudioProcessor {
             seam: None,
             seam_after_join: false,
             output_time_ns: None,
+            one_shot: None,
         }
     }
 
@@ -185,6 +188,21 @@ impl AudioProcessor {
         self.position_beats.max(self.count_in_end)
     }
 
+    /// Moves the one-shot on by `frames`, letting it go once it's done.
+    // RT-SAFE
+    fn advance_one_shot(&mut self, frames: usize) {
+        let done = match self.one_shot.as_mut() {
+            Some((samples, at)) => {
+                *at = (*at + frames).min(samples.len());
+                *at >= samples.len()
+            }
+            None => false,
+        };
+        if done && let Some((old, _)) = self.one_shot.take() {
+            self.throw_away(Garbage::OneShot(old));
+        }
+    }
+
     // RT-SAFE
     fn throw_away(&mut self, garbage: Garbage) {
         if let Err(rtrb::PushError::Full(g)) = self.outputs.garbage.push(garbage) {
@@ -211,6 +229,11 @@ impl AudioProcessor {
     fn handle_messages(&mut self) {
         while let Ok(message) = self.messages.pop() {
             match message {
+                EngineMessage::PlayOneShot(samples) => {
+                    if let Some((old, _)) = self.one_shot.replace((samples, 0)) {
+                        self.throw_away(Garbage::OneShot(old));
+                    }
+                }
                 EngineMessage::NoteOn {
                     track_id,
                     note,
@@ -683,14 +706,28 @@ impl AudioProcessor {
         );
         let mut peak_l = 0.0f32;
         let mut peak_r = 0.0f32;
+        let mut shot = self.one_shot.as_ref().map(|(s, at)| (&s[*at..], 0usize));
         for (l, r) in left.iter_mut().zip(right.iter_mut()) {
             let g = self.master_gain.next_value();
-            *l = soft_clip(*l * g);
-            *r = soft_clip(*r * g);
+            // A sound effect being tried out sits on top of the master
+            // (its fader doesn't touch it).
+            let extra = match shot.as_mut() {
+                Some((rest, i)) => {
+                    let v = rest.get(*i).copied().unwrap_or(0.0);
+                    *i += 1;
+                    v
+                }
+                None => 0.0,
+            };
+            *l = soft_clip(*l * g + extra);
+            *r = soft_clip(*r * g + extra);
             peak_l = peak_l.max(l.abs());
             peak_r = peak_r.max(r.abs());
         }
         self.status.add_peaks(peak_l, peak_r);
+        if let Some((_, used)) = shot {
+            self.advance_one_shot(used);
+        }
     }
 
     /// Renders frames `start..end` of the block: every track (with its

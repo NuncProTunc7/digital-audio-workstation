@@ -884,6 +884,13 @@ fn inspect_export(
     daw_control::inspect_export(&*state, &options)
 }
 
+/// Plays one of the project's sound effects; returns its length in seconds.
+/// Renders, so off the main thread.
+#[tauri::command(async)]
+fn play_sound(state: State<'_, AppState>, sound_id: daw_model::Id) -> Result<f64, String> {
+    daw_control::play_sound(&*state, sound_id)
+}
+
 /// Plays the end of a loop into its start, over and over (Stop ends it).
 #[tauri::command]
 fn audition_seam(
@@ -1861,6 +1868,7 @@ pub fn run() {
             compare_stop,
             inspect_export,
             audition_seam,
+            play_sound,
             freeze_track,
             user_presets,
             plugins,
