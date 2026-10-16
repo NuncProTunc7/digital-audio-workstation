@@ -26,6 +26,8 @@ The guide your AI reads is built into the bridge (`npt-mcp`). If your AI describ
 - "Listen to my mix and tell me what to fix."
 - "Turn this photo of sheet music into tracks." (needs an AI that can read pictures)
 - "Export the explore and combat sections to my Godot project as adaptive music."
+- "Make a coin, a jump and a hit sound for my platformer, retro and a bit crunchy, then export them to my Godot project."
+- "Make the jump sound softer and a little lower."
 
 ## Getting what you want
 

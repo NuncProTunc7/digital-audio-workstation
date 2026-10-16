@@ -75,3 +75,16 @@ Goal: direct your AI like a composer directs a band.
 2. Listen, then react in plain words: "warmer", "less busy", "the melody needs to resolve at the end".
 3. Ask for variations: "make a combat version with the same melody" and export both as adaptive music.
 4. Ask your AI to explain what it changed and why, and try one of the changes yourself.
+
+## Lesson 8: Sound effects for your game
+
+Goal: a coin, a jump and a hit for your game, made by you, then a set made with your AI.
+
+1. Click **🔊 Sound FX**. Click **Coin** five times: each click is a new take. Keep the one you like and delete the rest.
+2. Make it yours: drag **Pitch**, **Punch** and **Tone** and listen each time you let go. Try **✨ Vary** a few times. **Ctrl+Z** takes back anything you don't like.
+3. Click **Jump**, then open **More settings** and change the **Wave** to *Triangle* for a softer jump. Raise **Slide** for a bigger leap.
+4. Click **Hit** and turn up **Crunch** for an old-console feel. Double-click each sound and give it the name your game will use (`coin`, `jump`, `hit`).
+5. Ask your AI: "make a power-up sound that matches my coin, and a softer menu blip". Listen with **▶ Play** and tell it what to change ("lower", "shorter", "less buzzy").
+6. **Export all** into your Godot project. In Godot, put `res://sfx/coin.wav` on an `AudioStreamPlayer` and call `play()` when the player grabs a coin.
+
+You've learned: making, shaping and naming sound effects, directing your AI by ear, and using them in a game.

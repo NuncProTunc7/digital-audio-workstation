@@ -62,6 +62,25 @@ Progressions that work: I–V–vi–IV (C G Am F), vi–IV–I–V (Am F C G), 
 - Reverb on pads and keys; less (or none) on bass and kick. A limiter on the master.
 - Use automation for movement: filter sweeps, swells, fade-ins.
 
+## Sound effects
+
+Game sound effects are recipes in the song (`sounds` in `get_song`); see [Sound effects](sound-effects.md) for every setting.
+
+- **Start from a category** with `add_sound` (coin, jump, laser, explosion, hit, power_up, blip, random). Make two or three takes (different `seed`s), `play_sound` each, and let the user pick; remove the rest.
+- **Read before changing**: `get_sound` gives every setting plus `start_hz`, `seconds`, `peak_dbfs` and `silent`. `set_sound` changes only the settings you send.
+- **Words to settings**:
+  - lower or higher: `base_freq` (about 0.1 is low, 0.3 middle, 0.6 high);
+  - shorter or longer: `sustain` and `decay`;
+  - softer or gentler: lower `punch` and `lpf_freq`, or the `triangle` or `sine` wave;
+  - brighter or harsher: raise `lpf_freq`, use the `saw` wave;
+  - retro or crunchy: `crush` 0.3 to 0.6 with the `square` wave;
+  - bigger or heavier: lower `base_freq`, longer `decay`, a little `repeat_speed` for explosions;
+  - rises or falls: positive or negative `freq_ramp`;
+  - "ding-ding" (coin): `arp_mod` 0.2 to 0.5 with `arp_speed` about 0.6.
+- **Keep a family consistent**: sounds for one game share a wave and similar `crush` and `lpf_freq`, so they feel like one set.
+- **Levels**: most sounds should peak around -6 to -3 dBFS (`peak_dbfs`); make UI blips quieter than impacts. If `silent` is true or `seconds` is tiny, a slide fell below `freq_limit`: lower `freq_limit` or the slide.
+- **Export**: `export_sounds` into the user's Godot project (`res://sfx/` by default). Name sounds the way the game uses them (`coin`, `player_jump`) before exporting.
+
 ## Teaching
 
 When the user asks to be taught: follow [lessons](lessons.md), one step at a time. Let them do the clicking; use `get_song` to see what they did, and explain in plain language (no code, no jargon without a one-line meaning). Praise what works, fix one thing at a time.
