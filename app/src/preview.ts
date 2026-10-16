@@ -3,6 +3,7 @@
 // loosely validates; the Rust Commands are the source of truth.
 
 import catalogJson from "./generated/instruments.json";
+import { DEFAULT_RECIPE, clampRecipe, previewGenerate, previewVary } from "./sound";
 import type { Backend } from "./backend";
 import type {
   AudioStatus,
@@ -355,6 +356,49 @@ export function applyCommand(project: Project, command: Command): Project {
     case "remove_send": {
       const t = track(command.track_id);
       t.sends = (t.sends ?? []).filter((s) => s.bus_id !== command.bus_id);
+      break;
+    }
+    case "add_sound": {
+      const sounds = p.sounds ?? [];
+      const base = command.name?.trim() || (command.category ?? "sound");
+      if (!base) throw new Error("sound name can't be empty");
+      let name = base;
+      for (let n = 2; sounds.some((s) => s.name === name); n++) name = `${base}_${n}`;
+      const recipe = command.recipe
+        ? clampRecipe({ ...DEFAULT_RECIPE, ...command.recipe })
+        : command.category
+          ? previewGenerate(command.category, command.seed ?? 1)
+          : { ...DEFAULT_RECIPE };
+      p.sounds = [...sounds, { id: id(), name, recipe }];
+      break;
+    }
+    case "set_sound":
+    case "vary_sound":
+    case "rename_sound": {
+      const s = (p.sounds ?? []).find((x) => x.id === command.sound_id);
+      if (!s) throw new Error(`there is no sound with id ${command.sound_id}`);
+      if (command.command === "set_sound") s.recipe = clampRecipe(command.recipe);
+      else if (command.command === "vary_sound") s.recipe = previewVary(s.recipe, command.seed);
+      else {
+        const name = command.name.trim();
+        if (!name) throw new Error("sound name can't be empty");
+        if ((p.sounds ?? []).some((x) => x.id !== s.id && x.name === name)) {
+          throw new Error(`another sound is already called "${name}"`);
+        }
+        s.name = name;
+      }
+      break;
+    }
+    case "remove_sound":
+      if (!(p.sounds ?? []).some((x) => x.id === command.sound_id)) {
+        throw new Error(`there is no sound with id ${command.sound_id}`);
+      }
+      p.sounds = (p.sounds ?? []).filter((x) => x.id !== command.sound_id);
+      break;
+    case "restore_sound": {
+      const sounds = [...(p.sounds ?? [])];
+      sounds.splice(Math.min(command.index, sounds.length), 0, command.sound);
+      p.sounds = sounds;
       break;
     }
     case "add_marker":

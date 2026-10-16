@@ -67,6 +67,10 @@ pub struct Project {
     /// The chord track, in time order: each chord lasts until the next.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub chords: Vec<crate::music::Chord>,
+    /// Game sound effects (coin, jump...), exported to Godot as files. Not
+    /// part of saved versions: loading a version keeps them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sounds: Vec<crate::sound::SoundEffect>,
 }
 
 /// A group bus: tracks play into it (or send some of their sound to it),
@@ -162,6 +166,11 @@ fn default_format_version() -> u32 {
 impl Project {
     pub fn track(&self, id: TrackId) -> Option<&Track> {
         self.tracks.iter().find(|t| t.id == id)
+    }
+
+    /// One of the game sound effects.
+    pub fn sound(&self, id: Id) -> Option<&crate::sound::SoundEffect> {
+        self.sounds.iter().find(|s| s.id == id)
     }
 
     /// The music as it is now, for saving as a version.
@@ -362,6 +371,7 @@ impl Project {
     /// Whether any track, clip, note, or effect already uses `id`.
     pub fn id_in_use(&self, id: Id) -> bool {
         self.chords.iter().any(|c| c.id == id)
+            || self.sounds.iter().any(|s| s.id == id)
             || self.snapshots.iter().any(|s| s.id == id)
             || self.markers.iter().any(|m| m.id == id)
             || self
@@ -385,6 +395,7 @@ impl Project {
         ids.extend(self.snapshots.iter().map(|s| s.id));
         ids.extend(self.markers.iter().map(|m| m.id));
         ids.extend(self.chords.iter().map(|c| c.id));
+        ids.extend(self.sounds.iter().map(|s| s.id));
         for b in &self.buses {
             ids.push(b.id);
             ids.extend(b.mixer.effects.iter().map(|e| e.id));
@@ -433,6 +444,7 @@ impl Default for Project {
         };
         Self {
             chords: Vec::new(),
+            sounds: Vec::new(),
             key: None,
             buses: Vec::new(),
             markers: Vec::new(),

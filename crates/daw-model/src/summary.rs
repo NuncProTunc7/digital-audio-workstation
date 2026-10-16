@@ -49,6 +49,12 @@ pub fn song_summary(project: &Project) -> Value {
             "start_beats": m.start_beats,
         })).collect::<Vec<_>>(),
         "sections": project.sections(),
+        "sounds": project.sounds.iter().map(|s| json!({
+            "id": s.id,
+            "name": s.name,
+            "wave": s.recipe.wave,
+            "seconds": (f64::from(s.recipe.seconds()) * 100.0).round() / 100.0,
+        })).collect::<Vec<_>>(),
         "versions": project.snapshots.iter().map(|s| json!({
             "id": s.id,
             "name": s.name,
