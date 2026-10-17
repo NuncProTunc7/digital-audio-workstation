@@ -16,6 +16,8 @@ pub struct SeqEvent {
     pub velocity: f32,
     /// Percent chance a note-on plays (100 = always).
     pub chance: u8,
+    /// Note-ons on guitar tracks: string and technique.
+    pub guitar: Option<daw_model::GuitarNote>,
 }
 
 /// One audio clip, as the audio thread plays it.

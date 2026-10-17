@@ -27,6 +27,7 @@ fn song() -> Project {
             length_beats: 0.25,
             velocity: 110,
             id: None,
+            guitar: None,
         })
         .collect();
     Command::CreateClip {
@@ -50,6 +51,7 @@ fn song() -> Project {
             length_beats: 7.5,
             velocity: 100,
             id: None,
+            guitar: None,
         }],
     }
     .apply(&mut p)

@@ -9,7 +9,8 @@
 //! together and how low the guitar goes.
 
 use daw_dsp::{Biquad, BiquadShape, Rng, db_to_gain, midi_to_hz};
-use daw_model::instrument::{guitar_string_for, strings_for};
+use daw_model::GuitarNote;
+use daw_model::instrument::{guitar_reach, guitar_string_for, strings_for};
 
 use crate::InstrumentProcessor;
 
@@ -27,6 +28,12 @@ const STRING_GAIN: f32 = 0.5;
 /// Strings spread a little across the stereo field, low on the left.
 const PANS: [f32; STRINGS] = [-0.25, -0.15, -0.05, 0.05, 0.15, 0.25];
 const PITCH_BEND_RANGE_SEMITONES: f32 = 12.0;
+/// How long a slide takes to reach its note.
+const SLIDE_S: f32 = 0.09;
+/// How long a bend takes to reach its pitch.
+const BEND_S: f32 = 0.14;
+/// While a string's pitch glides, its loop length is updated this often.
+const GLIDE_CHUNK: usize = 16;
 
 /// Parameter indices, matching `GUITAR_PARAMS`.
 mod param {
@@ -78,6 +85,8 @@ impl Default for Params {
 struct Pending {
     note: u8,
     velocity: f32,
+    /// Semitones to bend up once plucked (0 = none).
+    bend: f32,
     samples_left: u32,
     /// The key was let go before the pluck happened.
     released: bool,
@@ -88,6 +97,11 @@ struct GuitarString {
     buf: Vec<f32>,
     write: usize,
     note: u8,
+    /// The pitch sounding now and where it is gliding to (slides and
+    /// bends), in semitones, and how far it moves per sample.
+    pitch: f32,
+    target: f32,
+    glide: f32,
     /// The key is down (or the sustain pedal holds it).
     held: bool,
     held_by_pedal: bool,
@@ -109,6 +123,9 @@ impl GuitarString {
             buf: vec![0.0; len],
             write: 0,
             note: 0,
+            pitch: 0.0,
+            target: 0.0,
+            glide: 0.0,
             held: false,
             held_by_pedal: false,
             active: false,
@@ -133,6 +150,8 @@ pub struct Guitar {
     /// Samples since the current strum started, and its lowest string.
     since_strum: u32,
     strum_base: usize,
+    /// The string the last note went to: hammer-ons and slides stay on it.
+    last_string: usize,
     body: [[Biquad; 2]; 2],
     dc: [(f32, f32); 2],
 }
@@ -149,6 +168,7 @@ impl Guitar {
             pitch_bend_semitones: 0.0,
             since_strum: u32::MAX,
             strum_base: 0,
+            last_string: 0,
             body: Default::default(),
             dc: [(0.0, 0.0); 2],
         };
@@ -188,11 +208,60 @@ impl Guitar {
         s.pending.map_or(s.note, |p| p.note)
     }
 
-    /// Loop delay in samples for `note`, allowing for the damping filter's
-    /// own delay.
+    /// The string a guitar note asks for, if it can reach the note.
     // RT-SAFE
-    fn delay_samples(&self, note: u8, lp_coef: f32, len: usize) -> f32 {
-        let hz = midi_to_hz(f32::from(note) + self.pitch_bend_semitones).max(LOWEST_HZ);
+    fn chosen_string(&self, note: u8, string: Option<u8>) -> Option<usize> {
+        let string = usize::from(string?);
+        let i = STRINGS.checked_sub(string)?;
+        let open = self.open_strings();
+        let reach = guitar_reach(open, self.uncapoed_low());
+        (string >= 1 && note >= open[i] && note <= open[i].saturating_add(reach)).then_some(i)
+    }
+
+    /// Starts `note` on string `i` (now, or later in a strum), bending up
+    /// by `bend` semitones once plucked.
+    // RT-SAFE
+    fn start(&mut self, i: usize, note: u8, velocity: f32, bend: f32) {
+        self.last_string = i;
+        let window = (STRUM_WINDOW_S * self.sample_rate_hz) as u32;
+        if self.since_strum > window {
+            self.since_strum = 0;
+            self.strum_base = i;
+        }
+        // Each string a little later than the one below it.
+        let step = self.params.strum_s / (STRINGS - 1) as f32;
+        let wait = i.saturating_sub(self.strum_base) as f32 * step * self.sample_rate_hz;
+        let velocity = velocity.clamp(0.0, 1.0);
+        if wait >= 1.0 {
+            self.strings[i].pending = Some(Pending {
+                note,
+                velocity,
+                bend,
+                samples_left: wait as u32,
+                released: false,
+            });
+        } else {
+            self.strings[i].pending = None;
+            self.pluck(i, note, velocity);
+            self.bend(i, bend);
+        }
+    }
+
+    /// Glides string `i` up `semitones` from its note over a bend's time.
+    // RT-SAFE
+    fn bend(&mut self, i: usize, semitones: f32) {
+        if semitones > 0.0 {
+            let s = &mut self.strings[i];
+            s.target = f32::from(s.note) + semitones;
+            s.glide = semitones / (BEND_S * self.sample_rate_hz);
+        }
+    }
+
+    /// Loop delay in samples for `pitch` (semitones), allowing for the
+    /// damping filter's own delay.
+    // RT-SAFE
+    fn delay_samples(&self, pitch: f32, lp_coef: f32, len: usize) -> f32 {
+        let hz = midi_to_hz(pitch + self.pitch_bend_semitones).max(LOWEST_HZ);
         let filter_delay = lp_coef / (1.0 - lp_coef);
         (self.sample_rate_hz / hz - filter_delay).clamp(2.0, (len - 3) as f32)
     }
@@ -221,7 +290,7 @@ impl Guitar {
         let lp_coef = (0.55 - 0.5 * p.tone + 0.3 * p.mute).clamp(0.02, 0.85);
         let t60 = self.held_t60(note);
         let len = self.strings[i].buf.len();
-        let delay = self.delay_samples(note, lp_coef, len);
+        let delay = self.delay_samples(f32::from(note), lp_coef, len);
         let amp = (1.0 - p.velocity_sensitivity) + p.velocity_sensitivity * velocity;
         let period = (delay.ceil() as usize + 1).min(len);
         let bright = (0.15 + 0.85 * p.tone) * (0.4 + 0.6 * velocity) * (1.0 - 0.6 * p.mute);
@@ -240,6 +309,9 @@ impl Guitar {
             s.buf[(start + k) % len] -= earlier;
         }
         s.note = note;
+        s.pitch = f32::from(note);
+        s.target = s.pitch;
+        s.glide = 0.0;
         s.held = true;
         s.held_by_pedal = false;
         s.active = true;
@@ -296,25 +368,51 @@ impl InstrumentProcessor for Guitar {
             return;
         }
         let i = self.pick_string(note);
-        let window = (STRUM_WINDOW_S * self.sample_rate_hz) as u32;
-        if self.since_strum > window {
-            self.since_strum = 0;
-            self.strum_base = i;
+        self.start(i, note, velocity, 0.0);
+    }
+
+    // RT-SAFE
+    fn note_on_guitar(&mut self, note: u8, velocity: f32, guitar: GuitarNote) {
+        if velocity <= 0.0 {
+            self.note_off(note);
+            return;
         }
-        // Each string a little later than the one below it.
-        let step = self.params.strum_s / (STRINGS - 1) as f32;
-        let wait = i.saturating_sub(self.strum_base) as f32 * step * self.sample_rate_hz;
-        if wait >= 1.0 {
-            self.strings[i].pending = Some(Pending {
-                note,
-                velocity: velocity.clamp(0.0, 1.0),
-                samples_left: wait as u32,
-                released: false,
-            });
-        } else {
-            self.strings[i].pending = None;
-            self.pluck(i, note, velocity.clamp(0.0, 1.0));
+        let connected = guitar.legato || guitar.slide;
+        // A hammer-on or slide stays on the string just played, if it can.
+        let previous = self.last_string;
+        let stays = connected
+            && self.strings[previous].active
+            && self
+                .chosen_string(note, Some((STRINGS - previous) as u8))
+                .is_some();
+        let i = self
+            .chosen_string(note, guitar.string)
+            .or(stays.then_some(previous))
+            .unwrap_or_else(|| self.pick_string(note));
+        let bend = guitar.bend_semitones.unwrap_or(0.0).clamp(0.0, 3.0) as f32;
+        let s = &self.strings[i];
+        // Hammer-ons, pull-offs and slides move a ringing string's note
+        // without a new pick; on a silent string they're picked as usual.
+        if connected && s.active && s.pending.is_none() {
+            self.last_string = i;
+            let t60 = self.held_t60(note);
+            let sr = self.sample_rate_hz;
+            let s = &mut self.strings[i];
+            s.note = note;
+            s.target = f32::from(note);
+            if guitar.slide {
+                s.glide = (s.target - s.pitch).abs() / (SLIDE_S * sr);
+            } else {
+                s.pitch = s.target;
+                s.glide = 0.0;
+            }
+            s.held = true;
+            s.held_by_pedal = false;
+            s.loss = Self::loss_for(note, t60);
+            self.bend(i, bend);
+            return;
         }
+        self.start(i, note, velocity, bend);
     }
 
     // RT-SAFE
@@ -409,27 +507,48 @@ impl InstrumentProcessor for Guitar {
                 }
                 if self.strings[i].active {
                     let len = self.strings[i].buf.len();
-                    let delay =
-                        self.delay_samples(self.strings[i].note, self.strings[i].lp_coef, len);
-                    let whole = delay.floor();
-                    let frac = delay - whole;
-                    let whole = whole as usize;
-                    let s = &mut self.strings[i];
                     let mut peak = 0.0f32;
-                    for n in k..end {
-                        let a = s.buf[(s.write + len - whole) % len];
-                        let b = s.buf[(s.write + len - whole - 1) % len];
-                        let y = a + (b - a) * frac;
-                        s.lp = s.lp_coef * s.lp + (1.0 - s.lp_coef) * y;
-                        let out = s.lp * s.loss;
-                        s.buf[s.write] = out;
-                        s.write = (s.write + 1) % len;
-                        peak = peak.max(out.abs());
-                        if let (Some(l), Some(r)) = (left.get_mut(n), right.get_mut(n)) {
-                            *l += out * s.pan_l * gain;
-                            *r += out * s.pan_r * gain;
+                    let mut at = k;
+                    while at < end {
+                        // A gliding string re-tunes every few samples.
+                        let gliding = self.strings[i].pitch != self.strings[i].target;
+                        let stop = if gliding {
+                            (at + GLIDE_CHUNK).min(end)
+                        } else {
+                            end
+                        };
+                        if gliding {
+                            let s = &mut self.strings[i];
+                            let step = s.glide * (stop - at) as f32;
+                            s.pitch = if s.pitch < s.target {
+                                (s.pitch + step).min(s.target)
+                            } else {
+                                (s.pitch - step).max(s.target)
+                            };
                         }
+                        let delay =
+                            self.delay_samples(self.strings[i].pitch, self.strings[i].lp_coef, len);
+                        let whole = delay.floor();
+                        let frac = delay - whole;
+                        let whole = whole as usize;
+                        let s = &mut self.strings[i];
+                        for n in at..stop {
+                            let a = s.buf[(s.write + len - whole) % len];
+                            let b = s.buf[(s.write + len - whole - 1) % len];
+                            let y = a + (b - a) * frac;
+                            s.lp = s.lp_coef * s.lp + (1.0 - s.lp_coef) * y;
+                            let out = s.lp * s.loss;
+                            s.buf[s.write] = out;
+                            s.write = (s.write + 1) % len;
+                            peak = peak.max(out.abs());
+                            if let (Some(l), Some(r)) = (left.get_mut(n), right.get_mut(n)) {
+                                *l += out * s.pan_l * gain;
+                                *r += out * s.pan_r * gain;
+                            }
+                        }
+                        at = stop;
                     }
+                    let s = &mut self.strings[i];
                     if peak < SILENT && end == frames && !s.held {
                         s.active = false;
                     }
@@ -438,6 +557,7 @@ impl InstrumentProcessor for Guitar {
                     && let Some(p) = self.strings[i].pending.take()
                 {
                     self.pluck(i, p.note, p.velocity);
+                    self.bend(i, p.bend);
                     if p.released {
                         self.damp(i);
                     }
@@ -598,5 +718,80 @@ mod tests {
             render(g.as_mut(), SR, 0.5).0
         };
         assert_eq!(run(), run());
+    }
+
+    fn guitar_note(f: impl FnOnce(&mut GuitarNote)) -> GuitarNote {
+        let mut g = GuitarNote::default();
+        f(&mut g);
+        g
+    }
+
+    /// The pitch heard over the next `seconds`, after `skip` seconds.
+    fn heard(g: &mut Guitar, skip: f32, seconds: f32) -> f32 {
+        if skip > 0.0 {
+            render(g, SR, skip);
+        }
+        let (l, _) = render(g, SR, seconds);
+        pitch_hz(&l)
+    }
+
+    fn close(got: f32, note: f32) -> bool {
+        (got / midi_to_hz(note) - 1.0).abs() < 0.03
+    }
+
+    #[test]
+    fn a_note_can_name_its_string() {
+        let mut g = Guitar::new(SR);
+        // E4 on the B string (5th fret) instead of the open high E.
+        g.note_on_guitar(64, 0.8, guitar_note(|n| n.string = Some(2)));
+        assert!(g.strings[4].active && g.strings[4].note == 64);
+        assert!(!g.strings[5].active);
+        assert!(close(heard(&mut g, 0.05, 0.1), 64.0));
+        // A string that can't reach the note is ignored.
+        let mut g = Guitar::new(SR);
+        g.note_on_guitar(45, 0.8, guitar_note(|n| n.string = Some(1)));
+        assert!(g.strings[1].active, "A2 falls back to the open A string");
+    }
+
+    #[test]
+    fn a_bend_rises_to_its_pitch_and_holds() {
+        let mut g = Guitar::new(SR);
+        g.note_on_guitar(57, 0.9, guitar_note(|n| n.bend_semitones = Some(2.0)));
+        // Starts at A3, ends at B3.
+        assert!(close(heard(&mut g, 0.0, 0.05), 57.0) || heard(&mut g, 0.0, 0.0) == 0.0);
+        assert!(
+            close(heard(&mut g, 0.25, 0.1), 59.0),
+            "bent up a whole step"
+        );
+    }
+
+    #[test]
+    fn a_hammer_on_changes_the_note_without_a_new_pick() {
+        let mut g = Guitar::new(SR);
+        g.note_on(57, 0.9);
+        let (before, _) = render(&mut g, SR, 0.2);
+        g.note_on_guitar(59, 0.9, guitar_note(|n| n.legato = true));
+        let (after, _) = render(&mut g, SR, 0.02);
+        assert_eq!(g.active_strings(), 1, "same string");
+        // No fresh attack: no louder than the ringing note was.
+        assert!(peak(&after) <= peak(&before[before.len() - 960..]) * 1.2);
+        assert!(close(heard(&mut g, 0.0, 0.1), 59.0));
+    }
+
+    #[test]
+    fn a_slide_glides_to_the_new_note() {
+        let mut g = Guitar::new(SR);
+        g.note_on(57, 0.9);
+        render(&mut g, SR, 0.2);
+        g.note_on_guitar(62, 0.9, guitar_note(|n| n.slide = true));
+        render(&mut g, SR, 0.02);
+        let partway = g
+            .strings
+            .iter()
+            .find(|s| s.active)
+            .map(|s| s.pitch)
+            .expect("ringing");
+        assert!(partway > 57.0 && partway < 62.0, "{partway}");
+        assert!(close(heard(&mut g, 0.15, 0.1), 62.0));
     }
 }

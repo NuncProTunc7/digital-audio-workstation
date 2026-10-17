@@ -863,7 +863,10 @@ impl AudioProcessor {
                         continue;
                     }
                     if ev.velocity > 0.0 {
-                        t.instrument.note_on(ev.note, ev.velocity);
+                        match ev.guitar {
+                            Some(g) => t.instrument.note_on_guitar(ev.note, ev.velocity, g),
+                            None => t.instrument.note_on(ev.note, ev.velocity),
+                        }
                         t.sounding |= bit;
                     } else if t.sounding & bit != 0 {
                         t.instrument.note_off(ev.note);

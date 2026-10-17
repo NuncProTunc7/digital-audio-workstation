@@ -23,6 +23,12 @@ pub trait InstrumentProcessor: Send {
     /// `velocity` is 0.0–1.0.
     // RT-SAFE
     fn note_on(&mut self, note: u8, velocity: f32);
+    /// A note-on with a guitar note's string and technique. Instruments
+    /// other than the guitar play it as an ordinary note.
+    // RT-SAFE
+    fn note_on_guitar(&mut self, note: u8, velocity: f32, _guitar: daw_model::GuitarNote) {
+        self.note_on(note, velocity);
+    }
     // RT-SAFE
     fn note_off(&mut self, note: u8);
     /// Releases every note, including ones held by the sustain pedal.
@@ -138,6 +144,8 @@ pub struct Catalog {
     /// the order of its `string.tuning` choice, and how many frets it has.
     pub guitar_tunings: &'static [daw_model::instrument::Tuning],
     pub guitar_frets: u8,
+    /// Ready-made guitar effect chains for `load_rig`.
+    pub rigs: &'static [daw_model::effect::Rig],
 }
 
 pub fn catalog() -> Catalog {
@@ -147,5 +155,6 @@ pub fn catalog() -> Catalog {
         drum_pads: &DRUM_PADS,
         guitar_tunings: daw_model::instrument::GUITAR_TUNINGS,
         guitar_frets: daw_model::instrument::GUITAR_FRETS,
+        rigs: daw_model::effect::RIGS,
     }
 }

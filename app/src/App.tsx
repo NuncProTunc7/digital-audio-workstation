@@ -9,6 +9,7 @@ import GodotExportDialog from "./components/GodotExportDialog";
 import SoundFx from "./components/SoundFx";
 import InstrumentPanel from "./components/InstrumentPanel";
 import Mixer from "./components/Mixer";
+import Pedalboard from "./components/Pedalboard";
 import MixAnalysisPanel from "./components/MixAnalysisPanel";
 import Piano from "./components/Piano";
 import PianoRoll from "./components/PianoRoll";
@@ -1241,7 +1242,14 @@ export default function App({ backend }: AppProps) {
               onEndGesture={endGesture}
               onImport={() => void pickAndImport(selectedTrack.id, snapDown(position, beatsPerBar))}
               onRecord={() => void toggleRecord()}
-            />
+            >
+              {(selectedTrack.instrument.kind === "guitar" || isAudioTrack) && (
+                <details className="pedalboard-fold" open={!isAudioTrack || selectedTrack.mixer.effects.length > 0}>
+                  <summary>🎸 Pedalboard{isAudioTrack ? " (for a recorded guitar)" : ""}</summary>
+                  <Pedalboard track={selectedTrack} catalog={catalog} onCommand={execute} onEndGesture={endGesture} />
+                </details>
+              )}
+            </AudioPanel>
           )}
 
           {tab === "instrument" && !isAudioTrack && (
@@ -1251,6 +1259,7 @@ export default function App({ backend }: AppProps) {
                 catalog={catalog}
                 activeNotes={activeNotes}
                 songKey={project.key}
+                songChords={project.chords}
                 onParam={(param, value) =>
                   void execute({ command: "set_instrument_param", track_id: selectedTrack.id, param, value })
                 }
@@ -1306,7 +1315,14 @@ export default function App({ backend }: AppProps) {
                   await run(() => backend.downloadSamplePack(id));
                 }}
                 onUseSamplePack={(path, label) => loadSamplePack(selectedTrack, path, label)}
-              />
+              >
+                {(selectedTrack.instrument.kind === "guitar" || isAudioTrack) && (
+                  <details className="pedalboard-fold" open={!isAudioTrack || selectedTrack.mixer.effects.length > 0}>
+                    <summary>🎸 Pedalboard{isAudioTrack ? " (for a recorded guitar)" : ""}</summary>
+                    <Pedalboard track={selectedTrack} catalog={catalog} onCommand={execute} onEndGesture={endGesture} />
+                  </details>
+                )}
+              </InstrumentPanel>
               <div className="keyboard-dock">
                 <div className="keyboard-help">
                   {isDrums ? (

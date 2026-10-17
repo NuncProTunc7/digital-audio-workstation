@@ -802,6 +802,41 @@ pub struct Note {
     /// or renders, so repeats vary without surprises.
     #[serde(default = "full_chance", skip_serializing_if = "is_full_chance")]
     pub chance: u8,
+    /// Guitar tracks: which string and how it is played. Other
+    /// instruments ignore it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub guitar: Option<GuitarNote>,
+}
+
+/// How a guitar plays one note: on which string, and with which technique.
+/// Everything left out means "as usual" (a picked note on the highest
+/// string that reaches it).
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize, JsonSchema)]
+pub struct GuitarNote {
+    /// String 1 (the thinnest, high E in standard tuning) to 6 (the
+    /// thickest). Omit to let the guitar choose. A string that can't reach
+    /// the note is ignored.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub string: Option<u8>,
+    /// Slide into this note from the note already ringing on the same
+    /// string (no new pick; the pitch glides).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub slide: bool,
+    /// Hammer-on (higher) or pull-off (lower) from the note already ringing
+    /// on the same string: it sounds without a new pick.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub legato: bool,
+    /// Bend the string up by this many semitones (0.5 to 3) just after the
+    /// pick, and hold it. 1 = a half-step... 2 = a "full" bend.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bend_semitones: Option<f64>,
+}
+
+impl GuitarNote {
+    /// None when it asks for nothing special, so plain notes stay plain.
+    pub fn or_none(self) -> Option<GuitarNote> {
+        (self != GuitarNote::default()).then_some(self)
+    }
 }
 
 /// Notes play every time unless given a lower chance.

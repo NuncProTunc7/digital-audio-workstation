@@ -1,5 +1,6 @@
-import { useState } from "react";
-import type { Catalog, Key, LibraryPack, PluginList, PluginParam, PluginStatus, SamplePackStatus, Track, UserPreset } from "../types";
+import { useState, type ReactNode } from "react";
+import { chordName } from "../music";
+import type { Catalog, Chord, ChordQuality, Key, LibraryPack, PluginList, PluginParam, PluginStatus, SamplePackStatus, Track, UserPreset } from "../types";
 import { noteName } from "../keymap";
 import DrumPads from "./DrumPads";
 import Fretboard from "./Fretboard";
@@ -10,10 +11,14 @@ import SamplePack from "./SamplePack";
 
 interface InstrumentPanelProps {
   track: Track;
+  /** Shown at the bottom of the panel's scrolling area (the guitar's pedalboard). */
+  children?: ReactNode;
   catalog: Catalog;
   activeNotes: ReadonlySet<number>;
   /** The song's key, shaded on the guitar's fretboard. */
   songKey?: Key | null;
+  /** The song's chord track, offered as chord buttons on the guitar. */
+  songChords?: Chord[];
   onParam: (param: string, value: number) => void;
   onEndGesture: () => void;
   onPreset: (preset: string) => void;
@@ -67,10 +72,12 @@ function GuitarStrings({ track, catalog }: { track: Track; catalog: Catalog }) {
 
 /** Preset picker plus every parameter of the selected track's instrument. */
 export default function InstrumentPanel({
+  children,
   track,
   catalog,
   activeNotes,
   songKey,
+  songChords,
   onParam,
   onEndGesture,
   onPreset,
@@ -228,6 +235,7 @@ export default function InstrumentPanel({
             frets={catalog.guitar_frets ?? 22}
             activeNotes={activeNotes}
             songKey={songKey}
+            chords={guitarChords(songChords ?? [])}
             onPlay={onPadHit}
             onRelease={onPadRelease}
           />
@@ -262,7 +270,30 @@ export default function InstrumentPanel({
             </fieldset>
           ))}
         </div>
+        {children}
       </div>
     </section>
   );
+}
+
+/** Everyday open chords, after the song's own chords (each once). */
+const COMMON_CHORDS: { root: number; quality: ChordQuality }[] = [
+  { root: 0, quality: "major" },
+  { root: 2, quality: "major" },
+  { root: 4, quality: "major" },
+  { root: 7, quality: "major" },
+  { root: 9, quality: "major" },
+  { root: 9, quality: "minor" },
+  { root: 4, quality: "minor" },
+  { root: 2, quality: "minor" },
+];
+
+function guitarChords(song: Chord[]): { root: number; quality: ChordQuality; bass?: number | null }[] {
+  const seen = new Set<string>();
+  return [...song, ...COMMON_CHORDS].filter((c) => {
+    const name = chordName(c);
+    if (seen.has(name)) return false;
+    seen.add(name);
+    return true;
+  });
 }

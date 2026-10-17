@@ -1267,6 +1267,470 @@
           "choices": []
         }
       ]
+    },
+    {
+      "kind": "overdrive",
+      "name": "Overdrive",
+      "description": "Guitar pedal: a warm, mid-boosted push. Before an Amp for crunch, or alone for a gritty edge.",
+      "params": [
+        {
+          "id": "drive",
+          "name": "Drive",
+          "group": "Overdrive",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 0.5,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "tone",
+          "name": "Tone",
+          "group": "Overdrive",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 0.5,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "level_db",
+          "name": "Level",
+          "group": "Overdrive",
+          "min": -24.0,
+          "max": 6.0,
+          "default": -3.0,
+          "unit": "decibels",
+          "log_scale": false,
+          "choices": []
+        }
+      ]
+    },
+    {
+      "kind": "fuzz",
+      "name": "Fuzz",
+      "description": "Guitar pedal: hard, buzzy, square-ish fuzz for 60s and stoner tones.",
+      "params": [
+        {
+          "id": "fuzz",
+          "name": "Fuzz",
+          "group": "Fuzz",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 0.7,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "tone",
+          "name": "Tone",
+          "group": "Fuzz",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 0.5,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "level_db",
+          "name": "Level",
+          "group": "Fuzz",
+          "min": -24.0,
+          "max": 6.0,
+          "default": -8.0,
+          "unit": "decibels",
+          "log_scale": false,
+          "choices": []
+        }
+      ]
+    },
+    {
+      "kind": "amp",
+      "name": "Amp",
+      "description": "A guitar amp and speaker cabinet. Channel Clean/Crunch/High gain, gain, bass/mid/treble, master, cabinet. Put it after drive pedals and before time effects.",
+      "params": [
+        {
+          "id": "channel",
+          "name": "Channel",
+          "group": "Amp",
+          "min": 0.0,
+          "max": 2.0,
+          "default": 1.0,
+          "unit": "none",
+          "log_scale": false,
+          "choices": [
+            "Clean",
+            "Crunch",
+            "High gain"
+          ]
+        },
+        {
+          "id": "gain",
+          "name": "Gain",
+          "group": "Amp",
+          "min": 0.0,
+          "max": 10.0,
+          "default": 5.0,
+          "unit": "none",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "bass",
+          "name": "Bass",
+          "group": "Amp",
+          "min": 0.0,
+          "max": 10.0,
+          "default": 5.0,
+          "unit": "none",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "mid",
+          "name": "Mid",
+          "group": "Amp",
+          "min": 0.0,
+          "max": 10.0,
+          "default": 5.0,
+          "unit": "none",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "treble",
+          "name": "Treble",
+          "group": "Amp",
+          "min": 0.0,
+          "max": 10.0,
+          "default": 5.0,
+          "unit": "none",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "master_db",
+          "name": "Master",
+          "group": "Amp",
+          "min": -24.0,
+          "max": 6.0,
+          "default": -6.0,
+          "unit": "decibels",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "cabinet",
+          "name": "Cabinet",
+          "group": "Amp",
+          "min": 0.0,
+          "max": 3.0,
+          "default": 2.0,
+          "unit": "none",
+          "log_scale": false,
+          "choices": [
+            "Off",
+            "1x12 open back",
+            "2x12",
+            "4x12 closed"
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "phaser",
+      "name": "Phaser",
+      "description": "Guitar pedal: a swirling sweep.",
+      "params": [
+        {
+          "id": "rate_hz",
+          "name": "Rate",
+          "group": "Phaser",
+          "min": 0.05,
+          "max": 5.0,
+          "default": 0.5,
+          "unit": "hertz",
+          "log_scale": true,
+          "choices": []
+        },
+        {
+          "id": "depth",
+          "name": "Depth",
+          "group": "Phaser",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 0.7,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "feedback",
+          "name": "Feedback",
+          "group": "Phaser",
+          "min": 0.0,
+          "max": 0.9,
+          "default": 0.4,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "mix",
+          "name": "Mix",
+          "group": "Phaser",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 0.5,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        }
+      ]
+    },
+    {
+      "kind": "flanger",
+      "name": "Flanger",
+      "description": "Guitar pedal: a jet-plane whoosh.",
+      "params": [
+        {
+          "id": "rate_hz",
+          "name": "Rate",
+          "group": "Flanger",
+          "min": 0.05,
+          "max": 5.0,
+          "default": 0.25,
+          "unit": "hertz",
+          "log_scale": true,
+          "choices": []
+        },
+        {
+          "id": "depth",
+          "name": "Depth",
+          "group": "Flanger",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 0.7,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "feedback",
+          "name": "Feedback",
+          "group": "Flanger",
+          "min": -0.9,
+          "max": 0.9,
+          "default": 0.5,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "mix",
+          "name": "Mix",
+          "group": "Flanger",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 0.5,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        }
+      ]
+    },
+    {
+      "kind": "tremolo",
+      "name": "Tremolo",
+      "description": "Guitar pedal: volume pulsing, for surf and western.",
+      "params": [
+        {
+          "id": "rate_hz",
+          "name": "Rate",
+          "group": "Tremolo",
+          "min": 0.5,
+          "max": 15.0,
+          "default": 5.0,
+          "unit": "hertz",
+          "log_scale": true,
+          "choices": []
+        },
+        {
+          "id": "depth",
+          "name": "Depth",
+          "group": "Tremolo",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 0.6,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "shape",
+          "name": "Shape",
+          "group": "Tremolo",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 0.0,
+          "unit": "none",
+          "log_scale": false,
+          "choices": [
+            "Smooth (sine)",
+            "Choppy (square)"
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "wah",
+      "name": "Wah",
+      "description": "Guitar pedal: a band-pass 'wow'. Auto follows how hard notes are played; Sweep moves by itself; Fixed holds Position (automate it to rock the pedal).",
+      "params": [
+        {
+          "id": "mode",
+          "name": "Mode",
+          "group": "Wah",
+          "min": 0.0,
+          "max": 2.0,
+          "default": 0.0,
+          "unit": "none",
+          "log_scale": false,
+          "choices": [
+            "Auto (follows playing)",
+            "Sweep",
+            "Fixed"
+          ]
+        },
+        {
+          "id": "position",
+          "name": "Position",
+          "group": "Wah",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 0.5,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "sensitivity",
+          "name": "Sensitivity",
+          "group": "Wah",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 0.6,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "rate_hz",
+          "name": "Rate",
+          "group": "Wah",
+          "min": 0.1,
+          "max": 8.0,
+          "default": 1.5,
+          "unit": "hertz",
+          "log_scale": true,
+          "choices": []
+        },
+        {
+          "id": "resonance",
+          "name": "Resonance",
+          "group": "Wah",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 0.7,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "mix",
+          "name": "Mix",
+          "group": "Wah",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 1.0,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        }
+      ]
+    },
+    {
+      "kind": "noise_gate",
+      "name": "Noise gate",
+      "description": "Silences hiss and hum between phrases; tightens high-gain chugs. Put it first.",
+      "params": [
+        {
+          "id": "threshold_db",
+          "name": "Threshold",
+          "group": "Noise gate",
+          "min": -90.0,
+          "max": -10.0,
+          "default": -55.0,
+          "unit": "decibels",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "release_s",
+          "name": "Release",
+          "group": "Noise gate",
+          "min": 0.01,
+          "max": 1.0,
+          "default": 0.12,
+          "unit": "seconds",
+          "log_scale": true,
+          "choices": []
+        }
+      ]
+    },
+    {
+      "kind": "octaver",
+      "name": "Octaver",
+      "description": "Guitar pedal: adds a note an octave below (and a fuzzy octave above). Works best on single notes.",
+      "params": [
+        {
+          "id": "down",
+          "name": "Octave down",
+          "group": "Octaver",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 0.6,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "up",
+          "name": "Octave up",
+          "group": "Octaver",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 0.0,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        },
+        {
+          "id": "dry",
+          "name": "Dry",
+          "group": "Octaver",
+          "min": 0.0,
+          "max": 1.0,
+          "default": 0.8,
+          "unit": "percent",
+          "log_scale": false,
+          "choices": []
+        }
+      ]
     }
   ],
   "drum_pads": [
@@ -1463,5 +1927,658 @@
       ]
     }
   ],
-  "guitar_frets": 22
+  "guitar_frets": 22,
+  "rigs": [
+    {
+      "name": "Clean",
+      "description": "A clean amp with a touch of room: chords and picked parts.",
+      "chain": [
+        {
+          "kind": "compressor",
+          "params": [
+            [
+              "threshold_db",
+              -24.0
+            ],
+            [
+              "ratio",
+              3.0
+            ],
+            [
+              "makeup_db",
+              4.0
+            ]
+          ]
+        },
+        {
+          "kind": "amp",
+          "params": [
+            [
+              "channel",
+              0.0
+            ],
+            [
+              "gain",
+              3.0
+            ],
+            [
+              "treble",
+              6.0
+            ],
+            [
+              "master_db",
+              -4.0
+            ]
+          ]
+        },
+        {
+          "kind": "reverb",
+          "params": [
+            [
+              "size",
+              0.5
+            ],
+            [
+              "mix",
+              0.15
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Clean shimmer",
+      "description": "Sparkling clean with chorus, dotted-eighth echoes and a big hall: dreamy towns and menus.",
+      "chain": [
+        {
+          "kind": "compressor",
+          "params": [
+            [
+              "threshold_db",
+              -24.0
+            ],
+            [
+              "ratio",
+              3.0
+            ],
+            [
+              "makeup_db",
+              4.0
+            ]
+          ]
+        },
+        {
+          "kind": "amp",
+          "params": [
+            [
+              "channel",
+              0.0
+            ],
+            [
+              "gain",
+              3.0
+            ],
+            [
+              "treble",
+              7.0
+            ],
+            [
+              "master_db",
+              -4.0
+            ]
+          ]
+        },
+        {
+          "kind": "chorus",
+          "params": [
+            [
+              "depth",
+              0.5
+            ],
+            [
+              "mix",
+              0.4
+            ]
+          ]
+        },
+        {
+          "kind": "delay",
+          "params": [
+            [
+              "sync",
+              3.0
+            ],
+            [
+              "feedback",
+              0.35
+            ],
+            [
+              "ping_pong",
+              1.0
+            ],
+            [
+              "mix",
+              0.25
+            ]
+          ]
+        },
+        {
+          "kind": "reverb",
+          "params": [
+            [
+              "size",
+              0.85
+            ],
+            [
+              "mix",
+              0.35
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Crunch",
+      "description": "An amp just breaking up, nudged by an overdrive: rhythm parts and riffs.",
+      "chain": [
+        {
+          "kind": "overdrive",
+          "params": [
+            [
+              "drive",
+              0.3
+            ],
+            [
+              "tone",
+              0.55
+            ],
+            [
+              "level_db",
+              0.0
+            ]
+          ]
+        },
+        {
+          "kind": "amp",
+          "params": [
+            [
+              "channel",
+              1.0
+            ],
+            [
+              "gain",
+              5.0
+            ],
+            [
+              "mid",
+              6.0
+            ]
+          ]
+        },
+        {
+          "kind": "reverb",
+          "params": [
+            [
+              "size",
+              0.45
+            ],
+            [
+              "mix",
+              0.12
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Blues",
+      "description": "Warm, singing overdrive through an open-back combo: bends and slow leads.",
+      "chain": [
+        {
+          "kind": "overdrive",
+          "params": [
+            [
+              "drive",
+              0.45
+            ],
+            [
+              "tone",
+              0.45
+            ],
+            [
+              "level_db",
+              0.0
+            ]
+          ]
+        },
+        {
+          "kind": "amp",
+          "params": [
+            [
+              "channel",
+              1.0
+            ],
+            [
+              "gain",
+              4.0
+            ],
+            [
+              "bass",
+              6.0
+            ],
+            [
+              "mid",
+              6.0
+            ],
+            [
+              "cabinet",
+              1.0
+            ]
+          ]
+        },
+        {
+          "kind": "reverb",
+          "params": [
+            [
+              "size",
+              0.55
+            ],
+            [
+              "mix",
+              0.2
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Classic rock",
+      "description": "A cranked amp through a 4x12 with a short echo: power chords and anthems.",
+      "chain": [
+        {
+          "kind": "amp",
+          "params": [
+            [
+              "channel",
+              1.0
+            ],
+            [
+              "gain",
+              8.0
+            ],
+            [
+              "mid",
+              7.0
+            ],
+            [
+              "cabinet",
+              3.0
+            ]
+          ]
+        },
+        {
+          "kind": "delay",
+          "params": [
+            [
+              "sync",
+              4.0
+            ],
+            [
+              "feedback",
+              0.25
+            ],
+            [
+              "mix",
+              0.15
+            ]
+          ]
+        },
+        {
+          "kind": "reverb",
+          "params": [
+            [
+              "size",
+              0.5
+            ],
+            [
+              "mix",
+              0.15
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Metal",
+      "description": "Gated high gain with a tight boost and scooped mids: chugs and boss fights.",
+      "chain": [
+        {
+          "kind": "noise_gate",
+          "params": [
+            [
+              "threshold_db",
+              -50.0
+            ],
+            [
+              "release_s",
+              0.06
+            ]
+          ]
+        },
+        {
+          "kind": "overdrive",
+          "params": [
+            [
+              "drive",
+              0.05
+            ],
+            [
+              "tone",
+              0.6
+            ],
+            [
+              "level_db",
+              0.0
+            ]
+          ]
+        },
+        {
+          "kind": "amp",
+          "params": [
+            [
+              "channel",
+              2.0
+            ],
+            [
+              "gain",
+              7.0
+            ],
+            [
+              "bass",
+              6.0
+            ],
+            [
+              "mid",
+              3.5
+            ],
+            [
+              "treble",
+              6.5
+            ],
+            [
+              "cabinet",
+              3.0
+            ]
+          ]
+        },
+        {
+          "kind": "reverb",
+          "params": [
+            [
+              "size",
+              0.4
+            ],
+            [
+              "mix",
+              0.08
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Fuzz lead",
+      "description": "Thick fuzz into a clean amp with quarter-note echoes: soaring leads.",
+      "chain": [
+        {
+          "kind": "fuzz",
+          "params": [
+            [
+              "fuzz",
+              0.8
+            ],
+            [
+              "tone",
+              0.55
+            ],
+            [
+              "level_db",
+              -8.0
+            ]
+          ]
+        },
+        {
+          "kind": "amp",
+          "params": [
+            [
+              "channel",
+              0.0
+            ],
+            [
+              "gain",
+              5.0
+            ]
+          ]
+        },
+        {
+          "kind": "delay",
+          "params": [
+            [
+              "sync",
+              2.0
+            ],
+            [
+              "feedback",
+              0.4
+            ],
+            [
+              "mix",
+              0.25
+            ]
+          ]
+        },
+        {
+          "kind": "reverb",
+          "params": [
+            [
+              "size",
+              0.6
+            ],
+            [
+              "mix",
+              0.2
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Funk",
+      "description": "Squeezed and auto-wah'd clean: choppy sixteenth-note rhythm.",
+      "chain": [
+        {
+          "kind": "compressor",
+          "params": [
+            [
+              "threshold_db",
+              -28.0
+            ],
+            [
+              "ratio",
+              6.0
+            ],
+            [
+              "attack_s",
+              0.003
+            ],
+            [
+              "makeup_db",
+              6.0
+            ]
+          ]
+        },
+        {
+          "kind": "wah",
+          "params": [
+            [
+              "mode",
+              0.0
+            ],
+            [
+              "sensitivity",
+              0.7
+            ],
+            [
+              "resonance",
+              0.75
+            ]
+          ]
+        },
+        {
+          "kind": "amp",
+          "params": [
+            [
+              "channel",
+              0.0
+            ],
+            [
+              "gain",
+              3.0
+            ],
+            [
+              "treble",
+              7.0
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Surf",
+      "description": "Twangy clean with tremolo and a splashy spring-style reverb: beaches and westerns.",
+      "chain": [
+        {
+          "kind": "amp",
+          "params": [
+            [
+              "channel",
+              0.0
+            ],
+            [
+              "gain",
+              4.0
+            ],
+            [
+              "treble",
+              7.0
+            ],
+            [
+              "cabinet",
+              1.0
+            ]
+          ]
+        },
+        {
+          "kind": "tremolo",
+          "params": [
+            [
+              "rate_hz",
+              6.0
+            ],
+            [
+              "depth",
+              0.5
+            ]
+          ]
+        },
+        {
+          "kind": "reverb",
+          "params": [
+            [
+              "size",
+              0.7
+            ],
+            [
+              "damping",
+              0.2
+            ],
+            [
+              "mix",
+              0.45
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Ambient",
+      "description": "Clean guitar washed in long echoes and a huge reverb: pads, title screens.",
+      "chain": [
+        {
+          "kind": "amp",
+          "params": [
+            [
+              "channel",
+              0.0
+            ],
+            [
+              "gain",
+              3.0
+            ],
+            [
+              "master_db",
+              -4.0
+            ]
+          ]
+        },
+        {
+          "kind": "chorus",
+          "params": [
+            [
+              "depth",
+              0.4
+            ],
+            [
+              "mix",
+              0.3
+            ]
+          ]
+        },
+        {
+          "kind": "delay",
+          "params": [
+            [
+              "sync",
+              2.0
+            ],
+            [
+              "feedback",
+              0.6
+            ],
+            [
+              "ping_pong",
+              1.0
+            ],
+            [
+              "mix",
+              0.4
+            ]
+          ]
+        },
+        {
+          "kind": "reverb",
+          "params": [
+            [
+              "size",
+              1.0
+            ],
+            [
+              "mix",
+              0.6
+            ]
+          ]
+        }
+      ]
+    }
+  ]
 }

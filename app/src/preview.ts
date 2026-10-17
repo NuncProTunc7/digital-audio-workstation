@@ -118,6 +118,7 @@ export function applyCommand(project: Project, command: Command): Project {
       length_beats: n.length_beats,
       velocity: n.velocity ?? 100,
       ...(n.chance !== undefined && n.chance < 100 ? { chance: n.chance } : {}),
+      ...(n.guitar && Object.keys(n.guitar).length > 0 ? { guitar: { ...n.guitar } } : {}),
     }));
   const sortNotes = (c: Clip) => c.notes.sort((a, b) => a.start_beats - b.start_beats || a.pitch - b.pitch);
 
@@ -201,6 +202,20 @@ export function applyCommand(project: Project, command: Command): Project {
       c.splice(command.index ?? c.length, 0, { id: id(), kind: command.kind, enabled: true, params });
       break;
     }
+    case "load_rig": {
+      const rig = catalog.rigs.find((r) => r.name.toLowerCase() === command.rig.trim().toLowerCase());
+      if (!rig) throw new Error(`there is no rig called "${command.rig}"`);
+      const c = chain(command.track_id);
+      const effects = rig.chain.map((pedal) => {
+        const description = catalog.effects.find((e) => e.kind === pedal.kind);
+        const params: Record<string, number> = {};
+        for (const s of description?.params ?? []) params[s.id] = s.default;
+        for (const [k, v] of pedal.params) params[k] = v;
+        return { id: id(), kind: pedal.kind, enabled: true, params };
+      });
+      c.splice(0, c.length, ...effects);
+      break;
+    }
     case "add_plugin_effect": {
       const c = chain(command.track_id);
       c.splice(command.index ?? c.length, 0, {
@@ -210,6 +225,11 @@ export function applyCommand(project: Project, command: Command): Project {
         params: {},
         plugin: structuredClone(command.plugin),
       });
+      break;
+    }
+    case "restore_effect": {
+      const c = chain(command.track_id);
+      c.splice(Math.min(command.index, c.length), 0, structuredClone(command.effect));
       break;
     }
     case "remove_effect": {
@@ -585,6 +605,10 @@ export function applyCommand(project: Project, command: Command): Project {
         if (e.length_beats != null) n.length_beats = e.length_beats;
         if (e.velocity != null) n.velocity = e.velocity;
         if (e.chance != null) n.chance = e.chance;
+        if (e.guitar != null) {
+          if (Object.keys(e.guitar).length > 0) n.guitar = { ...e.guitar };
+          else delete n.guitar;
+        }
       }
       sortNotes(c);
       break;

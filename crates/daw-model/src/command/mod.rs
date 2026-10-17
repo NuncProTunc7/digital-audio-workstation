@@ -55,6 +55,7 @@ pub(crate) fn validate_note_pub(n: &crate::project::Note) -> Result<(), CommandE
         length_beats: n.length_beats,
         velocity: n.velocity,
         id: None,
+        guitar: n.guitar,
     })
 }
 
@@ -357,6 +358,24 @@ pub enum Command {
     RemoveEffect {
         track_id: Option<TrackId>,
         effect_id: EffectId,
+    },
+    /// Replace a chain's effects with a ready-made guitar rig (pedals, an
+    /// amp and room effects, already set up) in one step: Clean, Clean
+    /// shimmer, Crunch, Blues, Classic rock, Metal, Fuzz lead, Funk, Surf,
+    /// Ambient (describe_instruments lists them as `rigs`). Works on any
+    /// track (also audio tracks with a recorded guitar), a bus (its id), or
+    /// the master (track_id omitted). Everything already in the chain is
+    /// replaced; undo puts it back.
+    LoadRig {
+        track_id: Option<TrackId>,
+        /// Rig name, any case.
+        rig: String,
+    },
+    /// Replace a chain's effects with these, exactly (ids kept; used by
+    /// undo).
+    RestoreEffectChain {
+        track_id: Option<TrackId>,
+        effects: Vec<Effect>,
     },
     /// Put back a previously removed effect (used by undo).
     RestoreEffect {
@@ -970,6 +989,10 @@ impl Command {
                 index,
                 effect,
             } => effects::restore(project, track_id, index, effect),
+            C::LoadRig { track_id, rig } => effects::load_rig(project, track_id, rig),
+            C::RestoreEffectChain { track_id, effects } => {
+                effects::restore_chain(project, track_id, effects)
+            }
             C::SetEffectParam {
                 track_id,
                 effect_id,

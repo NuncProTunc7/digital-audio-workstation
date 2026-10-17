@@ -7,7 +7,24 @@ export interface TimeSignature {
 }
 
 export type InstrumentKind = "synth" | "drums" | "audio" | "sampler" | "plugin" | "guitar";
-export type EffectKind = "eq" | "compressor" | "reverb" | "delay" | "chorus" | "distortion" | "limiter" | "plugin";
+export type EffectKind =
+  | "eq"
+  | "compressor"
+  | "reverb"
+  | "delay"
+  | "chorus"
+  | "distortion"
+  | "limiter"
+  | "overdrive"
+  | "fuzz"
+  | "amp"
+  | "phaser"
+  | "flanger"
+  | "tremolo"
+  | "wah"
+  | "noise_gate"
+  | "octaver"
+  | "plugin";
 
 export interface Instrument {
   kind: InstrumentKind;
@@ -71,6 +88,20 @@ export interface Note {
   velocity: number;
   /** How often it plays, 1–100 % (missing = 100, every time). */
   chance?: number;
+  /** Guitar tracks: string and technique. */
+  guitar?: GuitarNote;
+}
+
+/** How a guitar plays a note (all optional: missing = picked, automatic string). */
+export interface GuitarNote {
+  /** 1 (thinnest) to 6 (thickest). */
+  string?: number;
+  /** Slide in from the note ringing on the same string. */
+  slide?: boolean;
+  /** Hammer-on or pull-off from the note ringing on the same string. */
+  legato?: boolean;
+  /** Bend up this many semitones (0.5–3). */
+  bend_semitones?: number;
 }
 
 /** Shuffle: every second `grid_beats` step plays late. */
@@ -427,6 +458,7 @@ export interface NoteInput {
   /** 1–100 % (default 100). */
   chance?: number;
   id?: number;
+  guitar?: GuitarNote;
 }
 
 export interface NoteEdit {
@@ -436,6 +468,8 @@ export interface NoteEdit {
   length_beats?: number | null;
   velocity?: number | null;
   chance?: number | null;
+  /** Replaces the note's guitar detail ({} = back to plain). */
+  guitar?: GuitarNote | null;
 }
 
 type Opt<T> = T | null;
@@ -467,8 +501,10 @@ export type Command =
   | { command: "load_preset"; track_id: number; preset: string }
   | { command: "set_instrument"; track_id: number; instrument: Instrument }
   | { command: "add_effect"; track_id: Opt<number>; kind: EffectKind; index: Opt<number> }
+  | { command: "load_rig"; track_id: Opt<number>; rig: string }
   | { command: "add_plugin_effect"; track_id: Opt<number>; plugin: PluginRef; index: Opt<number> }
   | { command: "remove_effect"; track_id: Opt<number>; effect_id: number }
+  | { command: "restore_effect"; track_id: Opt<number>; index: number; effect: Effect }
   | { command: "set_effect_param"; track_id: Opt<number>; effect_id: number; param: string; value: number }
   | { command: "set_effect_enabled"; track_id: Opt<number>; effect_id: number; enabled: boolean }
   | {
@@ -686,6 +722,15 @@ export interface Catalog {
   /** Guitar tunings in the order of the `string.tuning` choice. */
   guitar_tunings: GuitarTuning[];
   guitar_frets: number;
+  /** Ready-made guitar effect chains (load_rig). */
+  rigs: Rig[];
+}
+
+/** A ready-made guitar effect chain: each effect's kind and the settings that differ from the defaults. */
+export interface Rig {
+  name: string;
+  description: string;
+  chain: { kind: EffectKind; params: [string, number][] }[];
 }
 
 /** A guitar tuning: open strings as MIDI notes, lowest first. */

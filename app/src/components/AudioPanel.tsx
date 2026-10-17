@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { CalibrationResult, Clip, Command, InputStatus, Peaks, Track } from "../types";
 import { meterPercent } from "../format";
 import type { TempoMap } from "../tempo";
@@ -31,6 +31,8 @@ interface AudioPanelProps {
   onEndGesture: () => void;
   onImport: () => void;
   onRecord: () => void;
+  /** Shown at the bottom of the panel's scrolling area (the pedalboard). */
+  children?: ReactNode;
 }
 
 function formatSeconds(s: number): string {
@@ -296,6 +298,7 @@ export default function AudioPanel(props: AudioPanelProps) {
             </p>
           )}
         </section>
+        {props.children}
       </div>
     </section>
   );

@@ -29,6 +29,10 @@ pub struct NoteInput {
     /// Leave out; only used by undo to restore notes with their old ids.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<NoteId>,
+    /// Guitar tracks only: the string (1 thinnest to 6 thickest) and a
+    /// technique (slide, legato for hammer-ons/pull-offs, bend_semitones).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub guitar: Option<crate::project::GuitarNote>,
 }
 
 /// Changes to one note. Omitted fields keep their value.
@@ -42,6 +46,10 @@ pub struct NoteEdit {
     /// How often it plays, 1–100 %.
     #[serde(default)]
     pub chance: Option<u8>,
+    /// Guitar tracks: string and technique, replacing the old ones (all
+    /// fields left out = back to automatic and plainly picked).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub guitar: Option<crate::project::GuitarNote>,
 }
 
 impl NoteEdit {
@@ -53,6 +61,7 @@ impl NoteEdit {
             && self.length_beats.is_some() == other.length_beats.is_some()
             && self.velocity.is_some() == other.velocity.is_some()
             && self.chance.is_some() == other.chance.is_some()
+            && self.guitar.is_some() == other.guitar.is_some()
     }
 }
 
@@ -83,7 +92,25 @@ fn check_chance(chance: u8) -> Result<(), CommandError> {
     }
 }
 
+/// A guitar detail must name a real string and a sensible bend.
+fn check_guitar(g: &crate::project::GuitarNote) -> Result<(), CommandError> {
+    if let Some(s) = g.string
+        && !(1..=6).contains(&s)
+    {
+        return Err(invalid("guitar string", format!("must be 1–6, got {s}")));
+    }
+    if let Some(b) = g.bend_semitones
+        && !(b.is_finite() && (0.5..=3.0).contains(&b))
+    {
+        return Err(invalid("bend", format!("must be 0.5–3 semitones, got {b}")));
+    }
+    Ok(())
+}
+
 pub(crate) fn validate_input(n: &NoteInput) -> Result<(), CommandError> {
+    if let Some(g) = &n.guitar {
+        check_guitar(g)?;
+    }
     check_pitch(n.pitch)?;
     check_velocity(n.velocity)?;
     check_chance(n.chance)?;
@@ -119,6 +146,7 @@ pub(crate) fn materialize(
             length_beats: n.length_beats,
             velocity: n.velocity,
             chance: n.chance,
+            guitar: n.guitar,
         })
         .collect())
 }
@@ -185,6 +213,7 @@ pub(super) fn remove(
                 velocity: n.velocity,
                 chance: n.chance,
                 id: Some(n.id),
+                guitar: n.guitar,
             })
             .collect(),
     })
@@ -216,6 +245,9 @@ pub(super) fn edit(
         if let Some(c) = e.chance {
             check_chance(c)?;
         }
+        if let Some(g) = &e.guitar {
+            check_guitar(g)?;
+        }
     }
     let mut inverse = Vec::with_capacity(edits.len());
     for e in edits {
@@ -229,6 +261,7 @@ pub(super) fn edit(
             length_beats: e.length_beats.map(|_| n.length_beats),
             velocity: e.velocity.map(|_| n.velocity),
             chance: e.chance.map(|_| n.chance),
+            guitar: e.guitar.map(|_| n.guitar.unwrap_or_default()),
         });
         if let Some(p) = e.pitch {
             n.pitch = p;
@@ -244,6 +277,9 @@ pub(super) fn edit(
         }
         if let Some(c) = e.chance {
             n.chance = c;
+        }
+        if let Some(g) = e.guitar {
+            n.guitar = g.or_none();
         }
     }
     sort_notes(&mut clip.notes);
@@ -303,6 +339,7 @@ pub(super) fn quantize(
                 length_beats: length,
                 velocity: None,
                 chance: None,
+                guitar: None,
             }
         })
         .collect();
@@ -354,6 +391,7 @@ pub(super) fn humanize(
                 length_beats: None,
                 velocity: (velocity > 0).then_some(v.clamp(1.0, 127.0) as u8),
                 chance: None,
+                guitar: None,
             }
         })
         .collect();
@@ -386,6 +424,7 @@ pub(super) fn transpose(
             length_beats: None,
             velocity: None,
             chance: None,
+            guitar: None,
         });
     }
     edit(project, clip_id, edits)

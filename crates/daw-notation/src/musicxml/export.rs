@@ -12,6 +12,7 @@ use daw_model::music::{Chord, ChordQuality, NOTE_NAMES};
 use daw_model::{InstrumentKind, Project, TimeSignature, Track, TrackId};
 
 use super::{DIVISIONS, drum_position};
+use crate::guitar::{Connection, TabNote};
 use crate::{played_notes, quarters_per_beat};
 
 /// Written note values in divisions (sixteenths), longest first, with
@@ -226,7 +227,7 @@ enum StaffKind<'a> {
         drums: bool,
     },
     /// Fret numbers, from (onset, pitch) to (string, fret).
-    Tab(&'a HashMap<(i64, u8), (u8, u8)>),
+    Tab(&'a HashMap<(i64, u8), TabNote>),
 }
 
 /// Writes one staff's notes for a bar. `staff` is set when the part has two
@@ -254,13 +255,13 @@ fn write_staff(
             );
             continue;
         }
-        let pitches: Vec<(u8, Option<(u8, u8)>)> = match kind {
+        let pitches: Vec<(u8, Option<TabNote>)> = match kind {
             StaffKind::Notes { .. } => w.pitches.iter().map(|&p| (p, None)).collect(),
             // The tab leaves out notes the guitar can't reach.
             StaffKind::Tab(frets) => w
                 .pitches
                 .iter()
-                .filter_map(|&p| frets.get(&(w.onset, p)).map(|&f| (p, Some(f))))
+                .filter_map(|&p| frets.get(&(w.onset, p)).map(|&t| (p, Some(t))))
                 .collect(),
         };
         let dot = if w.value.2 { "<dot/>" } else { "" };
@@ -318,11 +319,8 @@ fn write_staff(
                 if w.tie_start {
                     n.push_str("<tied type=\"start\"/>");
                 }
-                if let Some((string, fret)) = fret {
-                    let _ = write!(
-                        n,
-                        "<technical><string>{string}</string><fret>{fret}</fret></technical>"
-                    );
+                if let Some(t) = fret {
+                    write_tab_marks(&mut n, &t, !w.tie_stop, !w.tie_start);
                 }
                 n.push_str("</notations>");
             }
@@ -330,6 +328,40 @@ fn write_staff(
             xml.push_str(&n);
         }
     }
+}
+
+/// A tab note's string and fret, and its techniques: a bend and the start
+/// or end of a slide, hammer-on or pull-off. A note split across a barline
+/// marks the first piece with what it receives and the last with what it
+/// passes on.
+fn write_tab_marks(n: &mut String, t: &TabNote, first: bool, last: bool) {
+    let slide = |c: Option<Connection>| c == Some(Connection::Slide);
+    if first && slide(t.from_previous) {
+        n.push_str("<slide number=\"1\" type=\"stop\"/>");
+    }
+    if last && slide(t.into_next) {
+        n.push_str("<slide number=\"1\" type=\"start\"/>");
+    }
+    let _ = write!(
+        n,
+        "<technical><string>{}</string><fret>{}</fret>",
+        t.string, t.fret
+    );
+    let legato = |c: Connection, kind: &str| match c {
+        Connection::HammerOn => format!("<hammer-on number=\"1\" type=\"{kind}\">H</hammer-on>"),
+        Connection::PullOff => format!("<pull-off number=\"1\" type=\"{kind}\">P</pull-off>"),
+        Connection::Slide => String::new(),
+    };
+    if first && let Some(c) = t.from_previous {
+        n.push_str(&legato(c, "stop"));
+    }
+    if last && let Some(c) = t.into_next {
+        n.push_str(&legato(c, "start"));
+    }
+    if first && let Some(b) = t.bend {
+        let _ = write!(n, "<bend><bend-alter>{b}</bend-alter></bend>");
+    }
+    n.push_str("</technical>");
 }
 
 /// A chord name above the staff, `offset` divisions after the next note.
@@ -501,10 +533,10 @@ pub fn export_musicxml_with(
                 p.iter().sum::<f64>() / p.len() as f64
             }
         };
-        let frets: HashMap<(i64, u8), (u8, u8)> = if is_guitar && guitar != GuitarView::Notes {
+        let frets: HashMap<(i64, u8), TabNote> = if is_guitar && guitar != GuitarView::Notes {
             crate::guitar::guitar_frets(t)
                 .into_iter()
-                .map(|n| ((to_div(n.start_beats).max(0), n.pitch), (n.string, n.fret)))
+                .map(|n| ((to_div(n.start_beats).max(0), n.pitch), n))
                 .collect()
         } else {
             HashMap::new()
@@ -632,6 +664,7 @@ mod tests {
             length_beats: len,
             velocity: 100,
             id: None,
+            guitar: None,
         }
     }
 
@@ -935,5 +968,49 @@ mod tests {
         ));
         assert_eq!(xml.matches("<harmony>").count(), 2, "only on the top part");
         super::super::parse_xml(&xml).expect("parses");
+    }
+
+    #[test]
+    fn guitar_techniques_show_in_the_tab() {
+        let with = |pitch: u8, start: f64, f: fn(&mut daw_model::GuitarNote)| {
+            let mut n = note(pitch, start, 1.0);
+            let mut g = daw_model::GuitarNote::default();
+            f(&mut g);
+            n.guitar = Some(g);
+            n
+        };
+        // A3 picked, hammer on to B3, slide up to D4, pull off to C#4... and
+        // a separate E4 forced onto the B string with a whole-step bend.
+        let notes = vec![
+            note(57, 0.0, 1.0),
+            with(59, 1.0, |g| g.legato = true),
+            with(62, 2.0, |g| g.slide = true),
+            with(61, 3.0, |g| g.legato = true),
+            with(64, 4.0, |g| {
+                g.string = Some(2);
+                g.bend_semitones = Some(2.0);
+            }),
+        ];
+        let (mut p, id) = guitar_song(notes, 0.0, 0.0);
+        // Make the clip long enough for the last note.
+        p.tracks.last_mut().expect("track").clips[0].length_beats = 8.0;
+        let xml = export_musicxml_with(&p, Some(&[id]), GuitarView::Tab);
+        super::super::parse_xml(&xml).expect("well-formed");
+        // All on the G string (3): 2, 4, 7, 6.
+        for fret in [2, 4, 7, 6] {
+            assert!(
+                xml.contains(&format!("<string>3</string><fret>{fret}</fret>")),
+                "fret {fret}:
+{xml}"
+            );
+        }
+        assert!(xml.contains("<hammer-on number=\"1\" type=\"start\">H</hammer-on>"));
+        assert!(xml.contains("<hammer-on number=\"1\" type=\"stop\">H</hammer-on>"));
+        assert!(xml.contains("<slide number=\"1\" type=\"start\"/>"));
+        assert!(xml.contains("<slide number=\"1\" type=\"stop\"/>"));
+        assert!(xml.contains("<pull-off number=\"1\" type=\"stop\">P</pull-off>"));
+        assert!(
+            xml.contains("<string>2</string><fret>5</fret><bend><bend-alter>2</bend-alter></bend>")
+        );
     }
 }

@@ -1487,6 +1487,7 @@ pub(crate) mod tests {
                         length_beats: 0.8,
                         velocity: 100,
                         id: None,
+                        guitar: None,
                     })
                     .collect(),
             },
@@ -1744,6 +1745,7 @@ pub(crate) mod tests {
                         length_beats: 0.5,
                         velocity: 100,
                         id: None,
+                        guitar: None,
                     })
                     .collect(),
             },
@@ -1963,6 +1965,7 @@ pub(crate) mod tests {
                     length_beats: 0.25,
                     velocity: 120,
                     id: None,
+                    guitar: None,
                 }],
             },
         ));
@@ -1984,7 +1987,13 @@ pub(crate) mod tests {
         assert!(clip["notes_legend"].as_str().is_some());
         assert_eq!(clip["instrument"], "drums");
         let catalog = ok(handle(&host, Request::Describe));
-        assert!(catalog["effects"].as_array().is_some_and(|e| e.len() == 7));
+        assert!(
+            catalog["effects"]
+                .as_array()
+                .is_some_and(|e| e.len() == daw_model::EffectKind::ALL.len()
+                    && e.iter().any(|x| x["kind"] == "amp"))
+        );
+        assert!(catalog["rigs"].as_array().is_some_and(|r| r.len() >= 10));
     }
 
     #[test]
@@ -2000,6 +2009,7 @@ pub(crate) mod tests {
             length_beats: 1.0,
             velocity: 100,
             id: None,
+            guitar: None,
         };
         let v = ok(execute(
             &host,
@@ -2084,6 +2094,7 @@ pub(crate) mod tests {
                     length_beats: 2.0,
                     velocity: 100,
                     id: None,
+                    guitar: None,
                 }],
             },
         ));
@@ -2141,6 +2152,7 @@ pub(crate) mod tests {
                     length_beats: 3.0,
                     velocity: 100,
                     id: None,
+                    guitar: None,
                 }],
             },
         ));

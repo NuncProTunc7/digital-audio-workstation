@@ -105,6 +105,80 @@ pub(super) fn remove(
     })
 }
 
+/// Replaces a chain with a rig's effects (new ids).
+pub(super) fn load_rig(
+    project: &mut Project,
+    track_id: Option<TrackId>,
+    name: String,
+) -> Result<Command, CommandError> {
+    let rig = crate::effect::rig(&name).ok_or_else(|| {
+        let names: Vec<&str> = crate::effect::RIGS.iter().map(|r| r.name).collect();
+        super::invalid(
+            "rig",
+            format!(
+                "there is no rig called \"{name}\"; rigs: {}",
+                names.join(", ")
+            ),
+        )
+    })?;
+    // Check the target exists before spending ids.
+    chain_mut(project, track_id)?;
+    let effects: Vec<Effect> = rig
+        .chain
+        .iter()
+        .map(|pedal| {
+            let mut e = Effect::new(project.allocate_id(), pedal.kind);
+            for (id, value) in pedal.params {
+                e.params.insert((*id).to_owned(), *value);
+            }
+            e
+        })
+        .collect();
+    let old = std::mem::replace(chain_mut(project, track_id)?, effects);
+    Ok(Command::RestoreEffectChain {
+        track_id,
+        effects: old,
+    })
+}
+
+/// Puts a chain back exactly as given (undo of a rig, or its redo).
+pub(super) fn restore_chain(
+    project: &mut Project,
+    track_id: Option<TrackId>,
+    effects: Vec<Effect>,
+) -> Result<Command, CommandError> {
+    if effects.len() > MAX_EFFECTS_PER_CHAIN {
+        return Err(super::invalid(
+            "effect chain",
+            format!("can hold at most {MAX_EFFECTS_PER_CHAIN} effects"),
+        ));
+    }
+    for e in &effects {
+        for (id, value) in &e.params {
+            if e.kind == EffectKind::Plugin {
+                continue;
+            }
+            let spec = effect_spec(e.kind, id).ok_or_else(|| CommandError::UnknownParam {
+                kind: format!("{:?}", e.kind),
+                param: id.clone(),
+            })?;
+            check_value(spec, *value)?;
+        }
+    }
+    let old = std::mem::take(chain_mut(project, track_id)?);
+    // The incoming ids must be free once the old chain is gone.
+    if let Some(e) = effects.iter().find(|e| project.id_in_use(e.id)) {
+        let id = e.id;
+        *chain_mut(project, track_id)? = old;
+        return Err(CommandError::IdInUse(id));
+    }
+    *chain_mut(project, track_id)? = effects;
+    Ok(Command::RestoreEffectChain {
+        track_id,
+        effects: old,
+    })
+}
+
 pub(super) fn restore(
     project: &mut Project,
     track_id: Option<TrackId>,

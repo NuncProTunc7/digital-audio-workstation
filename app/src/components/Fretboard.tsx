@@ -1,6 +1,11 @@
+import { useRef } from "react";
+import { chordShape, shapeText } from "../guitarChords";
 import { noteName } from "../keymap";
-import { guitarStringsFor, scaleOf } from "../music";
-import type { GuitarTuning, Key } from "../types";
+import { chordName, guitarStringsFor, scaleOf } from "../music";
+import type { ChordQuality, GuitarTuning, Key } from "../types";
+
+/** Time between strings when a chord button strums, low to high. */
+const STRUM_MS = 25;
 
 /** Frets with inlay dots; 12 and 24 get two. */
 const DOTS = new Set([3, 5, 7, 9, 15, 17, 19, 21]);
@@ -19,6 +24,8 @@ interface FretboardProps {
   frets: number;
   activeNotes: ReadonlySet<number>;
   songKey?: Key | null;
+  /** Chord buttons above the neck. */
+  chords?: { root: number; quality: ChordQuality; bass?: number | null }[];
   onPlay: (note: number) => void;
   onRelease: (note: number) => void;
 }
@@ -28,7 +35,28 @@ interface FretboardProps {
  * Frets behind the capo are out of reach. Lit dots show where the notes
  * playing now sit; with a song key, notes in the key are shaded.
  */
-export default function Fretboard({ tuning, capo, frets, activeNotes, songKey, onPlay, onRelease }: FretboardProps) {
+export default function Fretboard({ tuning, capo, frets, activeNotes, songKey, chords, onPlay, onRelease }: FretboardProps) {
+  // The chord being strummed: its notes, and the strum's pending strings.
+  const strum = useRef<{ notes: number[]; timers: number[] } | null>(null);
+  const open = tuning.strings.map((n) => n + capo);
+  const letGo = () => {
+    const s = strum.current;
+    if (!s) return;
+    s.timers.forEach((t) => window.clearTimeout(t));
+    s.notes.forEach(onRelease);
+    strum.current = null;
+  };
+  const strumChord = (notes: number[]) => {
+    letGo();
+    const played: number[] = [];
+    const timers = notes.map((n, i) =>
+      window.setTimeout(() => {
+        played.push(n);
+        onPlay(n);
+      }, i * STRUM_MS),
+    );
+    strum.current = { notes: played, timers };
+  };
   const playing = guitarStringsFor(
     [...activeNotes],
     tuning.strings.map((n) => n + capo),
@@ -39,6 +67,33 @@ export default function Fretboard({ tuning, capo, frets, activeNotes, songKey, o
   const rows = tuning.strings.map((open, s) => ({ open, s })).reverse();
   return (
     <div className="fretboard" role="group" aria-label="Fretboard">
+      {chords && chords.length > 0 && (
+        <div className="fretboard-chords" role="group" aria-label="Chords">
+          {chords.map((c) => {
+            const name = chordName(c);
+            const shape = chordShape(c, open, frets - capo);
+            if (shape.notes.length === 0) return null;
+            return (
+              <button
+                key={name}
+                className="small"
+                aria-label={`Play ${name}`}
+                title={`${name}: ${shapeText(shape)} (strings low to high; x = not played${capo > 0 ? ", frets from the capo" : ""})`}
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  strumChord(shape.notes);
+                }}
+                onPointerUp={letGo}
+                onPointerLeave={(e) => {
+                  if (e.buttons) letGo();
+                }}
+              >
+                {name}
+              </button>
+            );
+          })}
+        </div>
+      )}
       <div className="fretboard-grid" style={{ gridTemplateColumns: fretColumns(frets) }}>
         {rows.map(({ open, s }) => (
           <div className="fret-row" role="row" key={s} aria-label={`String ${tuning.strings.length - s}`}>

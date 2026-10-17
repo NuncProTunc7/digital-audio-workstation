@@ -42,6 +42,23 @@ Notes below the lowest string still play (on the lowest string), but a real guit
 
 To read a part as **guitar tab** (fret numbers on six lines), open the **Sheet music** tab with the guitar track selected. See [Sheet music](sheet-music.md).
 
+**Chord buttons** above the fretboard play a chord the way a guitarist holds it in your tuning (C, D, E, G, A, Am, Em, Dm, plus the chords on your song's chord track): press and hold to strum it, and watch the shape light up. Hover over a button to see its shape written as guitarists do (x32010 for C: low string first, x = not played).
+
+**String and technique per note**: select notes of a guitar clip in the **Piano roll**, then:
+
+- **String**: Auto (the highest string that reaches it) or a string from 1 (thinnest) to 6 (thickest). Useful when a part should stay on one string, or to play a note higher up the neck for its warmer sound.
+- **Technique**: **Slide in** (the pitch glides up or down from the note before on the same string), **Hammer-on / pull-off** (the note sounds without a new pick, from the note before on the same string), or a **Bend** (½ step to an overbend; the string is pushed up after the pick and held). The notes show **/**, **H** or **↑** so you can see them. The tab shows them too: a slide line, H or P, and bend arrows.
+
+### Guitar pedals
+
+Under the guitar's panel is the **Pedalboard**: the track's effects drawn as stomp boxes, the sound going left to right. Each pedal has its knobs and a footswitch (the red light means on); **◀ ▶** move it, **✕** removes it. The same effects show in the Mixer.
+
+- **Rig ▾** loads a ready-made setup in one step (undo brings yours back): **Clean**, **Clean shimmer** (chorus, dotted echoes, big hall), **Crunch**, **Blues**, **Classic rock**, **Metal** (gated high gain), **Fuzz lead**, **Funk** (auto-wah), **Surf** (tremolo and splashy reverb), **Ambient** (long echoes and a huge reverb).
+- **+ Pedal** adds one: **Overdrive** (a warm push), **Fuzz** (buzzy and huge), **Amp** (Clean, Crunch or High gain, bass/mid/treble, and a speaker cabinet: 1x12 open back, 2x12 or 4x12), **Phaser** (swirl), **Flanger** (jet whoosh), **Tremolo** (volume pulse; Choppy for a stutter), **Wah** (Auto follows how hard you play, Sweep moves by itself, Fixed holds **Position**, which you can automate to rock the pedal), **Noise gate** (silence between phrases), **Octaver** (adds the octave below, and a fuzzy octave above). The studio effects (Delay, Reverb, Chorus...) work as pedals too.
+- A usual order: Noise gate, Wah, Overdrive or Fuzz, **Amp**, then Chorus, Delay, Reverb.
+
+Audio tracks have the pedalboard too (folded under the panel), for a guitar you recorded through a microphone or interface.
+
 ### Sampler (real instruments)
 
 1. **+ Sampler track**, then in its panel open **Free instruments**. You'll find two grand pianos (Salamander, Headroom), a cello, a double bass, a flute and a war tuba.
