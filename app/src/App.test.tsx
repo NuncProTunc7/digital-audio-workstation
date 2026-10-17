@@ -1543,6 +1543,19 @@ describe("Import and export", () => {
     expect(screen.queryByRole("group", { name: "Guitar shows" })).toBeNull();
   });
 
+  it("shows a pedalboard under the guitar and loads a rig", async () => {
+    const backend = createPreviewBackend();
+    await backend.execute({ command: "add_track", name: "Guitar", instrument: "guitar", preset: null, index: null });
+    await renderApp(backend);
+    expect(screen.queryByLabelText("Pedalboard")).toBeNull();
+    fireEvent.click(screen.getByText("Guitar"));
+    const board = await screen.findByLabelText("Pedalboard");
+    await act(async () => {
+      fireEvent.change(within(board).getByLabelText("Rig"), { target: { value: "Surf" } });
+    });
+    expect([...board.querySelectorAll(".pedal-name")].map((e) => e.textContent)).toEqual(["Amp", "Tremolo", "Reverb"]);
+  });
+
   it("shows a guitar track as notes and tab, tab, or notes", async () => {
     const backend = createPreviewBackend();
     await backend.execute({ command: "add_track", name: "Guitar", instrument: "guitar", preset: null, index: null });

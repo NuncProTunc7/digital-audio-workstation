@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { Catalog, Key, LibraryPack, PluginList, PluginParam, PluginStatus, SamplePackStatus, Track, UserPreset } from "../types";
 import { noteName } from "../keymap";
 import DrumPads from "./DrumPads";
@@ -10,6 +10,8 @@ import SamplePack from "./SamplePack";
 
 interface InstrumentPanelProps {
   track: Track;
+  /** Shown at the bottom of the panel's scrolling area (the guitar's pedalboard). */
+  children?: ReactNode;
   catalog: Catalog;
   activeNotes: ReadonlySet<number>;
   /** The song's key, shaded on the guitar's fretboard. */
@@ -67,6 +69,7 @@ function GuitarStrings({ track, catalog }: { track: Track; catalog: Catalog }) {
 
 /** Preset picker plus every parameter of the selected track's instrument. */
 export default function InstrumentPanel({
+  children,
   track,
   catalog,
   activeNotes,
@@ -262,6 +265,7 @@ export default function InstrumentPanel({
             </fieldset>
           ))}
         </div>
+        {children}
       </div>
     </section>
   );

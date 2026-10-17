@@ -226,6 +226,11 @@ export function applyCommand(project: Project, command: Command): Project {
       });
       break;
     }
+    case "restore_effect": {
+      const c = chain(command.track_id);
+      c.splice(Math.min(command.index, c.length), 0, structuredClone(command.effect));
+      break;
+    }
     case "remove_effect": {
       effect(command.track_id, command.effect_id);
       const c = chain(command.track_id);

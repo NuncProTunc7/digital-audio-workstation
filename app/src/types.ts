@@ -487,6 +487,7 @@ export type Command =
   | { command: "load_rig"; track_id: Opt<number>; rig: string }
   | { command: "add_plugin_effect"; track_id: Opt<number>; plugin: PluginRef; index: Opt<number> }
   | { command: "remove_effect"; track_id: Opt<number>; effect_id: number }
+  | { command: "restore_effect"; track_id: Opt<number>; index: number; effect: Effect }
   | { command: "set_effect_param"; track_id: Opt<number>; effect_id: number; param: string; value: number }
   | { command: "set_effect_enabled"; track_id: Opt<number>; effect_id: number; enabled: boolean }
   | {

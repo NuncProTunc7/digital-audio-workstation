@@ -2906,3 +2906,131 @@ button.tiny.power.on {
   top: 1px;
   transform: translateX(-50%);
 }
+
+/* ---- Pedalboard ---- */
+.pedalboard-fold {
+  grid-column: 1 / -1;
+  padding: 6px 0 10px;
+  border-top: 1px solid var(--border);
+}
+
+.pedalboard-fold > summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 4px 0;
+}
+
+.pedalboard-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+.pedalboard-header strong {
+  display: none; /* the fold's summary names it */
+}
+
+.pedalboard-empty {
+  font-size: 12px;
+}
+
+.pedals {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+}
+
+/* A stomp box: a coloured case, its knobs, a footswitch with a light. */
+.pedal {
+  --case: #3a3f5c;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 190px;
+  padding: 8px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--case) 85%, white), var(--case));
+  border: 1px solid color-mix(in srgb, var(--case) 70%, black);
+  border-radius: 8px;
+  box-shadow: 0 2px 0 rgb(0 0 0 / 35%);
+}
+
+.pedal.off {
+  filter: saturate(0.4) brightness(0.8);
+}
+
+.pedal-overdrive { --case: #2f7d4a; }
+.pedal-fuzz { --case: #8a3a2c; }
+.pedal-amp { --case: #3b3229; }
+.pedal-distortion { --case: #b0602a; }
+.pedal-phaser { --case: #b0782a; }
+.pedal-flanger { --case: #5a4a8a; }
+.pedal-tremolo { --case: #2a6f80; }
+.pedal-wah { --case: #2b2b2b; }
+.pedal-noise_gate { --case: #4a5058; }
+.pedal-octaver { --case: #7a2a5e; }
+.pedal-chorus { --case: #3a6fb0; }
+.pedal-delay { --case: #3a8a8a; }
+.pedal-reverb { --case: #6a6aa0; }
+.pedal-compressor { --case: #2f5f9a; }
+.pedal-eq { --case: #555; }
+
+.pedal-top {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pedal-name {
+  flex: 1;
+  text-align: center;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #fff;
+}
+
+.pedal-knobs {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+}
+
+.pedal-knobs .param,
+.pedal-knobs .param-name,
+.pedal-knobs .param-value {
+  color: #f2f2f2;
+  text-shadow: 0 1px 1px rgb(0 0 0 / 50%);
+}
+
+.footswitch {
+  align-self: center;
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 30px;
+  border-radius: 15px;
+  border: 2px solid #9aa;
+  background: radial-gradient(circle at 50% 35%, #ddd, #888);
+  cursor: pointer;
+}
+
+.footswitch .led {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #400;
+  box-shadow: inset 0 0 2px #000;
+}
+
+.footswitch.on .led {
+  background: #ff3b30;
+  box-shadow: 0 0 6px #ff3b30;
+}
