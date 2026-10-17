@@ -66,6 +66,45 @@ describe("preview reducer", () => {
     expect(p.tracks[1].clips).toHaveLength(0);
   });
 
+  it("inserts, repeats, and deletes whole bars on every track", () => {
+    let p = defaultProject();
+    p = applyCommand(p, {
+      command: "create_clip",
+      track_id: 1,
+      start_beats: 0,
+      length_beats: 8,
+      name: null,
+      notes: [
+        { pitch: 60, start_beats: 0, length_beats: 1 },
+        { pitch: 67, start_beats: 4, length_beats: 1 },
+      ],
+    });
+    p = applyCommand(p, { command: "add_marker", name: "Chorus", start_beats: 4 });
+    const starts = () => p.tracks[0].clips.map((c) => [c.start_beats, c.length_beats, c.notes.length]);
+    p = applyCommand(p, { command: "repeat_bars", from_bar: 2, bars: 1 });
+    expect(starts()).toEqual([
+      [0, 8, 2],
+      [8, 4, 1],
+    ]);
+    expect(p.markers?.map((m) => [m.name, m.start_beats])).toEqual([
+      ["Chorus", 4],
+      ["Chorus 2", 8],
+    ]);
+    p = applyCommand(p, { command: "insert_bars", at_bar: 2, bars: 1 });
+    expect(starts()).toEqual([
+      [0, 4, 1],
+      [8, 4, 1],
+      [12, 4, 1],
+    ]);
+    p = applyCommand(p, { command: "delete_bars", from_bar: 2, bars: 2 });
+    expect(starts()).toEqual([
+      [0, 4, 1],
+      [4, 4, 1],
+    ]);
+    expect(p.markers?.map((m) => m.start_beats)).toEqual([4]);
+    expect(() => applyCommand(p, { command: "delete_bars", from_bar: 0, bars: 1 })).toThrow();
+  });
+
   it("does not mutate the input project", () => {
     const p = defaultProject();
     applyCommand(p, { command: "set_tempo", bpm: 90 });

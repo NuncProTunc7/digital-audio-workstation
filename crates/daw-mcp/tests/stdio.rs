@@ -330,3 +330,71 @@ fn an_ai_can_make_shape_and_export_sound_effects() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn an_ai_can_repeat_a_section_in_one_call_and_undo_it() {
+    let dir = std::env::temp_dir().join(format!("npt-mcp-arrange-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("dir");
+    let control_file = dir.join("control.json");
+    let host = Arc::new(MemoryHost::default());
+    let server_host = Arc::clone(&host);
+    let _server = ControlServer::start(&control_file, move |req, ai| {
+        daw_control::handle_from(&*server_host, req, ai)
+    })
+    .expect("server");
+    let mut mcp = Mcp::start(&control_file);
+
+    // Verse (bar 1) and chorus (bar 2) on Keys, an outro clip on Bass at bar 3.
+    let r = mcp.call(
+        "batch",
+        json!({ "commands": [
+            { "command": "create_clip", "track_id": 1, "start_beats": 0, "length_beats": 8,
+              "notes": [ { "pitch": 60, "start_beats": 0, "length_beats": 1 },
+                         { "pitch": 67, "start_beats": 4, "length_beats": 1 } ] },
+            { "command": "create_clip", "track_id": 2, "start_beats": 8, "length_beats": 4 },
+            { "command": "add_marker", "name": "Chorus", "start_beats": 4 }
+        ] }),
+    );
+    assert_eq!(r["isError"], json!(false), "{r}");
+
+    let r = mcp.call("repeat_bars", json!({ "from_bar": 2, "bars": 1 }));
+    assert_eq!(r["isError"], json!(false), "{r}");
+    {
+        let session = host.session.lock().expect("lock");
+        let p = session.project();
+        let keys: Vec<(f64, usize)> = p.tracks[0]
+            .clips
+            .iter()
+            .map(|c| (c.start_beats, c.notes.len()))
+            .collect();
+        assert_eq!(keys, vec![(0.0, 2), (8.0, 1)], "the chorus plays twice");
+        assert_eq!(p.tracks[1].clips[0].start_beats, 12.0, "the outro moved");
+        let names: Vec<&str> = p.markers.iter().map(|m| m.name.as_str()).collect();
+        assert_eq!(names, vec!["Chorus", "Chorus 2"]);
+    }
+    assert_eq!(
+        host.changes
+            .lock()
+            .expect("lock")
+            .last()
+            .map(String::as_str),
+        Some("Codex: repeat bars")
+    );
+
+    // One undo puts it all back.
+    let r = mcp.call("undo", json!({}));
+    assert_eq!(r["isError"], json!(false), "{r}");
+    {
+        let session = host.session.lock().expect("lock");
+        let p = session.project();
+        assert_eq!(p.tracks[0].clips.len(), 1);
+        assert_eq!(p.tracks[1].clips[0].start_beats, 8.0);
+        assert_eq!(p.markers.len(), 1);
+    }
+
+    // Bad bars come back as an error the AI can read.
+    let r = mcp.call("delete_bars", json!({ "from_bar": 0, "bars": 1 }));
+    assert_eq!(r["isError"], json!(true));
+    assert!(text_of(&r).contains("start at 1"), "{}", text_of(&r));
+    std::fs::remove_dir_all(&dir).ok();
+}

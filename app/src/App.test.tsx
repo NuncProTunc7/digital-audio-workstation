@@ -674,6 +674,49 @@ describe("Key and chords", () => {
   });
 });
 
+describe("Bars menu", () => {
+  it("repeats the bar that was right-clicked on every track", async () => {
+    const backend = await renderApp();
+    await backend.execute({
+      command: "create_clip",
+      track_id: 1,
+      start_beats: 0,
+      length_beats: 8,
+      name: null,
+      notes: [{ pitch: 60, start_beats: 4, length_beats: 1 }],
+    });
+    await backend.execute({ command: "create_clip", track_id: 2, start_beats: 8, length_beats: 4, name: null, notes: [] });
+    const ruler = document.querySelector(".ruler") as HTMLElement;
+    const ppb = parseFloat(ruler.style.width) / 128;
+    // Right-click on bar 2 (the bounding box is at 0 in tests).
+    fireEvent.contextMenu(ruler, { clientX: 5 * ppb, clientY: 5 });
+    const menu = await screen.findByRole("dialog", { name: "Bars" });
+    expect((within(menu).getByLabelText("From bar") as HTMLInputElement).value).toBe("2");
+    await act(async () => {
+      fireEvent.click(within(menu).getByRole("button", { name: "Repeat bar 2" }));
+    });
+    const p = (await backend.getProject()).project;
+    expect(p.tracks[0].clips.map((c) => c.start_beats)).toEqual([0, 8]);
+    expect(p.tracks[1].clips[0].start_beats).toBe(12);
+    expect(screen.queryByRole("dialog", { name: "Bars" })).toBeNull();
+    // Two bars from the menu: insert opens a gap, delete closes it again.
+    fireEvent.contextMenu(ruler, { clientX: 1 * ppb, clientY: 5 });
+    const again = await screen.findByRole("dialog", { name: "Bars" });
+    fireEvent.change(within(again).getByLabelText("How many bars"), { target: { value: "2" } });
+    await act(async () => {
+      fireEvent.click(within(again).getByRole("button", { name: "Insert 2 empty bars before bar 1" }));
+    });
+    expect((await backend.getProject()).project.tracks[1].clips[0].start_beats).toBe(20);
+    fireEvent.contextMenu(ruler, { clientX: 1 * ppb, clientY: 5 });
+    const third = await screen.findByRole("dialog", { name: "Bars" });
+    fireEvent.change(within(third).getByLabelText("How many bars"), { target: { value: "2" } });
+    await act(async () => {
+      fireEvent.click(within(third).getByRole("button", { name: "Delete bars 1–2" }));
+    });
+    expect((await backend.getProject()).project.tracks[1].clips[0].start_beats).toBe(12);
+  });
+});
+
 describe("Section markers", () => {
   it("adds, names, moves and deletes markers, and exports their sections", async () => {
     const backend = createPreviewBackend();

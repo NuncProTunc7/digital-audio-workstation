@@ -675,6 +675,14 @@ button.small {
   z-index: 40;
 }
 
+.bars-menu {
+  z-index: 40;
+}
+
+.bars-menu input[type="number"] {
+  width: 64px;
+}
+
 .ruler-stack {
   display: flex;
   flex-direction: column;
