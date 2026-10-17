@@ -126,6 +126,9 @@ struct PartReader {
     /// Drum notes from `<midi-unpitched>`, keyed by instrument id.
     unpitched: HashMap<String, u8>,
     program: Option<u8>,
+    /// How many staves the part has, and which of them are guitar tab.
+    staves: u32,
+    tab_staves: Vec<u32>,
 }
 
 impl PartReader {
@@ -140,6 +143,11 @@ impl PartReader {
         }
         let duration_q = child_num(n, "duration").unwrap_or(0.0) / self.divisions;
         let chord = child(n, "chord").is_some();
+        // A tab staff beside a notes staff repeats the same notes as fret
+        // numbers: keep the time moving but take the notes from one staff.
+        let staff = child_num(n, "staff").map_or(1, |s| s as u32);
+        let doubled =
+            self.tab_staves.contains(&staff) && self.staves > self.tab_staves.len() as u32;
         let start = if chord {
             self.last_start_q
         } else {
@@ -149,7 +157,7 @@ impl PartReader {
             self.last_start_q = start;
             self.advance(duration_q);
         }
-        if child(n, "rest").is_some() {
+        if child(n, "rest").is_some() || doubled {
             return;
         }
         let pitch = if let Some(p) = child(n, "pitch") {
@@ -282,6 +290,8 @@ pub fn import_musicxml(xml: &str) -> Result<ImportedSong, NotationError> {
             open_ties: HashMap::new(),
             unpitched: unpitched.remove(id).unwrap_or_default(),
             program: programs.get(id).copied(),
+            staves: 1,
+            tab_staves: Vec::new(),
         };
         for measure in part.children().filter(|c| c.has_tag_name("measure")) {
             r.measure_start_q = r.measure_max_q.max(r.position_q);
@@ -303,11 +313,21 @@ pub fn import_musicxml(xml: &str) -> Result<ImportedSong, NotationError> {
                                 denominator: d.clamp(1.0, 32.0) as u8,
                             });
                         }
-                        if child(el, "clef")
-                            .and_then(|c| child_text(c, "sign"))
-                            .is_some_and(|s| s == "percussion")
-                        {
-                            r.drums = true;
+                        if let Some(n) = child_num(el, "staves") {
+                            r.staves = (n as u32).max(1);
+                        }
+                        for clef in el.children().filter(|c| c.has_tag_name("clef")) {
+                            let number = clef
+                                .attribute("number")
+                                .and_then(|n| n.parse::<u32>().ok())
+                                .unwrap_or(1);
+                            match child_text(clef, "sign") {
+                                Some("percussion") => r.drums = true,
+                                Some("TAB") if !r.tab_staves.contains(&number) => {
+                                    r.tab_staves.push(number);
+                                }
+                                _ => {}
+                            }
                         }
                     }
                     "note" => r.note(el),
@@ -555,5 +575,44 @@ mod tests {
         }
         let song = import_musicxml_bytes(&buf).expect("mxl");
         assert_eq!(song.parts[0].notes[0].pitch, 72);
+    }
+
+    #[test]
+    fn a_guitar_score_with_tab_comes_back_without_doubled_notes() {
+        let mut p = Project::default();
+        Command::AddTrack {
+            name: "Guitar".into(),
+            instrument: daw_model::InstrumentKind::Guitar,
+            preset: None,
+            index: None,
+        }
+        .apply(&mut p)
+        .expect("guitar");
+        let id = p.tracks.last().expect("track").id;
+        Command::CreateClip {
+            track_id: id,
+            start_beats: 0.0,
+            length_beats: 4.0,
+            name: None,
+            notes: vec![n(52, 0.0, 1.0), n(59, 0.0, 1.0), n(64, 1.0, 3.0)],
+        }
+        .apply(&mut p)
+        .expect("clip");
+        let both = export_musicxml(&p, Some(&[id]));
+        let song = import_musicxml(&both).expect("import");
+        let got: Vec<(f64, u8)> = song.parts[0]
+            .notes
+            .iter()
+            .map(|x| (x.start_beats, x.pitch))
+            .collect();
+        assert_eq!(got, vec![(0.0, 52), (0.0, 59), (1.0, 64)]);
+        // A score that is only tab still brings its notes in.
+        let tab = crate::musicxml::export_musicxml_with(
+            &p,
+            Some(&[id]),
+            crate::musicxml::GuitarView::Tab,
+        );
+        let song = import_musicxml(&tab).expect("import tab");
+        assert_eq!(song.parts[0].notes.len(), 3);
     }
 }

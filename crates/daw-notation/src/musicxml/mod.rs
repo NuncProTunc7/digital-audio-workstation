@@ -3,7 +3,7 @@
 mod export;
 mod import;
 
-pub use export::export_musicxml;
+pub use export::{GuitarView, export_musicxml, export_musicxml_with};
 pub use import::{import_musicxml, import_musicxml_bytes, read_mxl};
 
 /// Parses XML, allowing the `<!DOCTYPE>` line every MusicXML file has
