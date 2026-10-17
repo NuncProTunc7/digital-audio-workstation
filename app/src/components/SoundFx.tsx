@@ -1,4 +1,4 @@
-import { useState, type KeyboardEvent } from "react";
+import { useEffect, useState, type KeyboardEvent } from "react";
 import { FIELDS, type RecipeField } from "../sound";
 import type {
   Command,
@@ -22,6 +22,8 @@ interface SoundFxProps {
   onExport: (options: SoundExportOptions) => Promise<SoundExportReport | undefined>;
   onPickFolder: () => Promise<string | null>;
   onClose: () => void;
+  /** Called with the selected sound whenever it changes (null: none). */
+  onSelect?: (soundId: number | null) => void;
 }
 
 const CATEGORIES: { category: SoundCategory; label: string; title: string }[] = [
@@ -95,10 +97,21 @@ function format(key: RecipeField | "length", v: number, r: SoundRecipe): string 
 }
 
 /** Game sound effects: make, shape, hear, and export them to Godot. */
-export default function SoundFx({ project, onCommand, onEndGesture, onPlay, onExport, onPickFolder, onClose }: SoundFxProps) {
+export default function SoundFx({
+  project,
+  onCommand,
+  onEndGesture,
+  onPlay,
+  onExport,
+  onPickFolder,
+  onClose,
+  onSelect,
+}: SoundFxProps) {
   const sounds = project.sounds ?? [];
   const [selectedId, setSelectedId] = useState<number | null>(sounds[0]?.id ?? null);
   const selected: SoundEffect | undefined = sounds.find((s) => s.id === selectedId) ?? sounds[0];
+  const shownId = selected?.id ?? null;
+  useEffect(() => onSelect?.(shownId), [onSelect, shownId]);
   const [more, setMore] = useState(false);
   const [renaming, setRenaming] = useState<number | null>(null);
   const [renameText, setRenameText] = useState("");

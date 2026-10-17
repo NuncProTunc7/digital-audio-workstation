@@ -29,6 +29,9 @@ pub enum Request {
         #[serde(default)]
         to_bar: Option<u32>,
     },
+    /// What the user has selected in the app (track, clip, notes, sound),
+    /// with names and bar ranges, and the playhead.
+    GetSelection,
     /// Instruments, presets, effects, and drum pads.
     Describe,
     Play {

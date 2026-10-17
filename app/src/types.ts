@@ -670,6 +670,19 @@ export interface GuitarTuning {
   strings: number[];
 }
 
+/** What the window has selected, reported so an AI can act on "this"
+ * (mirrors daw_control::Selection). A live view, not a project edit. */
+export interface Selection {
+  /** The open tab ("instrument", "pianoroll", "sheet", "mixer", "sounds"). */
+  view: string | null;
+  track_id: number | null;
+  clip_id: number | null;
+  /** Notes selected in the piano roll. */
+  note_ids: number[];
+  /** The sound selected in the Sound FX panel, while it is open. */
+  sound_id: number | null;
+}
+
 export interface TransportStatus {
   playing: boolean;
   position_beats: number;

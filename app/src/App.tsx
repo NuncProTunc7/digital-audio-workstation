@@ -48,6 +48,7 @@ import type {
   ProjectView,
   Track,
   TransportStatus,
+  Selection,
 } from "./types";
 
 const TIME_SIGNATURES = ["2/4", "3/4", "4/4", "5/4", "6/8", "7/8", "9/8", "12/8"];
@@ -442,6 +443,26 @@ export default function App({ backend }: AppProps) {
   const [exportOpen, setExportOpen] = useState(false);
   const [godotOpen, setGodotOpen] = useState(false);
   const [soundFxOpen, setSoundFxOpen] = useState(false);
+  const [selectedSoundId, setSelectedSoundId] = useState<number | null>(null);
+
+  // Tell the app what is selected, so an AI asked to change "this" can
+  // see it. Only sent when it actually changes.
+  const loaded = project !== undefined;
+  const reportedTrack = selectedTrack?.id ?? null;
+  const reportedClip = selectedClip?.id ?? null;
+  const reportedNotes = reportedClip === null ? "" : [...selectedNotes].sort((a, b) => a - b).join(",");
+  const reportedSound = soundFxOpen ? selectedSoundId : null;
+  useEffect(() => {
+    if (!loaded) return;
+    const selection: Selection = {
+      view: tab,
+      track_id: reportedTrack,
+      clip_id: reportedClip,
+      note_ids: reportedNotes === "" ? [] : reportedNotes.split(",").map(Number),
+      sound_id: reportedSound,
+    };
+    void backend.setSelection(selection).catch(() => undefined);
+  }, [backend, loaded, tab, reportedTrack, reportedClip, reportedNotes, reportedSound]);
   const exportAs = useCallback(
     async (kind: ExportKind) => {
       setExportOpen(false);
@@ -1478,6 +1499,7 @@ export default function App({ backend }: AppProps) {
       {soundFxOpen && (
         <SoundFx
           project={project}
+          onSelect={setSelectedSoundId}
           onCommand={execute}
           onEndGesture={endGesture}
           onPlay={(id) => void run(() => backend.playSound(id))}

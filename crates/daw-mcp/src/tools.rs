@@ -159,7 +159,13 @@ fn extra_tools() -> Vec<ToolDef> {
     vec![
         tool(
             "get_song",
-            "Overview of the open song: tempo, time signature, length, loop, master, and every track with its clips (ids, positions, note counts, muted). Each track says frozen: \"frozen\", \"out of date (plays live)\", or \"no\". Muted clips are kept but silent (e.g. unused recording takes stacked under the one that plays). Also lists the game sound effects (sounds: id, name, wave, seconds; details with get_sound). Start here.",
+            "Overview of the open song: tempo, time signature, length, loop, master, and every track with its clips (ids, positions, note counts, muted). Each track says frozen: \"frozen\", \"out of date (plays live)\", or \"no\". Muted clips are kept but silent (e.g. unused recording takes stacked under the one that plays). Also lists the game sound effects (sounds: id, name, wave, seconds; details with get_sound). Start here. When the user says \"this\", \"these\", or \"here\", call get_selection to see what they have selected.",
+            object_schema(json!({}), &[]),
+            true,
+        ),
+        tool(
+            "get_selection",
+            "What the user has selected in the app right now, so you can act on \"this clip\", \"these notes\", or \"this sound\" without guessing ids. Returns view (the open tab: instrument, pianoroll, sheet, mixer, sounds), track (id, name, instrument), clip (id, name, track_id, start/end bar, audio), notes (count, ids, lowest/highest pitch as MIDI numbers and names) when notes are selected in the piano roll, sound (id, name) while the Sound FX panel is open, playhead (beats and bar) while audio runs, and a one-line summary. Anything missing is not selected. Selection is a live view: re-check it each time the user says \"this\", and tell them what you found before big changes.",
             object_schema(json!({}), &[]),
             true,
         ),
@@ -538,6 +544,7 @@ fn extra_tools() -> Vec<ToolDef> {
 pub const CORE_TOOLS: &[&str] = &[
     "read_guide",
     "get_song",
+    "get_selection",
     "get_track",
     "get_clip",
     "describe_instruments",
@@ -600,6 +607,7 @@ pub fn to_request(name: &str, args: Map<String, Value>) -> Result<Request, Strin
     };
     let request = match name {
         "get_song" => Request::GetSong,
+        "get_selection" => Request::GetSelection,
         "get_track" => Request::GetTrack {
             track_id: get_id("track_id")?,
         },

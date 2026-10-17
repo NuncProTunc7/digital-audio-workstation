@@ -26,6 +26,7 @@ import type {
   ProjectView,
   RecordingDelay,
   Recoverable,
+  Selection,
   SamplePackStatus,
   LibraryPack,
   PluginList,
@@ -83,6 +84,8 @@ export interface Backend {
   noteOff(trackId: number, note: number): Promise<void>;
   allNotesOff(): Promise<void>;
   selectTrack(trackId: number): Promise<void>;
+  /** Tells the app what is selected, so an AI asked about "this" can see it. */
+  setSelection(selection: Selection): Promise<void>;
   play(): Promise<void>;
   stop(): Promise<void>;
   locate(beats: number): Promise<void>;
@@ -234,6 +237,7 @@ export const tauriBackend: Backend = {
   noteOff: (trackId, note) => invoke("note_off", { trackId, note }),
   allNotesOff: () => invoke("all_notes_off"),
   selectTrack: (trackId) => invoke("select_track", { trackId }),
+  setSelection: (selection) => invoke("set_selection", { selection }),
   play: () => invoke("play"),
   stop: () => invoke("stop"),
   locate: (beats) => invoke("locate", { beats }),

@@ -898,6 +898,7 @@ export function createPreviewBackend(): PreviewBackend {
     noteOff: noop,
     allNotesOff: noop,
     selectTrack: noop,
+    setSelection: noop,
     play: async () => {
       if (!playing) startedAt = performance.now();
       playing = true;

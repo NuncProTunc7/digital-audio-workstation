@@ -52,6 +52,9 @@ the other pages explain every button, so use them to answer how-to questions acc
 - Start with get_song. To read a clip's music, use get_clip's notes_text (bar by bar, note names and lengths); its note list has the ids edit_notes needs.
 - Use describe_instruments before changing sounds (parameter ids, \
 ranges, presets).
+- When the user says \"this\", \"these\", or \"here\" (\"make this clip louder\", \"fix \
+these notes\"), call get_selection: it returns the track, clip, notes, or sound they have \
+selected in the app, and the playhead.
 - Use batch to make a multi-step change one undo step (e.g. add a track, load a preset, \
 create a clip with notes).
 - You cannot hear audio: after changes, call analyze_mix (and spectrogram=true when \

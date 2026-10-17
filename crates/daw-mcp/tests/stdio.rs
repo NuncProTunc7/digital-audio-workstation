@@ -19,6 +19,8 @@ struct MemoryHost {
     path: Mutex<Option<PathBuf>>,
     /// What the app's activity list would show.
     changes: Mutex<Vec<String>>,
+    /// What the "window" has selected.
+    selection: Mutex<daw_control::Selection>,
 }
 
 impl Host for MemoryHost {
@@ -43,6 +45,9 @@ impl Host for MemoryHost {
     }
     fn audio(&self) -> Arc<AudioPool> {
         AudioPool::in_temp_dir()
+    }
+    fn selection(&self) -> daw_control::Selection {
+        self.selection.lock().map(|s| s.clone()).unwrap_or_default()
     }
 }
 
@@ -328,5 +333,60 @@ fn an_ai_can_make_shape_and_export_sound_effects() {
             .map(String::as_str),
         Some("Codex: add sound")
     );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn an_ai_can_see_what_the_user_selected() {
+    let dir = std::env::temp_dir().join(format!("npt-mcp-sel-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("dir");
+    let control_file = dir.join("control.json");
+    let host = Arc::new(MemoryHost::default());
+    let server_host = Arc::clone(&host);
+    let _server = ControlServer::start(&control_file, move |req, ai| {
+        daw_control::handle_from(&*server_host, req, ai)
+    })
+    .expect("server");
+    let mut mcp = Mcp::start_with(&control_file, &["--core"]);
+
+    let r = mcp.call("get_selection", json!({}));
+    assert_eq!(r["isError"], json!(false), "{r}");
+    assert!(text_of(&r).contains("Nothing is selected"), "{r}");
+
+    let r = mcp.call(
+        "create_clip",
+        json!({
+            "track_id": 1,
+            "start_beats": 0.0,
+            "length_beats": 4.0,
+            "name": "Hook",
+            "notes": [
+                { "pitch": 64, "start_beats": 0.0, "length_beats": 1.0, "velocity": 100 },
+                { "pitch": 69, "start_beats": 1.0, "length_beats": 1.0, "velocity": 100 }
+            ]
+        }),
+    );
+    assert_eq!(r["isError"], json!(false), "{r}");
+    let (clip_id, note_ids) = {
+        let session = host.session.lock().expect("lock");
+        let clip = &session.project().tracks[0].clips[0];
+        (clip.id, clip.notes.iter().map(|n| n.id).collect::<Vec<_>>())
+    };
+    // The user clicks the clip and selects both notes in the piano roll.
+    *host.selection.lock().expect("lock") = daw_control::Selection {
+        view: Some("pianoroll".into()),
+        track_id: Some(1),
+        clip_id: Some(clip_id),
+        note_ids,
+        sound_id: None,
+    };
+    let r = mcp.call("get_selection", json!({}));
+    assert_eq!(r["isError"], json!(false), "{r}");
+    let sel: Value = serde_json::from_str(&text_of(&r)).expect("json");
+    assert_eq!(sel["clip"]["id"], json!(clip_id));
+    assert_eq!(sel["clip"]["name"], "Hook");
+    assert_eq!(sel["notes"]["count"], 2);
+    assert_eq!(sel["notes"]["lowest"], "E4");
+    assert_eq!(sel["notes"]["highest"], "A4");
     let _ = std::fs::remove_dir_all(&dir);
 }
