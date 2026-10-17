@@ -827,6 +827,50 @@ export interface Finding {
   message: string;
 }
 
+/** A frequency band's share of the mix's energy. */
+export interface AnalysisBand {
+  /** sub, bass, low_mids, mids, high_mids, highs */
+  name: string;
+  from_hz: number;
+  to_hz: number;
+  share_percent: number;
+}
+
+/** Loudness, peak, stereo and tone of the whole mix (daw-analysis `Measurements`). */
+export interface MixMeasurements {
+  duration_s: number;
+  /** Null when silent. */
+  integrated_lufs: number | null;
+  max_short_term_lufs: number | null;
+  true_peak_dbtp: number;
+  sample_peak_dbfs: number;
+  rms_dbfs: number;
+  peak_to_loudness_db: number | null;
+  /** +1 mono, 0 wide, negative out of phase. */
+  stereo_correlation: number;
+  bands: AnalysisBand[];
+}
+
+/** One track's level in the mix. */
+export interface TrackLevel {
+  id: number;
+  name: string;
+  lufs: number | null;
+  peak_dbfs: number;
+  energy_share_percent: number;
+}
+
+/** What `analyze_mix` found (the same the AI gets). */
+export interface MixAnalysis {
+  start_beats: number;
+  end_beats: number;
+  mix: MixMeasurements;
+  tracks: TrackLevel[];
+  hints: string[];
+  spectrogram_summary?: string[];
+  spectrogram_png_base64?: string;
+}
+
 /** What checking an export found. */
 export interface Inspection {
   findings: Finding[];

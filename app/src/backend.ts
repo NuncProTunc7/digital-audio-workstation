@@ -13,6 +13,7 @@ import type {
   CompareSide,
   Comparison,
   Inspection,
+  MixAnalysis,
   InstrumentKind,
   PreviewPlan,
   UserPreset,
@@ -106,6 +107,8 @@ export interface Backend {
   freezeTrack(trackId: number): Promise<ProjectView>;
   /** Checks a Godot export without writing it. */
   inspectExport(options: GodotOptions): Promise<Inspection>;
+  /** Renders and measures the song (or start..end beats), as the AI's analyze_mix does. */
+  analyzeMix(startBeats: number | null, endBeats: number | null): Promise<MixAnalysis>;
   /** Plays the end of a loop into its start, over and over; stop() ends it. */
   auditionSeam(startBeats: number, endBeats: number): Promise<void>;
   /** Plays one of the project's sound effects; resolves to its length in seconds. */
@@ -264,6 +267,7 @@ export const tauriBackend: Backend = {
     await relaunch();
   },
   inspectExport: (options) => invoke("inspect_export", { options }),
+  analyzeMix: (startBeats, endBeats) => invoke("analyze_mix", { startBeats, endBeats }),
   auditionSeam: (startBeats, endBeats) => invoke("audition_seam", { startBeats, endBeats }),
   playSound: (soundId) => invoke("play_sound", { soundId }),
   userPresets: () => invoke("user_presets"),

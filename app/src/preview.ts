@@ -32,6 +32,7 @@ import type {
   WebAddress,
 } from "./types";
 import { tempoMap } from "./tempo";
+import { previewAnalysis } from "./mixAnalysis";
 
 /** Seconds of a clip's file played between two song positions (song time
  * for audio at its own speed, the recording's beats when it follows the
@@ -1126,6 +1127,7 @@ export function createPreviewBackend(): PreviewBackend {
       peak_dbfs: -3,
       seconds: 8,
     }),
+    analyzeMix: async (startBeats, endBeats) => previewAnalysis(project, startBeats, endBeats),
     auditionSeam: async (_start, endBeats) => {
       // The preview just plays from a bar before the loop point.
       startBeats = Math.max(0, endBeats - 4);

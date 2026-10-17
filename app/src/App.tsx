@@ -9,6 +9,7 @@ import GodotExportDialog from "./components/GodotExportDialog";
 import SoundFx from "./components/SoundFx";
 import InstrumentPanel from "./components/InstrumentPanel";
 import Mixer from "./components/Mixer";
+import MixAnalysisPanel from "./components/MixAnalysisPanel";
 import Piano from "./components/Piano";
 import PianoRoll from "./components/PianoRoll";
 import StepSequencer from "./components/StepSequencer";
@@ -44,6 +45,7 @@ import type {
   SamplePackStatus,
   UserPreset,
   InputStatus,
+  MixAnalysis,
   Peaks,
   Project,
   ProjectView,
@@ -57,7 +59,7 @@ const STATUS_POLL_MS = 60;
 const AI_POLL_MS = 2000;
 const INPUT_POLL_MS = 70;
 const TOAST_MS = 4000;
-type Tab = "instrument" | "pianoroll" | "sheet" | "mixer" | "sounds";
+type Tab = "instrument" | "pianoroll" | "sheet" | "mixer" | "sounds" | "analysis";
 
 /** A short phrase that shows off a sound: (note, start s, length s). */
 function phraseFor(kind: InstrumentKind, name: string): [number, number, number][] {
@@ -106,6 +108,10 @@ export default function App({ backend }: AppProps) {
   const [selectedClipId, setSelectedClipId] = useState<number | null>(null);
   const [selectedNotes, setSelectedNotes] = useState<ReadonlySet<number>>(new Set());
   const [tab, setTab] = useState<Tab>("instrument");
+  // The Mix analysis tab's last result, and the song it measured (as JSON,
+  // so a refresh that changes nothing doesn't mark it out of date).
+  const [analysis, setAnalysis] = useState<{ result: MixAnalysis; song: string } | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
   const [pixelsPerBeat, setPixelsPerBeat] = useState(24);
   const [dockHeight, setDockHeight] = useState(330);
   const [baseNote, setBaseNote] = useState(DEFAULT_BASE_NOTE);
@@ -272,6 +278,7 @@ export default function App({ backend }: AppProps) {
   }, [backend, refreshAi]);
 
   const project = view?.project;
+  const songJson = useMemo(() => (analysis && project ? JSON.stringify(project) : ""), [analysis, project]);
   const selectedTrack: Track | undefined =
     project?.tracks.find((t) => t.id === selectedTrackId) ?? project?.tracks[0];
   const selectedClip = project?.tracks.flatMap((t) => t.clips).find((c) => c.id === selectedClipId);
@@ -1191,6 +1198,7 @@ export default function App({ backend }: AppProps) {
               ["sheet", "Sheet music"],
               ["mixer", "Mixer"],
               ["sounds", "Sounds"],
+              ["analysis", "Mix analysis"],
             ] as [Tab, string][]
           ).map(([id, label]) => (
             <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? "tab active" : "tab"} onClick={() => setTab(id)}>
@@ -1429,6 +1437,25 @@ export default function App({ backend }: AppProps) {
                   }
                 });
               }}
+            />
+          )}
+
+          {tab === "analysis" && (
+            <MixAnalysisPanel
+              project={project}
+              analysis={analysis?.result ?? null}
+              stale={analysis !== null && analysis.song !== songJson}
+              busy={analyzing}
+              onAnalyze={(startBeats, endBeats) => {
+                const song = JSON.stringify(project);
+                setAnalyzing(true);
+                void run(() => backend.analyzeMix(startBeats, endBeats)).then((result) => {
+                  setAnalyzing(false);
+                  if (result) setAnalysis({ result, song });
+                });
+              }}
+              selectedTrackId={selectedTrack.id}
+              onSelectTrack={(id) => void selectTrack(id)}
             />
           )}
 

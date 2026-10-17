@@ -1626,6 +1626,47 @@ describe("Import and export", () => {
     expect(listen.title).toContain("Tick Seamless loop");
   });
 
+  it("analyzes the mix in its own tab", async () => {
+    const backend = createPreviewBackend();
+    vi.spyOn(backend, "analyzeMix");
+    for (const track_id of [2, 3]) {
+      await backend.execute({
+        command: "create_clip",
+        track_id,
+        start_beats: 0,
+        length_beats: 8,
+        name: null,
+        notes: [{ pitch: 36, start_beats: 0, length_beats: 1, velocity: 100 }],
+      });
+    }
+    await renderApp(backend);
+    fireEvent.click(screen.getByRole("tab", { name: "Mix analysis" }));
+    expect(screen.queryByText("Loudness")).toBeNull();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Analyze" }));
+    });
+    expect(backend.analyzeMix).toHaveBeenCalledWith(null, null);
+    // Verdicts against game-music targets, the hints, tone and tracks.
+    expect(document.querySelector(".analysis-card.good")?.textContent).toContain("-17.5 LUFS");
+    expect(screen.getByRole("list", { name: "Hints" }).textContent).toContain("Levels look healthy");
+    expect(within(screen.getByRole("region", { name: "Tone" })).getByText("Low mids")).toBeTruthy();
+    const tracks = screen.getByRole("region", { name: "Tracks" });
+    // Keys has no clips: silent; clicking Drums selects it.
+    expect(within(tracks).getByRole("button", { name: /Keys/ }).textContent).toContain("silent");
+    fireEvent.click(within(tracks).getByRole("button", { name: /Drums/ }));
+    expect(document.querySelector(".track-header.selected")?.textContent).toContain("Drums");
+    // Selecting a track isn't a change to the song; an edit is.
+    expect(screen.queryByText(/changed since/)).toBeNull();
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText("Tempo in BPM"), { target: { value: "100" } });
+      fireEvent.blur(screen.getByLabelText("Tempo in BPM"));
+    });
+    expect(screen.getByText(/changed since/)).toBeTruthy();
+    // The loop region can be analyzed once Loop is on.
+    const what = screen.getByLabelText("What to analyze") as HTMLSelectElement;
+    expect((what.querySelector('option[value="loop"]') as HTMLOptionElement).disabled).toBe(true);
+  });
+
   it("lets chosen Godot layers start silent", async () => {
     const backend = createPreviewBackend();
     vi.spyOn(backend, "exportGodot");

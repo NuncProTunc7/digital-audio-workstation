@@ -2700,3 +2700,209 @@ button.tiny.power.on {
   align-items: center;
   margin: 4px 0;
 }
+
+/* ---- Mix analysis tab ---- */
+.mix-analysis {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 10px 14px;
+  overflow-y: auto;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.analysis-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.analysis-stale {
+  color: var(--accent);
+}
+
+.analysis-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* An out-of-date result stays readable but steps back. */
+.analysis-body.stale {
+  opacity: 0.6;
+}
+
+.analysis-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+}
+
+.analysis-card {
+  padding: 8px 12px;
+  background: var(--panel-raised);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--muted);
+  border-radius: 6px;
+}
+
+.analysis-card.good {
+  border-left-color: var(--accent-2);
+}
+
+.analysis-card.check {
+  border-left-color: var(--accent);
+}
+
+.analysis-card.bad {
+  border-left-color: var(--danger);
+}
+
+.analysis-card-title {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.analysis-card.good .analysis-card-title span {
+  color: var(--accent-2);
+}
+
+.analysis-card.check .analysis-card-title span {
+  color: var(--accent);
+}
+
+.analysis-card.bad .analysis-card-title span {
+  color: var(--danger);
+}
+
+.analysis-card-value {
+  font-size: 20px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.analysis-card-note {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.analysis-section h4 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.analysis-hints,
+.analysis-words {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.analysis-words {
+  margin-top: 6px;
+  color: var(--muted);
+}
+
+.analysis-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 18px;
+}
+
+.analysis-bar-row {
+  display: grid;
+  grid-template-columns: 90px 1fr 48px;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 2px 4px;
+  font-size: 12px;
+  text-align: left;
+  color: var(--text);
+  background: none;
+  border: none;
+  border-radius: 4px;
+}
+
+.analysis-bar-row.track {
+  cursor: pointer;
+}
+
+.analysis-bar-row.track:hover,
+.analysis-bar-row.track.selected {
+  background: var(--panel-raised);
+}
+
+.analysis-bar-label {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.analysis-bar {
+  height: 10px;
+  background: var(--bg);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.analysis-bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 5px;
+}
+
+.analysis-bar-fill.tone {
+  background: var(--accent-2);
+}
+
+.analysis-bar-value {
+  text-align: right;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.analysis-spectrogram {
+  margin: 0 0 8px;
+  padding-left: 46px;
+}
+
+.analysis-spectrogram-picture {
+  position: relative;
+}
+
+.analysis-spectrogram-picture img {
+  display: block;
+  width: 100%;
+  max-height: 260px;
+  object-fit: fill;
+  border-radius: 4px;
+  image-rendering: auto;
+}
+
+.analysis-freq {
+  position: absolute;
+  left: -46px;
+  transform: translateY(50%);
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.analysis-time {
+  position: relative;
+  height: 14px;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.analysis-time span {
+  position: absolute;
+  top: 1px;
+  transform: translateX(-50%);
+}

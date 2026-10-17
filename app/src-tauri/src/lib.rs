@@ -906,6 +906,27 @@ fn inspect_export(
     daw_control::inspect_export(&*state, &options)
 }
 
+/// The mix analysis your AI gets (loudness, peaks, stereo, tone, each
+/// track's share, hints, and a spectrogram), for the Mix analysis tab.
+/// Renders the song (each track too), so off the main thread.
+#[tauri::command(async)]
+fn analyze_mix(
+    state: State<'_, AppState>,
+    start_beats: Option<f64>,
+    end_beats: Option<f64>,
+) -> Result<serde_json::Value, String> {
+    daw_control::handle(
+        &*state,
+        daw_control::Request::Analyze {
+            start_beats,
+            end_beats,
+            per_track: Some(true),
+            spectrogram: Some(true),
+        },
+    )
+    .into_result()
+}
+
 /// Plays one of the project's sound effects; returns its length in seconds.
 /// Renders, so off the main thread.
 #[tauri::command(async)]
@@ -1936,6 +1957,7 @@ pub fn run() {
             compare_listen,
             compare_stop,
             inspect_export,
+            analyze_mix,
             audition_seam,
             play_sound,
             freeze_track,
