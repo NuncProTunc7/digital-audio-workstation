@@ -9,7 +9,7 @@ Click **🔊 Sound FX** in the top bar (or **Export ▾ → Sound effects to God
 - **Coin, Jump, Laser, Explosion, Hit, Power-up, Blip**: each click makes a **new** random sound of that kind and plays it. Don't like it? Click again: every click is a different take.
 - **🎲 Randomize**: anything at all. Weird, sometimes wonderful.
 - **✨ Vary**: a new take on the sound you have: every setting moves a little. Good for "like this, but not quite".
-- **▶ Play** (or **Space** while the panel is open) plays it again. Sound effects play on top of the song, so you can hear them against your music.
+- **▶ Play** (or **Space** while the panel is open) plays it again. Sound effects play on top of the song, so you can hear them against your music. **Stop** silences one that's still playing.
 
 The list on the left holds your sounds. Click one to choose it, **double-click** to rename it (the name becomes its file name: `coin` → `coin.wav`), **Delete** to remove it. Every change can be undone with **Ctrl+Z**.
 
@@ -33,7 +33,7 @@ Each change plays the sound when you let go of the slider.
 
 - **Wave**: square (retro, hollow), saw (buzzy), sine (pure), triangle (soft), noise (hiss: explosions, hits, wind).
 - **Attack, Hold, Fade out**: the shape over time (Length moves Hold and Fade out together).
-- **Lowest pitch**: the sound stops if it slides below this. If a sound goes silent after you lower **Pitch**, this is why: lower **Lowest pitch** too.
+- **Lowest pitch**: the sound stops if it slides below this. If a sound goes silent after you lower **Pitch**, this is why: the panel shows a ⚠ warning, and lowering **Lowest pitch** brings it back.
 - **Slide curve**: bends the slide as it goes.
 - **Vibrato** and **Vibrato speed**: a pitch wobble.
 - **Pitch jump** and **Jump timing**: a sudden jump up (the coin's "ding-*ding*") or down, and how soon it happens.
@@ -59,7 +59,7 @@ At the bottom of the panel:
 2. **Folder in the project**: `sfx` by default (`res://sfx/`).
 3. **Export this sound** or **Export all**.
 
-Each sound becomes a WAV file named after it (`res://sfx/coin.wav`). If you rename a sound and export again, the old file stays in the Godot folder; delete it there if the game no longer uses it. The list shows what was written and how long each is. A sound that would clip is turned down just enough, and the list says so. Godot imports them ready to use (sound effects don't loop).
+Each sound becomes a WAV file named after it (`res://sfx/coin.wav`). If you rename a sound and export again, the old file stays in the Godot folder (a scene might still use it), and the list names it so you can delete it there if the game no longer does. The list shows what was written and how long each is. A sound that would clip is turned down just enough, and the list says so. Godot imports them ready to use (sound effects don't loop).
 
 To play one in Godot, add an **AudioStreamPlayer** node, drag the WAV onto its **Stream**, and call `play()`:
 
