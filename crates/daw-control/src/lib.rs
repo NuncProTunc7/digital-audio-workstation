@@ -18,6 +18,7 @@ pub mod game_preview;
 mod host;
 pub mod library;
 pub mod notation;
+pub mod notes_text;
 pub mod plugins;
 pub mod presets;
 mod protocol;

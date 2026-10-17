@@ -174,9 +174,13 @@ fn extra_tools() -> Vec<ToolDef> {
         ),
         tool(
             "get_clip",
-            "One clip with every note (pitch, start_beats relative to the clip, length_beats, velocity, id).",
+            "One clip with every note: as data (pitch, start_beats relative to the clip, length_beats, velocity, id; use these ids with edit_notes/remove_notes) and as notes_text, a compact bar-by-bar view that is easier to read (\"bar 2: @1 C4+E4+G4 q v96, @3.5 D5 e v80\"; notes_legend explains it; drums by pad name). For long clips, from_bar/to_bar limit the text to those bars of the clip.",
             object_schema(
-                json!({ "clip_id": int("Clip id from get_song.") }),
+                json!({
+                    "clip_id": int("Clip id from get_song."),
+                    "from_bar": int("First bar of the clip to show as text (1 = the clip's first bar)."),
+                    "to_bar": int("Last bar to show as text.")
+                }),
                 &["clip_id"],
             ),
             true,
@@ -601,6 +605,14 @@ pub fn to_request(name: &str, args: Map<String, Value>) -> Result<Request, Strin
         },
         "get_clip" => Request::GetClip {
             clip_id: get_id("clip_id")?,
+            from_bar: args
+                .get("from_bar")
+                .and_then(Value::as_u64)
+                .map(|b| b.min(u64::from(u32::MAX)) as u32),
+            to_bar: args
+                .get("to_bar")
+                .and_then(Value::as_u64)
+                .map(|b| b.min(u64::from(u32::MAX)) as u32),
         },
         "describe_instruments" => Request::Describe,
         "undo" => Request::Undo,

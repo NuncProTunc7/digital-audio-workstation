@@ -22,6 +22,12 @@ pub enum Request {
     /// One clip with every note.
     GetClip {
         clip_id: ClipId,
+        /// With to_bar: only these bars of the clip in the text view
+        /// (1-based, inclusive).
+        #[serde(default)]
+        from_bar: Option<u32>,
+        #[serde(default)]
+        to_bar: Option<u32>,
     },
     /// Instruments, presets, effects, and drum pads.
     Describe,

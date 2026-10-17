@@ -329,7 +329,11 @@ fn handle_inner<H: Host>(host: &H, request: Request, ai: &str) -> Result<Value, 
             }
             Ok(v)
         }
-        Request::GetClip { clip_id } => {
+        Request::GetClip {
+            clip_id,
+            from_bar,
+            to_bar,
+        } => {
             let session = host.session()?;
             let project = session.project();
             let (track_id, clip) = project
@@ -338,7 +342,27 @@ fn handle_inner<H: Host>(host: &H, request: Request, ai: &str) -> Result<Value, 
             let track = project
                 .track(track_id)
                 .ok_or_else(|| format!("there is no track with id {track_id}"))?;
-            Ok(clip_detail(track, clip))
+            let mut detail = clip_detail(track, clip);
+            if clip.audio.is_none() {
+                let drums = |pitch: u8| {
+                    daw_instruments::DRUM_PADS
+                        .iter()
+                        .find(|p| p.note == pitch)
+                        .map(|p| p.name)
+                };
+                let is_drums = track.instrument.kind == daw_model::InstrumentKind::Drums;
+                let bars = (from_bar.is_some() || to_bar.is_some())
+                    .then(|| (from_bar.unwrap_or(1).max(1), to_bar.unwrap_or(u32::MAX)));
+                let text = crate::notes_text::clip_text(
+                    clip,
+                    project.beats_per_bar(),
+                    is_drums.then_some(&drums as &dyn Fn(u8) -> Option<&'static str>),
+                    bars,
+                );
+                detail["notes_text"] = json!(text);
+                detail["notes_legend"] = json!(crate::notes_text::LEGEND);
+            }
+            Ok(detail)
         }
         Request::Describe => {
             serde_json::to_value(daw_instruments::catalog()).map_err(|e| e.to_string())
@@ -1874,8 +1898,19 @@ pub(crate) mod tests {
         let clip_id = v["song"]["tracks"][2]["clips"][0]["id"]
             .as_u64()
             .expect("id") as u32;
-        let clip = ok(handle(&host, Request::GetClip { clip_id }));
+        let clip = ok(handle(
+            &host,
+            Request::GetClip {
+                clip_id,
+                from_bar: None,
+                to_bar: None,
+            },
+        ));
         assert_eq!(clip["clip"]["notes"][0]["pitch"], 36);
+        // The same notes as text, drums by pad name.
+        let text = clip["notes_text"].as_str().expect("text");
+        assert!(text.contains("bar 1: @1 Kick"), "{text}");
+        assert!(clip["notes_legend"].as_str().is_some());
         assert_eq!(clip["instrument"], "drums");
         let catalog = ok(handle(&host, Request::Describe));
         assert!(catalog["effects"].as_array().is_some_and(|e| e.len() == 7));
