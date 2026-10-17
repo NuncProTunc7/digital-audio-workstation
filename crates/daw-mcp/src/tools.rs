@@ -239,13 +239,13 @@ fn extra_tools() -> Vec<ToolDef> {
         ),
         tool(
             "get_sound",
-            "One game sound effect in full: its recipe (every setting, to change with set_sound), start_hz (its starting pitch in Hz), seconds (how long it really lasts: a slide below freq_limit ends it early), peak_dbfs, and silent (true if it makes no sound). You can't hear sounds: use these facts, then ask the user.",
+            "One game sound effect in full: its recipe (every setting, to change with set_sound), start_hz (its starting pitch in Hz), seconds (how long it really lasts: a slide below freq_limit ends it early), peak_dbfs, silent (true if it makes no sound) and silent_because (why, when a setting explains it). You can't hear sounds: use these facts, then ask the user.",
             object_schema(json!({ "sound_id": { "type": "integer" } }), &["sound_id"]),
             true,
         ),
         tool(
             "play_sound",
-            "Play one of the project's game sound effects (see get_song's sounds) so the user can hear it; the song keeps playing. Returns its length in seconds. You can't hear it: ask the user how it sounds.",
+            "Play one of the project's game sound effects (see get_song's sounds) so the user can hear it; the song keeps playing. Returns its length in seconds; Stop silences it. Fails with the reason if the sound makes no sound at all. You can't hear it: ask the user how it sounds.",
             object_schema(json!({ "sound_id": { "type": "integer" } }), &["sound_id"]),
             true,
         ),
@@ -471,7 +471,7 @@ fn extra_tools() -> Vec<ToolDef> {
         ),
         tool(
             "export_sounds",
-            "Write the project's game sound effects (all, or sound_ids) as 16-bit 44.1 kHz WAV files into the user's Godot project, in folder (default sfx), one file per sound named after it (coin -> res://sfx/coin.wav). Sounds that would peak above -1 dBFS are turned down. Returns each file's res:// path, length, peak, and how much it was turned down. Ask the user for their Godot project folder if you don't know it.",
+            "Write the project's game sound effects (all, or sound_ids) as 16-bit 44.1 kHz WAV files into the user's Godot project, in folder (default sfx), one file per sound named after it (coin -> res://sfx/coin.wav). Sounds that would peak above -1 dBFS are turned down. Returns each file's res:// path, length, peak, and how much it was turned down; left_behind lists files an earlier export wrote for these sounds before they were renamed (never deleted, since a scene may use them: tell the user they can delete them in Godot if nothing does). Ask the user for their Godot project folder if you don't know it.",
             object_schema(
                 json!({
                     "project_dir": { "type": "string", "description": "The Godot project folder (the one containing project.godot)." },
@@ -784,6 +784,7 @@ fn godot_options_properties() -> Value {
         "stems": { "type": "boolean", "description": "Also export each track separately (default false). Tracks not heard in the mix (muted, or another track soloed) get no stem; inspect_export names them." },
         "bus_stems": { "type": "boolean", "description": "With stems: one stem per bus (the tracks playing into it) plus an \"other\" stem for tracks playing straight into the master, instead of one per track. Default false." },
         "layers": { "type": "boolean", "description": "With stems, write an AudioStreamSynchronized .tres (default true)." },
+        "silent_layers": { "type": "array", "items": { "type": "string" }, "description": "With layers: names of layers that start silent (volume -80 dB) so the game fades them in, e.g. drums for combat. A layer is named after its track, or with bus_stems after its bus or \"other\"; case doesn't matter. An unknown name is an error listing the layers." },
         "sections": { "type": "array", "description": "Named sections for an AudioStreamInteractive .tres.", "items": { "type": "object", "properties": { "name": { "type": "string" }, "start_beats": { "type": "number" }, "end_beats": { "type": "number" } }, "required": ["name", "start_beats", "end_beats"] } },
         "sections_from_markers": { "type": "boolean", "description": "Use the song's section markers (see add_marker and get_song's sections) as the sections. Ignored when sections is given." },
         "target_lufs": num("Loudness target (default -16)."),

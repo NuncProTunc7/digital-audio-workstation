@@ -255,6 +255,8 @@ export interface SoundFile {
 
 export interface SoundExportReport {
   files: SoundFile[];
+  /** Files an earlier export wrote for these sounds before a rename (kept: a scene may use them). */
+  left_behind: string[];
 }
 
 /** One game sound effect. */
@@ -815,6 +817,8 @@ export interface GodotOptions {
   layers: boolean | null;
   target_lufs: number | null;
   normalize: boolean | null;
+  /** Layers (track names, or bus names and "other") that start silent in the layers resource. */
+  silent_layers?: string[];
 }
 
 /** One thing the export check found. */

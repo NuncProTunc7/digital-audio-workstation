@@ -2350,6 +2350,24 @@ button.tiny.power.on {
   font-size: 13px;
 }
 
+/* Godot export: which layers start silent, a compact row of tick boxes. */
+.silent-layers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0;
+  padding: 0 0 0 26px;
+  border: none;
+}
+
+.silent-layers legend {
+  width: 100%;
+  padding: 0;
+  margin-bottom: 2px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
 .dialog-actions {
   justify-content: flex-end;
 }

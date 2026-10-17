@@ -1365,7 +1365,7 @@ export function createPreviewBackend(): PreviewBackend {
         used.push(stem);
         return { sound_id: x.id, res_path: `res://${folder}/${stem}.wav`, seconds: recipeSeconds(x.recipe), peak_dbfs: -6, turned_down_db: 0 };
       });
-      return { files };
+      return { files, left_behind: [] };
     },
     // A one-bar score per track, so the view has something to draw.
     sheetMusic: async (trackIds) => {

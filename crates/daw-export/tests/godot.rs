@@ -92,6 +92,7 @@ fn spec(dir: &Path) -> GodotExport {
         layers_resource: false,
         sections: Vec::new(),
         target_lufs: None,
+        silent_layers: Vec::new(),
     }
 }
 
@@ -637,4 +638,27 @@ fn loops_with_a_tempo_change_inside_stay_exact_and_tell_godot_the_average_tempo(
         .expect("number");
     // Godot's loop length (beat_count * 60 / bpm) is the file's length.
     assert!((beats * 60.0 / bpm - 7.0).abs() < 1e-6, "{import}");
+}
+
+#[test]
+fn chosen_layers_start_silent_in_the_layers_resource() {
+    let dir = godot_project();
+    let mut s = spec(dir.path());
+    s.stems = true;
+    s.layers_resource = true;
+    // Names match the way they're shown, whatever the case.
+    s.silent_layers = vec!["drums".into()];
+    export_to_godot(&song(), &AudioPool::in_temp_dir(), &s).expect("export");
+    let layers = std::fs::read_to_string(dir.path().join("music/boss/boss_theme_layers.tres"))
+        .expect("layers");
+    // Bass (stream 0) plays; Drums (stream 1) waits to be faded in.
+    assert!(layers.contains("stream_0/volume = 0.0"), "{layers}");
+    assert!(layers.contains("stream_1/volume = -80.0"), "{layers}");
+
+    // A name that isn't a layer is an error that lists the layers.
+    s.silent_layers = vec!["Flute".into()];
+    let err = export_to_godot(&song(), &AudioPool::in_temp_dir(), &s)
+        .expect_err("no such layer")
+        .to_string();
+    assert!(err.contains("Flute") && err.contains("Drums"), "{err}");
 }

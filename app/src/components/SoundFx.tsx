@@ -1,5 +1,5 @@
-import { useEffect, useState, type KeyboardEvent } from "react";
-import { FIELDS, type RecipeField } from "../sound";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { FIELDS, silentBecause, type RecipeField } from "../sound";
 import type {
   Command,
   Project,
@@ -77,12 +77,13 @@ function valueOf(r: SoundRecipe, key: RecipeField | "length"): number {
 /**
  * The settings that change when the slider for `key` moves to `v` (only
  * those are sent, so a change your AI made elsewhere isn't undone). Length
- * scales hold and fade together.
+ * scales hold and fade together; from nothing, it shares them out as
+ * `holdShare` (hold's part of the length before it reached nothing).
  */
-function changesFor(r: SoundRecipe, key: RecipeField | "length", v: number): Partial<SoundRecipe> {
+function changesFor(r: SoundRecipe, key: RecipeField | "length", v: number, holdShare: number): Partial<SoundRecipe> {
   if (key !== "length") return { [key]: v };
   const total = r.sustain + r.decay;
-  if (total <= 0) return { sustain: v / 2, decay: v / 2 };
+  if (total <= 0) return { sustain: Math.min(1, v * holdShare), decay: Math.min(1, v * (1 - holdShare)) };
   const scale = v / total;
   return { sustain: Math.min(1, r.sustain * scale), decay: Math.min(1, r.decay * scale) };
 }
@@ -117,6 +118,14 @@ export default function SoundFx({
   const [renameText, setRenameText] = useState("");
   // A drag in progress (so release plays once and ends the undo step).
   const [dragging, setDragging] = useState(false);
+  // The drag's last change, so release plays the sound with it in.
+  const lastChange = useRef<Promise<unknown>>(Promise.resolve());
+  // Each sound's hold share of its length, so Length can come back from 0.
+  const holdShares = useRef(new Map<number, number>());
+  const [hold, fade] = [selected?.recipe.sustain ?? 0, selected?.recipe.decay ?? 0];
+  useEffect(() => {
+    if (shownId !== null && hold + fade > 0) holdShares.current.set(shownId, hold / (hold + fade));
+  }, [shownId, hold, fade]);
   const [dir, setDir] = useState(rememberedGodotDir);
   const [folder, setFolder] = useState("sfx");
   const [busy, setBusy] = useState(false);
@@ -143,14 +152,17 @@ export default function SoundFx({
   const setRecipe = (recipe: Partial<SoundRecipe>) => {
     if (!selected) return;
     setDragging(true);
-    void onCommand({ command: "set_sound", sound_id: selected.id, recipe });
+    lastChange.current = onCommand({ command: "set_sound", sound_id: selected.id, recipe });
   };
 
   const finishDrag = () => {
     if (!dragging || !selected) return;
     setDragging(false);
-    onEndGesture();
-    onPlay(selected.id);
+    const id = selected.id;
+    void lastChange.current.then(() => {
+      onEndGesture();
+      onPlay(id);
+    });
   };
 
   const finishRename = async (sound: SoundEffect) => {
@@ -214,7 +226,7 @@ export default function SoundFx({
           step={(max - min) / 200}
           value={v}
           aria-label={label}
-          onChange={(e) => setRecipe(changesFor(r, key, Number(e.target.value)))}
+          onChange={(e) => setRecipe(changesFor(r, key, Number(e.target.value), holdShares.current.get(selected.id) ?? 0.5))}
           onPointerUp={finishDrag}
           onKeyUp={finishDrag}
           onBlur={finishDrag}
@@ -300,6 +312,11 @@ export default function SoundFx({
                   Delete
                 </button>
               </div>
+              {silentBecause(selected.recipe) && (
+                <p className="finding warning">
+                  <span aria-hidden>⚠</span> {silentBecause(selected.recipe)}.
+                </p>
+              )}
               <div className="sound-sliders">{SIMPLE.map((s) => slider(s.key, s.label, s.hint))}</div>
               <button className="small sound-more" aria-expanded={more} onClick={() => setMore((m) => !m)}>
                 {more ? "Fewer settings ▴" : "More settings ▾"}
@@ -316,9 +333,9 @@ export default function SoundFx({
                           command: "set_sound",
                           sound_id: selected.id,
                           recipe: { wave: e.target.value as Wave },
-                        }).then(() => {
+                        }).then((after) => {
                           onEndGesture();
-                          onPlay(selected.id);
+                          if (after) onPlay(selected.id);
                         });
                       }}
                     >
@@ -370,6 +387,11 @@ export default function SoundFx({
                 <li key={f.res_path}>
                   {f.res_path} · {f.seconds.toFixed(2)} s
                   {f.turned_down_db > 0 && <span className="muted"> · turned down {f.turned_down_db.toFixed(1)} dB so it doesn't clip</span>}
+                </li>
+              ))}
+              {report.left_behind.map((f) => (
+                <li key={f} className="muted">
+                  {f} is still there from before a rename. Delete it in Godot if nothing uses it.
                 </li>
               ))}
             </ul>

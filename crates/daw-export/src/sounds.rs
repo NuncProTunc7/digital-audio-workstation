@@ -5,7 +5,8 @@ use std::path::PathBuf;
 use daw_model::{Id, Project};
 use serde::Serialize;
 
-use crate::{ExportError, GAME_SAMPLE_RATE_HZ, file_slug, godot, io_err, write_wav};
+use crate::encode::{wav_comment, write_wav_with};
+use crate::{ExportError, GAME_SAMPLE_RATE_HZ, file_slug, godot, io_err};
 
 /// Loudest a written sound may peak, in dBFS.
 const MAX_PEAK_DBFS: f64 = -1.0;
@@ -38,6 +39,16 @@ pub struct SoundFile {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SoundExportReport {
     pub files: Vec<SoundFile>,
+    /// Files an earlier export wrote for these sounds under a name they no
+    /// longer have (they were renamed), as `res://` paths. Not deleted: a
+    /// scene may still use them.
+    pub left_behind: Vec<String>,
+}
+
+/// What each written WAV says about itself, so a later export can find the
+/// file a renamed sound left behind.
+fn tag(project: &Project, sound_id: Id) -> String {
+    format!("Nunc Pro Tune sound {sound_id} in {}", project.name)
 }
 
 /// A file name for `name`, numbered if an earlier sound already took it.
@@ -114,7 +125,13 @@ pub fn export_sounds(
         let gain = 10f64.powf(-turned_down_db / 20.0) as f32;
         let stereo: Vec<f32> = mono.iter().flat_map(|&s| [s * gain, s * gain]).collect();
         let file = format!("{stem}.wav");
-        write_wav(&dir.join(&file), &stereo, GAME_SAMPLE_RATE_HZ, None)?;
+        write_wav_with(
+            &dir.join(&file),
+            &stereo,
+            GAME_SAMPLE_RATE_HZ,
+            None,
+            Some(&tag(project, sound.id)),
+        )?;
         files.push(SoundFile {
             sound_id: sound.id,
             res_path: godot::res_path(&folder, &file),
@@ -123,5 +140,43 @@ pub fn export_sounds(
             turned_down_db,
         });
     }
-    Ok(SoundExportReport { files })
+    let left_behind = left_behind(project, &dir, &folder, &files);
+    Ok(SoundExportReport { files, left_behind })
+}
+
+/// WAVs in `dir` tagged as one of the just-written sounds but under
+/// another name.
+fn left_behind(
+    project: &Project,
+    dir: &std::path::Path,
+    folder: &str,
+    written: &[SoundFile],
+) -> Vec<String> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut found: Vec<String> = entries
+        .flatten()
+        .filter_map(|e| {
+            let name = e.file_name().into_string().ok()?;
+            if !name.to_ascii_lowercase().ends_with(".wav") {
+                return None;
+            }
+            let res = godot::res_path(folder, &name);
+            if written.iter().any(|f| f.res_path == res) {
+                return None;
+            }
+            // Effects are small; anything big isn't one of ours.
+            if e.metadata().ok()?.len() > 64 * 1024 * 1024 {
+                return None;
+            }
+            let comment = wav_comment(&std::fs::read(e.path()).ok()?)?;
+            written
+                .iter()
+                .any(|f| comment == tag(project, f.sound_id))
+                .then_some(res)
+        })
+        .collect();
+    found.sort();
+    found
 }

@@ -94,6 +94,13 @@ export function previewVary(r: SoundRecipe, seed: number): SoundRecipe {
   return clampRecipe({ ...r, base_freq: r.base_freq + ((seed % 11) - 5) * 0.005, decay: r.decay + ((seed % 7) - 3) * 0.005 });
 }
 
+/** Why the recipe makes no sound at all, like `SoundRecipe::silent_because`. */
+export function silentBecause(r: SoundRecipe): string | null {
+  return r.freq_limit > 0 && r.base_freq < r.freq_limit
+    ? "Pitch starts below Lowest pitch, so the sound ends before it begins: raise Pitch or lower Lowest pitch"
+    : null;
+}
+
 /** Length in seconds, like `SoundRecipe::seconds`. */
 export function recipeSeconds(r: SoundRecipe): number {
   return Math.min(10, ((r.attack ** 2 + r.sustain ** 2 + r.decay ** 2) * 100000) / 44100);

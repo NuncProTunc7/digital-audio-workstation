@@ -196,3 +196,71 @@ fn extreme_recipes_are_finite_and_bounded() {
     }
     assert!(started.elapsed().as_secs_f32() < 10.0);
 }
+
+#[test]
+fn starting_below_the_lowest_pitch_is_silent_and_says_why() {
+    let r = SoundRecipe {
+        base_freq: 0.3,
+        freq_limit: 0.5,
+        ..SoundRecipe::default()
+    };
+    assert!(peak(&render(&r, RATE)) < 0.001, "silent");
+    assert!(
+        r.silent_because()
+            .expect("a reason")
+            .contains("Lowest pitch")
+    );
+    // Above the limit, or with no limit, there's nothing to explain.
+    for ok in [
+        SoundRecipe {
+            base_freq: 0.6,
+            ..r
+        },
+        SoundRecipe {
+            freq_limit: 0.0,
+            ..r
+        },
+    ] {
+        assert!(peak(&render(&ok, RATE)) > 0.01);
+        assert_eq!(ok.silent_because(), None);
+    }
+}
+
+/// Level of `freq_hz` in `x` (a single-bin DFT), relative to full scale.
+fn level_at(x: &[f32], freq_hz: f64, rate: u32) -> f64 {
+    let (mut re, mut im) = (0.0f64, 0.0f64);
+    for (i, &s) in x.iter().enumerate() {
+        let w = std::f64::consts::TAU * freq_hz * i as f64 / f64::from(rate);
+        re += f64::from(s) * w.cos();
+        im += f64::from(s) * w.sin();
+    }
+    2.0 * (re * re + im * im).sqrt() / x.len() as f64
+}
+
+#[test]
+fn a_lower_device_rate_does_not_fold_high_notes_back_down() {
+    // A steady square at the top pitch: sfxr's period is 99 oversampled
+    // steps, so about 3564 Hz, with a strong 5th harmonic near 17.8 kHz.
+    // A 22.05 kHz output can't carry that harmonic; simple interpolation
+    // folds it back to about 4.2 kHz, a band-limited resampler drops it.
+    let r = SoundRecipe {
+        wave: Wave::Square,
+        base_freq: 1.0,
+        sustain: 0.5,
+        decay: 0.0,
+        ..SoundRecipe::default()
+    };
+    let f0 = 44_100.0 * 8.0 / 99.0;
+    let low_rate = RATE / 2;
+    let harmonic = 5.0 * f0;
+    let folded = f64::from(low_rate) - harmonic;
+    let base = render(&r, RATE);
+    let at_harmonic = level_at(&base, harmonic, RATE);
+    let already_there = level_at(&base, folded, RATE);
+    let alias = level_at(&render(&r, low_rate), folded, low_rate);
+    assert!(at_harmonic > 0.02, "the harmonic is there: {at_harmonic}");
+    assert!(
+        alias < already_there + at_harmonic * 0.1,
+        "folded to {folded:.0} Hz: {alias} (was {already_there}, harmonic {at_harmonic})"
+    );
+}

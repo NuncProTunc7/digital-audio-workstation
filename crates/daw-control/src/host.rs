@@ -1140,12 +1140,15 @@ fn get_sound<H: Host>(host: &H, sound_id: daw_model::Id) -> Result<Value, String
         "start_hz": round(f64::from(sound.recipe.start_hz()), 1),
         "seconds": round(samples.len() as f64 / f64::from(rate), 3),
         "peak_dbfs": round(peak_dbfs, 1),
-        "silent": peak < 0.001,
+        "silent": peak < SILENT_PEAK,
+        "silent_because": (peak < SILENT_PEAK).then(|| sound.recipe.silent_because()).flatten(),
     }))
 }
 
 /// Plays one of the project's sound effects on top of whatever is playing.
-/// Renders, so call it off the window thread. Returns its length in seconds.
+/// Renders, so call it off the window thread. Returns its length in seconds;
+/// an error says why nothing will be heard (a recipe that makes no sound,
+/// or an engine too busy to take it).
 pub fn play_sound<H: Host>(host: &H, sound_id: daw_model::Id) -> Result<f64, String> {
     let recipe = host
         .session()?
@@ -1156,10 +1159,20 @@ pub fn play_sound<H: Host>(host: &H, sound_id: daw_model::Id) -> Result<f64, Str
     let engine = engine(host)?;
     let rate = engine.sample_rate_hz().round() as u32;
     let samples = daw_sfx::render(&recipe, rate);
+    if daw_sfx::peak(&samples) < SILENT_PEAK
+        && let Some(why) = recipe.silent_because()
+    {
+        return Err(format!("Nothing to hear: {why}."));
+    }
     let seconds = samples.len() as f64 / f64::from(rate.max(1));
-    engine.play_one_shot(samples);
+    if !engine.play_one_shot(samples) {
+        return Err("The audio engine is busy and didn't take the sound; try again.".into());
+    }
     Ok(seconds)
 }
+
+/// A sound peaking below this (-60 dBFS) counts as silent.
+const SILENT_PEAK: f32 = 0.001;
 
 /// Checks what `export_godot` with `options` would write, without writing.
 pub fn inspect_export<H: Host>(
@@ -1207,6 +1220,7 @@ fn godot_spec(
         } else {
             Some(options.target_lufs.unwrap_or(DEFAULT_GAME_LUFS))
         },
+        silent_layers: options.silent_layers.clone().unwrap_or_default(),
     }
 }
 
@@ -1399,6 +1413,29 @@ pub(crate) mod tests {
         assert!(hz > 20.0 && hz < 20_000.0, "{hz}");
         assert!(v["seconds"].as_f64().expect("s") > 0.0);
         assert!(v["peak_dbfs"].as_f64().expect("peak") < 0.0);
+        assert_eq!(v["silent"], false);
+        assert!(v["silent_because"].is_null());
+        // Starting below the lowest pitch: silent, and it says why.
+        let mut recipe = sound.recipe;
+        recipe.base_freq = 0.2;
+        recipe.freq_limit = 0.4;
+        ok(handle(
+            &host,
+            Request::Execute {
+                command: Command::SetSound {
+                    sound_id: sound.id,
+                    recipe: daw_model::sound::SoundChanges::from(recipe),
+                },
+            },
+        ));
+        let v = ok(handle(&host, Request::GetSound { sound_id: sound.id }));
+        assert_eq!(v["silent"], true);
+        assert!(
+            v["silent_because"]
+                .as_str()
+                .is_some_and(|s| s.contains("Lowest pitch")),
+            "{v}"
+        );
         assert!(
             handle(&host, Request::GetSound { sound_id: 999 })
                 .into_result()

@@ -53,6 +53,12 @@ export default function GodotExportDialog({
   const anySolo = project.tracks.some((t) => t.mixer.solo);
   const unheard = project.tracks.filter((t) => t.mixer.mute || (anySolo && !t.mixer.solo)).map((t) => t.name);
   const [busStems, setBusStems] = useState(hasBuses);
+  // The layers resource's layers, as the exporter names them.
+  const layerNames =
+    hasBuses && busStems
+      ? [...(project.buses ?? []).map((b) => b.name), "other"]
+      : project.tracks.map((t) => t.name).filter((n) => !unheard.includes(n));
+  const [silentLayers, setSilentLayers] = useState<string[]>([]);
   const [lufs, setLufs] = useState<number | null>(-16);
   const [busy, setBusy] = useState(false);
   const [report, setReport] = useState<ExportReport | null>(null);
@@ -87,6 +93,7 @@ export default function GodotExportDialog({
       stems,
       bus_stems: stems && hasBuses && busStems,
       layers: stems,
+      silent_layers: stems ? silentLayers.filter((n) => layerNames.includes(n)) : [],
       target_lufs: lufs,
       normalize: lufs !== null,
     };
@@ -244,6 +251,25 @@ export default function GodotExportDialog({
             One stem per bus ({(project.buses ?? []).map((b) => b.name).join(", ")}, plus the other tracks) instead of per
             track
           </label>
+        )}
+        {stems && layerNames.length > 0 && (
+          <fieldset className="silent-layers" aria-label="Layers that start silent">
+            <legend title="In the layers resource these play along at no volume, so your game can fade them in on cue (for example drums when a fight starts)">
+              Layers that start silent (your game fades them in):
+            </legend>
+            {layerNames.map((n) => (
+              <label key={n} className="dialog-check">
+                <input
+                  type="checkbox"
+                  checked={silentLayers.includes(n)}
+                  onChange={(e) =>
+                    setSilentLayers((s) => (e.target.checked ? [...s, n] : s.filter((x) => x !== n)))
+                  }
+                />
+                {n}
+              </label>
+            ))}
+          </fieldset>
         )}
 
         <div className="button-row">

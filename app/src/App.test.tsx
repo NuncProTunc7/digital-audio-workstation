@@ -1626,6 +1626,27 @@ describe("Import and export", () => {
     expect(listen.title).toContain("Tick Seamless loop");
   });
 
+  it("lets chosen Godot layers start silent", async () => {
+    const backend = createPreviewBackend();
+    vi.spyOn(backend, "exportGodot");
+    await backend.execute({ command: "set_track_mixer", track_id: 1, volume_db: null, pan: null, mute: true, solo: null });
+    await renderApp(backend);
+    fireEvent.click(screen.getByRole("button", { name: "Export ▾" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "To Godot (loops, stems)…" }));
+    const dialog = screen.getByRole("dialog", { name: "Export to Godot" });
+    expect(within(dialog).queryByRole("group", { name: /start silent/ })).toBeNull();
+    fireEvent.change(screen.getByLabelText("Godot project folder"), { target: { value: "C:\\Games\\MyGame" } });
+    fireEvent.click(screen.getByLabelText(/each track as a stem/));
+    const group = within(dialog).getByRole("group", { name: /start silent/ });
+    // One box per layer; the muted Keys track has no layer.
+    expect(within(group).getAllByRole("checkbox").map((c) => c.closest("label")?.textContent)).toEqual(["Bass", "Drums"]);
+    fireEvent.click(within(group).getByLabelText("Drums"));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Export" }));
+    });
+    expect(backend.exportGodot).toHaveBeenCalledWith(expect.objectContaining({ silent_layers: ["Drums"] }));
+  });
+
   it("warns that muted tracks get no Godot stem", async () => {
     const backend = createPreviewBackend();
     await backend.execute({ command: "set_track_mixer", track_id: 1, volume_db: null, pan: null, mute: true, solo: null });
