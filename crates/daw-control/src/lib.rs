@@ -24,6 +24,7 @@ pub mod presets;
 mod protocol;
 mod server;
 pub mod settings;
+pub mod web_bridge;
 
 pub use client::{ClientError, ControlClient};
 pub use discovery::{APP_ID, ControlFile, control_file_path, unsaved_audio_dir};

@@ -28,6 +28,7 @@ import type {
   ProjectView,
   RecordingDelay,
   Track,
+  WebAddress,
 } from "./types";
 
 const catalog = catalogJson as Catalog;
@@ -820,7 +821,10 @@ export function createPreviewBackend(): PreviewBackend {
   const PREVIEW_SECONDS = 2;
   const mcpConfig = (args: string[]) =>
     JSON.stringify({ mcpServers: { "nunc-pro-tune": { command: "npt-mcp", args } } }, null, 2);
+  // Web mode in the preview: a made-up address so the panel can be tried.
+  let web: WebAddress | null = null;
   const ai = (): AiStatus => ({
+    web,
     listening: false,
     error: "Connecting an AI needs the desktop app",
     last_activity_secs: null,
@@ -1254,6 +1258,12 @@ export function createPreviewBackend(): PreviewBackend {
     },
     aiInstallCodex: async () => {
       throw new Error("Connecting Codex needs the desktop app");
+    },
+    aiWeb: async (on, core) => {
+      const url = "http://127.0.0.1:47321/mcp";
+      const key = "preview0123456789abcdef0123456789";
+      web = on ? { url, key, url_with_key: `${url}?key=${key}`, core } : null;
+      return ai();
     },
     diagnosticReport: async () =>
       [

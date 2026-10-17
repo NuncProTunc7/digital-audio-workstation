@@ -49,7 +49,8 @@ Working well:
 - Before composing, read_guide(\"composing\") for the workflow, game-music recipes, and mix \
 targets. When the user wants to learn, read_guide(\"lessons\") and teach one step at a time; \
 the other pages explain every button, so use them to answer how-to questions accurately.
-- Start with get_song. Use describe_instruments before changing sounds (parameter ids, \
+- Start with get_song. To read a clip's music, use get_clip's notes_text (bar by bar, note names and lengths); its note list has the ids edit_notes needs.
+- Use describe_instruments before changing sounds (parameter ids, \
 ranges, presets).
 - Use batch to make a multi-step change one undo step (e.g. add a track, load a preset, \
 create a clip with notes).

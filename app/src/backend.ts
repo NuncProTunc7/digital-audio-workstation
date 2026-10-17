@@ -197,6 +197,8 @@ export interface Backend {
   aiInstallClaudeDesktop(): Promise<AiStatus>;
   /** Adds Nunc Pro Tune to Codex's settings. */
   aiInstallCodex(): Promise<AiStatus>;
+  /** Turns the web address for local AI apps on or off. */
+  aiWeb(on: boolean, core: boolean): Promise<AiStatus>;
   /** Plain-text report on devices, load, the song, and recent errors. */
   diagnosticReport(): Promise<string>;
   /** Records an error the UI showed, for the diagnostic report. */
@@ -346,6 +348,7 @@ export const tauriBackend: Backend = {
   aiStatus: () => invoke("ai_status"),
   aiInstallClaudeDesktop: () => invoke("ai_install_claude_desktop"),
   aiInstallCodex: () => invoke("ai_install_codex"),
+  aiWeb: (on, core) => invoke("ai_web", { on, core }),
   diagnosticReport: () => invoke("diagnostic_report"),
   logError: (message) => invoke("log_ui_error", { message }),
   onProjectChanged: async (callback) => listen<string>("project-changed", (e) => callback(e.payload)),

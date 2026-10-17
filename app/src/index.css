@@ -2582,3 +2582,10 @@ button.tiny.power.on {
     max-height: 140px;
   }
 }
+
+.ai-check {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 4px 0;
+}

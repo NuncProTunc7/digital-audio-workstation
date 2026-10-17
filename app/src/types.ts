@@ -726,6 +726,16 @@ export interface RemoteActivity {
 }
 
 /** Whether Claude can connect, and how to set it up. */
+/** Where AI apps that take a web address connect (this computer only). */
+export interface WebAddress {
+  url: string;
+  key: string;
+  /** The address with the key in it. */
+  url_with_key: string;
+  /** Offers the short tool list for small models. */
+  core: boolean;
+}
+
 export interface AiStatus {
   /** The control server is running, so an AI can connect. */
   listening: boolean;
@@ -747,6 +757,8 @@ export interface AiStatus {
   /** `mcpServers` JSON for any other MCP app; `_core` adds the short tool list for small local models. */
   generic_config: string;
   generic_config_core: string;
+  /** The web address for apps that take one, while web mode is on. */
+  web?: WebAddress | null;
 }
 
 /** Options for exporting into a Godot project (mirrors daw_control::GodotOptions). */

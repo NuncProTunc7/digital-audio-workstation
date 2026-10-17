@@ -1491,6 +1491,7 @@ export default function App({ backend }: AppProps) {
           status={ai}
           onInstallClaudeDesktop={() => void run(() => backend.aiInstallClaudeDesktop()).then((s) => s && setAi(s))}
           onInstallCodex={() => void run(() => backend.aiInstallCodex()).then((s) => s && setAi(s))}
+          onWeb={(on, core) => void run(() => backend.aiWeb(on, core)).then((s) => s && setAi(s))}
           onClose={() => setAiOpen(false)}
           onCopyReport={() => void copyReport()}
         />

@@ -5,6 +5,8 @@ interface AiPanelProps {
   status: AiStatus | null;
   onInstallClaudeDesktop: () => void;
   onInstallCodex: () => void;
+  /** Turns the web address on or off (`core` = short tool list). */
+  onWeb: (on: boolean, core: boolean) => void;
   onClose: () => void;
   onCopyReport: () => void;
 }
@@ -16,6 +18,7 @@ const APPS = [
   { id: "codex", name: "Codex (OpenAI)" },
   { id: "other", name: "Another AI app (LM Studio, Cursor, Cline, goose…)" },
   { id: "local", name: "A small model on this computer" },
+  { id: "web", name: "An app that takes a web address (Open WebUI…)" },
 ] as const;
 type AppId = (typeof APPS)[number]["id"];
 
@@ -86,8 +89,10 @@ function Copyable({ label, text, block = false }: { label: string; text: string;
  * How to connect an AI (Claude, Codex, or any app that speaks MCP), and
  * what the AI has done this session.
  */
-export default function AiPanel({ status, onInstallClaudeDesktop, onInstallCodex, onClose, onCopyReport }: AiPanelProps) {
+export default function AiPanel({ status, onInstallClaudeDesktop, onInstallCodex, onWeb, onClose, onCopyReport }: AiPanelProps) {
   const [app, setApp] = useState<AppId>(loadApp);
+  const web = status?.web ?? null;
+  const [webCore, setWebCore] = useState(false);
   const missing = status && !status.bridge_found && (
     <p className="muted">The AI bridge program wasn't found next to the app ({status.bridge_path}).</p>
   );
@@ -187,6 +192,50 @@ export default function AiPanel({ status, onInstallClaudeDesktop, onInstallCodex
             in, keeping any servers already there:
           </p>
           <Copyable label="MCP settings" text={status?.generic_config ?? ""} block />
+        </section>
+      )}
+
+      {app === "web" && (
+        <section>
+          <p>
+            Some AI apps on your computer (Open WebUI, some local-model chat apps) connect with a web address instead of
+            a program. Turn this on, then paste the address and key into the app's MCP or tools settings.
+          </p>
+          <label className="ai-check">
+            <input
+              type="checkbox"
+              aria-label="Let AI apps connect with a web address"
+              checked={web !== null}
+              disabled={!status?.bridge_found}
+              onChange={(e) => onWeb(e.target.checked, web?.core ?? webCore)}
+            />
+            Let AI apps connect with a web address
+          </label>
+          <label className="ai-check">
+            <input
+              type="checkbox"
+              aria-label="Short tool list for small models"
+              checked={web?.core ?? webCore}
+              disabled={web !== null}
+              onChange={(e) => setWebCore(e.target.checked)}
+            />
+            Short tool list for small models
+          </label>
+          {web && (
+            <>
+              <p>Address (type: Streamable HTTP):</p>
+              <Copyable label="Web address" text={web.url} />
+              <p>Secret key (as a Bearer token, or "API key"):</p>
+              <Copyable label="Secret key" text={web.key} />
+              <p>Or, for apps that only take an address, this one has the key in it:</p>
+              <Copyable label="Address with key" text={web.url_with_key} />
+              <p className="muted">
+                Only apps on this computer can use it, and only with the key. Turning it off and on again makes a new
+                key.
+              </p>
+            </>
+          )}
+          {missing}
         </section>
       )}
 

@@ -86,6 +86,8 @@ struct AppState {
     last_remote: Mutex<Option<Instant>>,
     /// The AI that last sent a request ("Claude", "Codex"...).
     last_ai: Mutex<String>,
+    /// The bridge in web mode, while the user has it switched on.
+    web_bridge: Mutex<Option<daw_control::web_bridge::WebBridge>>,
     remote_log: Mutex<VecDeque<RemoteActivity>>,
     /// This computer's settings (recording delays).
     settings: Mutex<Settings>,
@@ -139,6 +141,7 @@ impl Default for AppState {
             control_error: Mutex::new(None),
             last_remote: Mutex::new(None),
             last_ai: Mutex::new(String::new()),
+            web_bridge: Mutex::new(None),
             remote_log: Mutex::new(VecDeque::new()),
             settings: Mutex::new(Settings::load(&settings::settings_path())),
             autosave: Mutex::new(AutosaveSlot::new(autosave::autosave_dir())),
@@ -1689,6 +1692,8 @@ struct AiStatus {
     /// tool list for small local models.
     generic_config: String,
     generic_config_core: String,
+    /// The web address, while web mode is on.
+    web: Option<daw_control::web_bridge::WebAddress>,
 }
 
 /// How the AI connection is doing and how to set up each AI app. Async:
@@ -1724,6 +1729,13 @@ fn ai_status(app: AppHandle, state: State<'_, AppState>) -> Result<AiStatus, Str
         codex_command: ai_setup::codex_command(&bridge),
         generic_config: ai_setup::generic_config(&bridge, false),
         generic_config_core: ai_setup::generic_config(&bridge, true),
+        web: state.web_bridge.lock().ok().and_then(|mut w| {
+            // Forget a bridge that has stopped on its own.
+            if w.as_mut().is_some_and(|b| !b.running()) {
+                *w = None;
+            }
+            w.as_ref().map(|b| b.address().clone())
+        }),
         bridge_path: bridge.display().to_string(),
         desktop_config_path: desktop.display().to_string(),
         codex_config_path: codex.display().to_string(),
@@ -1759,6 +1771,34 @@ fn ai_install_claude_desktop(
 fn ai_install_codex(app: AppHandle, state: State<'_, AppState>) -> Result<AiStatus, String> {
     let bridge = existing_bridge(&app)?;
     ai_setup::install_codex(&ai_setup::codex_config_path(), &bridge)?;
+    ai_status(app, state)
+}
+
+/// Turns web mode on (a fresh address and key; `core` = the short tool
+/// list) or off. Starting waits for the bridge, so off the main thread;
+/// the lock is only taken to swap the running bridge.
+#[tauri::command(async)]
+fn ai_web(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    on: bool,
+    core: bool,
+) -> Result<AiStatus, String> {
+    let next = if on {
+        Some(daw_control::web_bridge::WebBridge::start(
+            &existing_bridge(&app)?,
+            core,
+        )?)
+    } else {
+        None
+    };
+    let old = state
+        .web_bridge
+        .lock()
+        .map(|mut w| std::mem::replace(&mut *w, next))
+        .map_err(|_| "web mode is stuck; restart the app".to_owned())?;
+    // Stop the old bridge after letting go of the lock.
+    drop(old);
     ai_status(app, state)
 }
 
@@ -1902,6 +1942,7 @@ pub fn run() {
             ai_status,
             ai_install_claude_desktop,
             ai_install_codex,
+            ai_web,
             import_audio,
             audio_peaks,
             input_status,

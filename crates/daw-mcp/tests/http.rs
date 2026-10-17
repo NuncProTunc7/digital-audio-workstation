@@ -173,3 +173,34 @@ fn a_tool_call_works_over_the_web_address() {
     assert_eq!(status, 200, "{body}");
     assert!(body.contains("Sound effects"), "{body}");
 }
+
+/// What the app does when you turn the switch on: start the bridge in web
+/// mode, read its address, and connect with the key in the address.
+#[test]
+fn the_app_can_start_and_stop_web_mode() {
+    let mut bridge = daw_control::web_bridge::WebBridge::start(
+        std::path::Path::new(env!("CARGO_BIN_EXE_npt-mcp")),
+        true,
+    )
+    .expect("start");
+    assert!(bridge.running());
+    let address = bridge.address().clone();
+    assert!(address.url.starts_with("http://127.0.0.1:"), "{address:?}");
+    assert!(address.url_with_key.ends_with(&address.key));
+    let port: u16 = address
+        .url
+        .trim_end_matches("/mcp")
+        .rsplit(':')
+        .next()
+        .and_then(|p| p.parse().ok())
+        .expect("port");
+    let path = address
+        .url_with_key
+        .split_once(&format!(":{port}"))
+        .expect("path")
+        .1;
+    let (status, body) = post(port, path, &[], INITIALIZE);
+    assert_eq!(status, 200, "{body}");
+    drop(bridge);
+    assert!(TcpStream::connect(("127.0.0.1", port)).is_err(), "stopped");
+}
