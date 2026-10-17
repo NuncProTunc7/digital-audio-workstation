@@ -1535,10 +1535,28 @@ describe("Import and export", () => {
     vi.spyOn(backend, "sheetMusic");
     await renderApp(backend);
     fireEvent.click(screen.getByRole("tab", { name: "Sheet music" }));
-    await waitFor(() => expect(backend.sheetMusic).toHaveBeenCalledWith([1]));
+    await waitFor(() => expect(backend.sheetMusic).toHaveBeenCalledWith([1], "both"));
     fireEvent.click(screen.getByRole("button", { name: "All tracks" }));
-    await waitFor(() => expect(backend.sheetMusic).toHaveBeenCalledWith(null));
+    await waitFor(() => expect(backend.sheetMusic).toHaveBeenCalledWith(null, "both"));
     expect(screen.getByLabelText("Sheet music")).toBeTruthy();
+    // No guitar, no guitar switch.
+    expect(screen.queryByRole("group", { name: "Guitar shows" })).toBeNull();
+  });
+
+  it("shows a guitar track as notes and tab, tab, or notes", async () => {
+    const backend = createPreviewBackend();
+    await backend.execute({ command: "add_track", name: "Guitar", instrument: "guitar", preset: null, index: null });
+    const guitarId = (await backend.getProject()).project.tracks.find((t) => t.name === "Guitar")?.id ?? -1;
+    vi.spyOn(backend, "sheetMusic");
+    await renderApp(backend);
+    fireEvent.click(screen.getByText("Guitar"));
+    fireEvent.click(screen.getByRole("tab", { name: "Sheet music" }));
+    await waitFor(() => expect(backend.sheetMusic).toHaveBeenCalledWith([guitarId], "both"));
+    const group = screen.getByRole("group", { name: "Guitar shows" });
+    fireEvent.click(within(group).getByRole("button", { name: "Tab" }));
+    await waitFor(() => expect(backend.sheetMusic).toHaveBeenCalledWith([guitarId], "tab"));
+    fireEvent.click(within(group).getByRole("button", { name: "Notes" }));
+    await waitFor(() => expect(backend.sheetMusic).toHaveBeenCalledWith([guitarId], "notes"));
   });
 
   it("routes dropped sheet music to the MusicXML importer", async () => {

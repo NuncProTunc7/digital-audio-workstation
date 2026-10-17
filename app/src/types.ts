@@ -827,6 +827,9 @@ export interface Finding {
   message: string;
 }
 
+/** How the sheet music view shows guitar tracks. */
+export type GuitarView = "both" | "tab" | "notes";
+
 /** A frequency band's share of the mix's energy. */
 export interface AnalysisBand {
   /** sub, bass, low_mids, mids, high_mids, highs */

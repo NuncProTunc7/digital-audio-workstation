@@ -44,6 +44,7 @@ import type {
   PreviewPlan,
   SamplePackStatus,
   UserPreset,
+  GuitarView,
   InputStatus,
   MixAnalysis,
   Peaks,
@@ -152,6 +153,7 @@ export default function App({ backend }: AppProps) {
   const peaksRequested = useRef(new Set<string>());
   const [input, setInput] = useState<InputStatus | null>(null);
   const [sheetAll, setSheetAll] = useState(false);
+  const [guitarView, setGuitarView] = useState<GuitarView>("both");
   const [sheetXml, setSheetXml] = useState<string | null>(null);
   const [sheetZoom, setSheetZoom] = useState(0.8);
   // Computer keys currently held, and the note each one started.
@@ -293,12 +295,16 @@ export default function App({ backend }: AppProps) {
     if (tab !== "sheet" || !project) return;
     const timer = window.setTimeout(() => {
       backend
-        .sheetMusic(sheetTrackId === null ? null : [sheetTrackId])
+        .sheetMusic(sheetTrackId === null ? null : [sheetTrackId], guitarView)
         .then(setSheetXml)
         .catch((e) => setError(String(e)));
     }, SHEET_REFRESH_MS);
     return () => window.clearTimeout(timer);
-  }, [backend, tab, project, sheetTrackId]);
+  }, [backend, tab, project, sheetTrackId, guitarView]);
+  // The guitar switch shows while a guitar is on the page.
+  const sheetHasGuitar = sheetAll
+    ? (project?.tracks.some((t) => t.instrument.kind === "guitar") ?? false)
+    : selectedTrack?.instrument.kind === "guitar";
   const typingBase = isDrums ? DRUM_BASE_NOTE : baseNote;
 
   // Where the selected instrument plays: a flute is silent below C4, so the
@@ -1381,6 +1387,21 @@ export default function App({ backend }: AppProps) {
                     All tracks
                   </button>
                 </div>
+                {sheetHasGuitar && (
+                  <div className="button-group" role="group" aria-label="Guitar shows" title="How guitar tracks are written: notes with tab under them, tab only, or notes only">
+                    {(
+                      [
+                        ["both", "Notes + tab"],
+                        ["tab", "Tab"],
+                        ["notes", "Notes"],
+                      ] as [GuitarView, string][]
+                    ).map(([v, label]) => (
+                      <button key={v} className={guitarView === v ? "small toggle on" : "small"} onClick={() => setGuitarView(v)}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <span className="muted">Notes are shown on a sixteenth-note grid.</span>
                 <span className="spacer" />
                 <button className="small" onClick={() => void exportAs("musicxml")} title="Save for MuseScore and other notation apps">

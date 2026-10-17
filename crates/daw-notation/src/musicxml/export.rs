@@ -5,9 +5,10 @@
 //! chord, and a note is cut where the next one starts. That keeps the score
 //! readable; the exact timing stays in the project and in MIDI exports.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt::Write as _;
 
+use daw_model::music::{Chord, ChordQuality, NOTE_NAMES};
 use daw_model::{InstrumentKind, Project, TimeSignature, Track, TrackId};
 
 use super::{DIVISIONS, drum_position};
@@ -128,31 +129,157 @@ fn pieces(mut duration: i64) -> Vec<(i64, &'static str, bool)> {
     out
 }
 
-struct PartWriter<'a> {
-    xml: &'a mut String,
-    drums: bool,
+/// How guitar tracks are written.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum GuitarView {
+    /// A notes staff with a tab staff under it (the usual guitar score).
+    #[default]
+    Both,
+    /// The tab staff only.
+    Tab,
+    /// The notes staff only.
+    Notes,
 }
 
-impl PartWriter<'_> {
-    /// One written note (or rest) of `duration`, with ties as given.
-    fn note(&mut self, pitches: &[u8], value: (i64, &str, bool), tie_stop: bool, tie_start: bool) {
+/// One written note, chord or rest in a bar, before it becomes XML.
+#[derive(Debug, Clone)]
+struct Written {
+    /// Where its event started (the key for frets), in divisions.
+    onset: i64,
+    /// Where this piece starts, in divisions from the song start.
+    at: i64,
+    pitches: Vec<u8>,
+    value: (i64, &'static str, bool),
+    tie_stop: bool,
+    tie_start: bool,
+    /// A whole bar's rest.
+    measure_rest: bool,
+}
+
+/// Splits the voice into bars of written notes (tied across barlines and
+/// into note values that can be written).
+fn layout(events: &[Event], measures: i64, measure: i64) -> Vec<Vec<Written>> {
+    let mut bars = Vec::new();
+    let mut next_event = 0;
+    // Part of the current event still to write: (pitches, onset, remaining).
+    let mut carry: Option<(Vec<u8>, i64, i64)> = None;
+    for m in 0..measures {
+        let mut bar = Vec::new();
+        let bar_end = (m + 1) * measure;
+        let mut at = m * measure;
+        while at < bar_end {
+            let (pitches, onset, remaining, continued) = match carry.take() {
+                Some((p, o, r)) => (p, o, r, true),
+                None => {
+                    let Some(e) = events.get(next_event) else {
+                        break;
+                    };
+                    next_event += 1;
+                    (e.pitches.clone(), e.start, e.duration, false)
+                }
+            };
+            // A bar of silence is one whole-measure rest.
+            if pitches.is_empty() && at == m * measure && remaining >= measure {
+                bar.push(Written {
+                    onset,
+                    at,
+                    pitches: Vec::new(),
+                    value: (measure, "", false),
+                    tie_stop: false,
+                    tie_start: false,
+                    measure_rest: true,
+                });
+                if remaining > measure {
+                    carry = Some((pitches, onset, remaining - measure));
+                }
+                at = bar_end;
+                continue;
+            }
+            let here = remaining.min(bar_end - at);
+            let rest_of_event = remaining - here;
+            let parts = pieces(here);
+            for (k, value) in parts.iter().enumerate() {
+                bar.push(Written {
+                    onset,
+                    at,
+                    pitches: pitches.clone(),
+                    value: *value,
+                    tie_stop: !pitches.is_empty() && (k > 0 || continued),
+                    tie_start: !pitches.is_empty() && (k + 1 < parts.len() || rest_of_event > 0),
+                    measure_rest: false,
+                });
+                at += value.0;
+            }
+            if rest_of_event > 0 {
+                carry = Some((pitches, onset, rest_of_event));
+            }
+        }
+        bars.push(bar);
+    }
+    bars
+}
+
+/// What a staff shows.
+#[derive(Clone, Copy)]
+enum StaffKind<'a> {
+    Notes {
+        drums: bool,
+    },
+    /// Fret numbers, from (onset, pitch) to (string, fret).
+    Tab(&'a HashMap<(i64, u8), (u8, u8)>),
+}
+
+/// Writes one staff's notes for a bar. `staff` is set when the part has two
+/// staves; `voice` keeps the staves' voices apart. Chord names starting
+/// during a note are written just before it.
+fn write_staff(
+    xml: &mut String,
+    bar: &[Written],
+    kind: StaffKind<'_>,
+    staff: Option<u8>,
+    voice: u8,
+    chords: &[(i64, &Chord)],
+) {
+    let staff_tag = staff.map_or(String::new(), |s| format!("<staff>{s}</staff>"));
+    let mut chords = chords.iter().peekable();
+    for w in bar {
+        while let Some((div, chord)) = chords.next_if(|(div, _)| *div < w.at + w.value.0) {
+            write_harmony(xml, chord, div - w.at);
+        }
+        if w.measure_rest {
+            let _ = write!(
+                xml,
+                "<note><rest measure=\"yes\"/><duration>{}</duration><voice>{voice}</voice>{staff_tag}</note>",
+                w.value.0
+            );
+            continue;
+        }
+        let pitches: Vec<(u8, Option<(u8, u8)>)> = match kind {
+            StaffKind::Notes { .. } => w.pitches.iter().map(|&p| (p, None)).collect(),
+            // The tab leaves out notes the guitar can't reach.
+            StaffKind::Tab(frets) => w
+                .pitches
+                .iter()
+                .filter_map(|&p| frets.get(&(w.onset, p)).map(|&f| (p, Some(f))))
+                .collect(),
+        };
+        let dot = if w.value.2 { "<dot/>" } else { "" };
         if pitches.is_empty() {
             let _ = write!(
-                self.xml,
-                "<note><rest/><duration>{}</duration><voice>1</voice><type>{}</type>{}</note>",
-                value.0,
-                value.1,
-                if value.2 { "<dot/>" } else { "" }
+                xml,
+                "<note><rest/><duration>{}</duration><voice>{voice}</voice><type>{}</type>{dot}{staff_tag}</note>",
+                w.value.0, w.value.1
             );
-            return;
+            continue;
         }
-        for (i, &p) in pitches.iter().enumerate() {
+        let drums = matches!(kind, StaffKind::Notes { drums: true });
+        for (i, &(p, fret)) in pitches.iter().enumerate() {
             let mut n = String::from("<note>");
             if i > 0 {
                 n.push_str("<chord/>");
             }
-            let head;
-            if self.drums {
+            let mut head = false;
+            if drums {
                 let (step, octave, x) = drum_position(p);
                 head = x;
                 let _ = write!(
@@ -160,7 +287,6 @@ impl PartWriter<'_> {
                     "<unpitched><display-step>{step}</display-step><display-octave>{octave}</display-octave></unpitched>"
                 );
             } else {
-                head = false;
                 let (step, alter) = SHARP_NAMES[usize::from(p % 12)];
                 let octave = i32::from(p / 12) - 1;
                 let _ = write!(n, "<pitch><step>{step}</step>");
@@ -169,42 +295,142 @@ impl PartWriter<'_> {
                 }
                 let _ = write!(n, "<octave>{octave}</octave></pitch>");
             }
-            let _ = write!(n, "<duration>{}</duration>", value.0);
-            if tie_stop {
+            let _ = write!(n, "<duration>{}</duration>", w.value.0);
+            if w.tie_stop {
                 n.push_str("<tie type=\"stop\"/>");
             }
-            if tie_start {
+            if w.tie_start {
                 n.push_str("<tie type=\"start\"/>");
             }
-            let _ = write!(n, "<voice>1</voice><type>{}</type>", value.1);
-            if value.2 {
-                n.push_str("<dot/>");
-            }
-            if self.drums {
+            let _ = write!(n, "<voice>{voice}</voice><type>{}</type>{dot}", w.value.1);
+            if drums {
                 n.push_str("<stem>up</stem>");
             }
+            n.push_str(&staff_tag);
             if head {
                 n.push_str("<notehead>x</notehead>");
             }
-            if tie_stop || tie_start {
+            if w.tie_stop || w.tie_start || fret.is_some() {
                 n.push_str("<notations>");
-                if tie_stop {
+                if w.tie_stop {
                     n.push_str("<tied type=\"stop\"/>");
                 }
-                if tie_start {
+                if w.tie_start {
                     n.push_str("<tied type=\"start\"/>");
+                }
+                if let Some((string, fret)) = fret {
+                    let _ = write!(
+                        n,
+                        "<technical><string>{string}</string><fret>{fret}</fret></technical>"
+                    );
                 }
                 n.push_str("</notations>");
             }
             n.push_str("</note>");
-            self.xml.push_str(&n);
+            xml.push_str(&n);
         }
     }
 }
 
+/// A chord name above the staff, `offset` divisions after the next note.
+fn write_harmony(xml: &mut String, chord: &Chord, offset: i64) {
+    let spell = |pc: u8| {
+        let name = NOTE_NAMES[usize::from(pc % 12)];
+        let mut chars = name.chars();
+        let step = chars.next().unwrap_or('C');
+        let alter = match chars.next() {
+            Some('#') => 1,
+            Some('b') => -1,
+            _ => 0,
+        };
+        (step, alter)
+    };
+    let kind = match chord.quality {
+        ChordQuality::Major => "major",
+        ChordQuality::Minor => "minor",
+        ChordQuality::Diminished => "diminished",
+        ChordQuality::Augmented => "augmented",
+        ChordQuality::Sus2 => "suspended-second",
+        ChordQuality::Sus4 => "suspended-fourth",
+        ChordQuality::Major7 => "major-seventh",
+        ChordQuality::Minor7 => "minor-seventh",
+        ChordQuality::Dominant7 => "dominant",
+        ChordQuality::HalfDiminished7 => "half-diminished",
+        ChordQuality::Power => "power",
+    };
+    let (step, alter) = spell(chord.root);
+    let _ = write!(xml, "<harmony><root><root-step>{step}</root-step>");
+    if alter != 0 {
+        let _ = write!(xml, "<root-alter>{alter}</root-alter>");
+    }
+    let _ = write!(
+        xml,
+        "</root><kind text=\"{}\">{kind}</kind>",
+        chord.quality.symbol()
+    );
+    if let Some(b) = chord.bass {
+        let (step, alter) = spell(b);
+        let _ = write!(xml, "<bass><bass-step>{step}</bass-step>");
+        if alter != 0 {
+            let _ = write!(xml, "<bass-alter>{alter}</bass-alter>");
+        }
+        xml.push_str("</bass>");
+    }
+    if offset > 0 {
+        let _ = write!(xml, "<offset>{offset}</offset>");
+    }
+    xml.push_str("</harmony>");
+}
+
+/// The tab staff's six lines in the guitar's tuning (lowest first, without
+/// the capo), and the capo.
+fn tab_details(track: &Track, number: Option<u8>) -> String {
+    let (open, low) = crate::guitar::open_strings(track);
+    let capo = open[0].saturating_sub(low);
+    let number = number.map_or(String::new(), |n| format!(" number=\"{n}\""));
+    let mut s = format!("<staff-details{number}><staff-lines>6</staff-lines>");
+    for (line, &note) in open.iter().enumerate() {
+        let note = note - capo;
+        let (step, alter) = SHARP_NAMES[usize::from(note % 12)];
+        let _ = write!(
+            s,
+            "<staff-tuning line=\"{}\"><tuning-step>{step}</tuning-step>",
+            line + 1
+        );
+        if alter != 0 {
+            let _ = write!(s, "<tuning-alter>{alter}</tuning-alter>");
+        }
+        let _ = write!(
+            s,
+            "<tuning-octave>{}</tuning-octave></staff-tuning>",
+            i32::from(note / 12) - 1
+        );
+    }
+    if capo > 0 {
+        let _ = write!(s, "<capo>{capo}</capo>");
+    }
+    s.push_str("</staff-details>");
+    s
+}
+
+/// Guitar music is written an octave above where it sounds: a treble clef
+/// with a small 8 below.
+const GUITAR_CLEF: &str = "<sign>G</sign><line>2</line><clef-octave-change>-1</clef-octave-change>";
+
 /// The project (or the given tracks) as a MusicXML 4.0 partwise score.
-/// Audio tracks are left out.
+/// Audio tracks are left out; guitar tracks get a notes staff and a tab
+/// staff.
 pub fn export_musicxml(project: &Project, track_ids: Option<&[TrackId]>) -> String {
+    export_musicxml_with(project, track_ids, GuitarView::Both)
+}
+
+/// [`export_musicxml`], choosing how guitar tracks are written. Chord
+/// names from the chord track go above the top part.
+pub fn export_musicxml_with(
+    project: &Project,
+    track_ids: Option<&[TrackId]>,
+    guitar: GuitarView,
+) -> String {
     let ts = project.time_signature;
     let measure = measure_divisions(ts);
     let tracks: Vec<&Track> = project
@@ -217,10 +443,10 @@ pub fn export_musicxml(project: &Project, track_ids: Option<&[TrackId]>) -> Stri
         .iter()
         .flat_map(|t| t.clips.iter().map(|c| c.start_beats + c.length_beats))
         .fold(0.0, f64::max);
-    let end_div = (end_beats * quarters_per_beat(ts) * DIVISIONS as f64).round() as i64;
-    let measures = ((end_div + measure - 1) / measure).max(1);
-    let end = measures * measure;
     let qpb = quarters_per_beat(ts);
+    let to_div = |beats: f64| (beats * qpb * DIVISIONS as f64).round() as i64;
+    let measures = ((to_div(end_beats) + measure - 1) / measure).max(1);
+    let end = measures * measure;
     // Tempo marks as (division from the start, quarter-note tempo, words):
     // the start, then each change, with "accel." or "rit." where it glides.
     let mut tempo_marks: Vec<(i64, f64, &str)> = vec![(0, project.tempo_bpm * qpb, "")];
@@ -230,9 +456,15 @@ pub fn export_musicxml(project: &Project, track_ids: Option<&[TrackId]>) -> Stri
             Some(next) if c.ramp && next.bpm < c.bpm => "rit.",
             _ => "",
         };
-        let div = (c.beats * qpb * DIVISIONS as f64).round() as i64;
-        tempo_marks.push((div, c.bpm * qpb, words));
+        tempo_marks.push((to_div(c.beats), c.bpm * qpb, words));
     }
+    let mut chords: Vec<(i64, &Chord)> = project
+        .chords
+        .iter()
+        .map(|c| (to_div(c.start_beats).max(0), c))
+        .filter(|(div, _)| *div < end)
+        .collect();
+    chords.sort_by_key(|(div, _)| *div);
 
     let mut xml = String::new();
     xml.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?>\n");
@@ -256,6 +488,7 @@ pub fn export_musicxml(project: &Project, track_ids: Option<&[TrackId]>) -> Stri
 
     for (i, t) in tracks.iter().enumerate() {
         let drums = t.instrument.kind == InstrumentKind::Drums;
+        let is_guitar = t.instrument.kind == InstrumentKind::Guitar;
         let events = voice(t, ts, end);
         let mean_pitch = {
             let p: Vec<f64> = events
@@ -268,27 +501,56 @@ pub fn export_musicxml(project: &Project, track_ids: Option<&[TrackId]>) -> Stri
                 p.iter().sum::<f64>() / p.len() as f64
             }
         };
-        let clef = if drums {
-            "<clef><sign>percussion</sign></clef>"
-        } else if mean_pitch < 57.0 {
-            "<clef><sign>F</sign><line>4</line></clef>"
+        let frets: HashMap<(i64, u8), (u8, u8)> = if is_guitar && guitar != GuitarView::Notes {
+            crate::guitar::guitar_frets(t)
+                .into_iter()
+                .map(|n| ((to_div(n.start_beats).max(0), n.pitch), (n.string, n.fret)))
+                .collect()
         } else {
-            "<clef><sign>G</sign><line>2</line></clef>"
+            HashMap::new()
         };
+        // The staves: what each shows, and the attributes that set them up.
+        let notes = StaffKind::Notes { drums };
+        let tab = StaffKind::Tab(&frets);
+        let (staves, clefs): (Vec<StaffKind<'_>>, String) = if is_guitar {
+            match guitar {
+                GuitarView::Both => (
+                    vec![notes, tab],
+                    format!(
+                        "<staves>2</staves><clef number=\"1\">{GUITAR_CLEF}</clef><clef number=\"2\"><sign>TAB</sign><line>5</line></clef>{}",
+                        tab_details(t, Some(2))
+                    ),
+                ),
+                GuitarView::Tab => (
+                    vec![tab],
+                    format!(
+                        "<clef><sign>TAB</sign><line>5</line></clef>{}",
+                        tab_details(t, None)
+                    ),
+                ),
+                GuitarView::Notes => (vec![notes], format!("<clef>{GUITAR_CLEF}</clef>")),
+            }
+        } else if drums {
+            (vec![notes], "<clef><sign>percussion</sign></clef>".into())
+        } else if mean_pitch < 57.0 {
+            (
+                vec![notes],
+                "<clef><sign>F</sign><line>4</line></clef>".into(),
+            )
+        } else {
+            (
+                vec![notes],
+                "<clef><sign>G</sign><line>2</line></clef>".into(),
+            )
+        };
+        let bars = layout(&events, measures, measure);
         let _ = writeln!(xml, "<part id=\"P{}\">", i + 1);
-        let mut w = PartWriter {
-            xml: &mut xml,
-            drums,
-        };
-        let mut next_event = 0;
-        // Part of the current event still to write, when it crosses a barline.
-        let mut carry: Option<(Vec<u8>, i64)> = None;
-        for m in 0..measures {
-            let _ = write!(w.xml, "<measure number=\"{}\">", m + 1);
+        for (m, bar) in (0_i64..).zip(&bars) {
+            let _ = write!(xml, "<measure number=\"{}\">", m + 1);
             if m == 0 {
                 let _ = write!(
-                    w.xml,
-                    "<attributes><divisions>{DIVISIONS}</divisions><key><fifths>{}</fifths><mode>{}</mode></key><time><beats>{}</beats><beat-type>{}</beat-type></time>{clef}</attributes>",
+                    xml,
+                    "<attributes><divisions>{DIVISIONS}</divisions><key><fifths>{}</fifths><mode>{}</mode></key><time><beats>{}</beats><beat-type>{}</beat-type></time>{clefs}</attributes>",
                     project.key.map_or(0, |k| k.fifths()),
                     if project.key.is_some_and(|k| k.mode.is_minor()) {
                         "minor"
@@ -299,72 +561,57 @@ pub fn export_musicxml(project: &Project, track_ids: Option<&[TrackId]>) -> Stri
                     ts.denominator
                 );
             }
+            let (bar_start, bar_end) = (m * measure, (m + 1) * measure);
             if i == 0 {
                 // Tempo marks in this bar, placed from its start.
                 for &(div, quarter_bpm, words) in tempo_marks
                     .iter()
-                    .filter(|t| t.0 >= m * measure && t.0 < (m + 1) * measure)
+                    .filter(|t| t.0 >= bar_start && t.0 < bar_end)
                 {
                     let words = if words.is_empty() {
                         String::new()
                     } else {
                         format!("<direction-type><words>{words}</words></direction-type>")
                     };
-                    let offset = div - m * measure;
+                    let offset = div - bar_start;
                     let offset = if offset > 0 {
                         format!("<offset>{offset}</offset>")
                     } else {
                         String::new()
                     };
                     let _ = write!(
-                        w.xml,
+                        xml,
                         "<direction placement=\"above\"><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>{}</per-minute></metronome></direction-type>{words}{offset}<sound tempo=\"{}\"/></direction>",
                         quarter_bpm.round(),
                         quarter_bpm
                     );
                 }
             }
-
-            let bar_end = (m + 1) * measure;
-            let mut at = m * measure;
-            while at < bar_end {
-                let (pitches, remaining, continued) = match carry.take() {
-                    Some((p, r)) => (p, r, true),
-                    None => {
-                        let Some(e) = events.get(next_event) else {
-                            break;
-                        };
-                        next_event += 1;
-                        (e.pitches.clone(), e.duration, false)
-                    }
+            let two = staves.len() > 1;
+            for (k, &kind) in (0_u8..).zip(&staves) {
+                if k > 0 {
+                    let _ = write!(xml, "<backup><duration>{measure}</duration></backup>");
+                }
+                // Chord names go above the top part's first staff.
+                let bar_chords: Vec<(i64, &Chord)> = if i == 0 && k == 0 {
+                    chords
+                        .iter()
+                        .copied()
+                        .filter(|(div, _)| *div >= bar_start && *div < bar_end)
+                        .collect()
+                } else {
+                    Vec::new()
                 };
-                // A bar of silence is one whole-measure rest.
-                if pitches.is_empty() && at == m * measure && remaining >= measure {
-                    let _ = write!(
-                        w.xml,
-                        "<note><rest measure=\"yes\"/><duration>{measure}</duration><voice>1</voice></note>"
-                    );
-                    if remaining > measure {
-                        carry = Some((pitches, remaining - measure));
-                    }
-                    at = bar_end;
-                    continue;
-                }
-                let here = remaining.min(bar_end - at);
-                let rest_of_event = remaining - here;
-                let parts = pieces(here);
-                for (k, value) in parts.iter().enumerate() {
-                    let tie_stop = !pitches.is_empty() && (k > 0 || continued);
-                    let tie_start =
-                        !pitches.is_empty() && (k + 1 < parts.len() || rest_of_event > 0);
-                    w.note(&pitches, *value, tie_stop, tie_start);
-                }
-                at += here;
-                if rest_of_event > 0 {
-                    carry = Some((pitches, rest_of_event));
-                }
+                write_staff(
+                    &mut xml,
+                    bar,
+                    kind,
+                    two.then_some(k + 1),
+                    if k == 0 { 1 } else { 5 },
+                    &bar_chords,
+                );
             }
-            w.xml.push_str("</measure>\n");
+            xml.push_str("</measure>\n");
         }
         xml.push_str("</part>\n");
     }
@@ -548,6 +795,145 @@ mod tests {
         p.tracks[0].name = "Lead <A&B>".into();
         let xml = export_musicxml(&p, Some(&[1]));
         assert!(xml.contains("Lead &lt;A&amp;B&gt;"));
+        super::super::parse_xml(&xml).expect("parses");
+    }
+
+    /// A song with one guitar track (id returned) playing `notes`.
+    fn guitar_song(notes: Vec<NoteInput>, tuning: f64, capo: f64) -> (Project, u32) {
+        let mut p = Project::default();
+        Command::AddTrack {
+            name: "Guitar".into(),
+            instrument: InstrumentKind::Guitar,
+            preset: None,
+            index: None,
+        }
+        .apply(&mut p)
+        .expect("guitar");
+        let id = p.tracks.last().expect("track").id;
+        for (param, v) in [("string.tuning", tuning), ("string.capo", capo)] {
+            Command::SetInstrumentParam {
+                track_id: id,
+                param: param.into(),
+                value: v,
+            }
+            .apply(&mut p)
+            .expect("param");
+        }
+        Command::CreateClip {
+            track_id: id,
+            start_beats: 0.0,
+            length_beats: 4.0,
+            name: None,
+            notes,
+        }
+        .apply(&mut p)
+        .expect("clip");
+        (p, id)
+    }
+
+    #[test]
+    fn guitar_parts_get_a_notes_staff_and_a_tab_staff() {
+        // An open E chord, then a high A (5th fret, high E string).
+        let mut notes: Vec<NoteInput> = [40, 47, 52, 56, 59, 64]
+            .iter()
+            .map(|&p| note(p, 0.0, 2.0))
+            .collect();
+        notes.push(note(69, 2.0, 2.0));
+        let (p, id) = guitar_song(notes, 0.0, 0.0);
+        let xml = export_musicxml(&p, Some(&[id]));
+        let doc = super::super::parse_xml(&xml).expect("well-formed");
+        assert!(xml.contains("<staves>2</staves>"));
+        assert!(xml.contains("<clef-octave-change>-1</clef-octave-change>"));
+        assert!(xml.contains("<clef number=\"2\"><sign>TAB</sign><line>5</line></clef>"));
+        assert!(xml.contains("<staff-lines>6</staff-lines>"));
+        assert!(xml.contains(
+            "<staff-tuning line=\"1\"><tuning-step>E</tuning-step><tuning-octave>2</tuning-octave></staff-tuning>"
+        ));
+        // Each staff fills its bar (the tab comes after a backup).
+        let tab: Vec<(String, String)> = doc
+            .descendants()
+            .filter(|n| n.has_tag_name("technical"))
+            .map(|t| {
+                let text = |tag: &str| {
+                    t.children()
+                        .find(|c| c.has_tag_name(tag))
+                        .and_then(|c| c.text())
+                        .unwrap_or_default()
+                        .to_owned()
+                };
+                (text("string"), text("fret"))
+            })
+            .collect();
+        let mut chord: Vec<_> = tab[..6].to_vec();
+        chord.sort();
+        let pairs = |v: &[(&str, &str)]| -> Vec<(String, String)> {
+            v.iter().map(|(a, b)| ((*a).into(), (*b).into())).collect()
+        };
+        assert_eq!(
+            chord,
+            pairs(&[
+                ("1", "0"),
+                ("2", "0"),
+                ("3", "1"),
+                ("4", "2"),
+                ("5", "2"),
+                ("6", "0")
+            ])
+        );
+        assert_eq!(tab[6], ("1".into(), "5".into()));
+        // Tab notes are on staff 2, in their own voice.
+        let tab_notes = doc
+            .descendants()
+            .filter(|n| n.has_tag_name("note"))
+            .filter(|n| n.descendants().any(|c| c.has_tag_name("fret")))
+            .count();
+        assert_eq!(tab_notes, 7);
+        assert!(xml.contains("<voice>5</voice>"));
+        assert!(xml.contains("<backup><duration>16</duration></backup>"));
+    }
+
+    #[test]
+    fn the_tab_view_and_the_notes_view_have_one_staff() {
+        let (p, id) = guitar_song(vec![note(64, 0.0, 1.0)], 0.0, 2.0);
+        let tab = export_musicxml_with(&p, Some(&[id]), GuitarView::Tab);
+        assert!(!tab.contains("<staves>"));
+        assert!(tab.contains("<clef><sign>TAB</sign><line>5</line></clef>"));
+        // Capo 2: the high string starts at F#4, so E4 goes on the B
+        // string, 3 frets above the capo.
+        assert!(tab.contains("<capo>2</capo>"));
+        assert!(tab.contains("<string>2</string><fret>3</fret>"), "{tab}");
+        let notes = export_musicxml_with(&p, Some(&[id]), GuitarView::Notes);
+        assert!(!notes.contains("<fret>"));
+        assert!(notes.contains(
+            "<clef><sign>G</sign><line>2</line><clef-octave-change>-1</clef-octave-change></clef>"
+        ));
+    }
+
+    #[test]
+    fn chord_names_go_above_the_top_part() {
+        let mut p = project_with(1, vec![note(60, 0.0, 4.0)], 4.0);
+        for (beats, root, quality, bass) in [
+            (0.0, 9, ChordQuality::Minor7, None),
+            (2.0, 0, ChordQuality::Major, Some(4)),
+        ] {
+            Command::AddChord {
+                start_beats: beats,
+                root,
+                quality,
+                bass,
+            }
+            .apply(&mut p)
+            .expect("chord");
+        }
+        let xml = export_musicxml(&p, None);
+        assert!(xml.contains(
+            "<harmony><root><root-step>A</root-step></root><kind text=\"m7\">minor-seventh</kind></harmony>"
+        ));
+        // C/E halfway through the held note.
+        assert!(xml.contains(
+            "<harmony><root><root-step>C</root-step></root><kind text=\"\">major</kind><bass><bass-step>E</bass-step></bass><offset>8</offset></harmony>"
+        ));
+        assert_eq!(xml.matches("<harmony>").count(), 2, "only on the top part");
         super::super::parse_xml(&xml).expect("parses");
     }
 }

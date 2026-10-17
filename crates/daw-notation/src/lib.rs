@@ -8,6 +8,7 @@
 //! beat (a quarter in 4/4, an eighth in 6/8). MIDI and MusicXML count in
 //! quarter notes, so conversions go through [`quarters_per_beat`].
 
+pub mod guitar;
 pub mod midi;
 pub mod musicxml;
 

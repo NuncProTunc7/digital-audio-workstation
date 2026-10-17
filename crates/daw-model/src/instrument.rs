@@ -774,6 +774,39 @@ pub fn guitar_strings(instrument: &Instrument) -> [u8; 6] {
     )
 }
 
+/// How many frets above its open note each string reaches: the capo
+/// shortens the neck, which still ends at the last fret.
+pub fn guitar_reach(open: [u8; 6], uncapoed_low: u8) -> u8 {
+    GUITAR_FRETS.saturating_sub(open[0].saturating_sub(uncapoed_low))
+}
+
+/// Which string (0 = lowest) the guitar plays `note` on, given the open
+/// strings (with the capo), the low string without the capo, and the note
+/// each string is busy with (held or about to sound): the string already
+/// playing that note, else the highest free string that reaches it, else
+/// the highest that reaches it (cutting its note), else the nearest end.
+/// The engine and the tab both use this, so the tab shows what is heard.
+// RT-SAFE
+pub fn guitar_string_for(
+    note: u8,
+    open: [u8; 6],
+    uncapoed_low: u8,
+    busy: [Option<u8>; 6],
+) -> usize {
+    if let Some(i) = busy.iter().position(|&b| b == Some(note)) {
+        return i;
+    }
+    let reach = guitar_reach(open, uncapoed_low);
+    let reaches = |i: usize| note >= open[i] && note <= open[i].saturating_add(reach);
+    if let Some(i) = (0..6).rev().find(|&i| reaches(i) && busy[i].is_none()) {
+        return i;
+    }
+    if let Some(i) = (0..6).rev().find(|&i| reaches(i)) {
+        return i;
+    }
+    if note < open[0] { 0 } else { 5 }
+}
+
 /// The open strings for a `string.tuning` index and capo, lowest first.
 pub fn strings_for(tuning: f64, capo: f64) -> [u8; 6] {
     let index = if tuning.is_finite() && tuning >= 0.0 {

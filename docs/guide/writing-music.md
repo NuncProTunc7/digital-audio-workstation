@@ -40,6 +40,8 @@ Each note you play goes to the highest string that can reach it, like a guitaris
 
 Notes below the lowest string still play (on the lowest string), but a real guitarist couldn't play them, so keep parts within the range shown.
 
+To read a part as **guitar tab** (fret numbers on six lines), open the **Sheet music** tab with the guitar track selected. See [Sheet music](sheet-music.md).
+
 ### Sampler (real instruments)
 
 1. **+ Sampler track**, then in its panel open **Free instruments**. You'll find two grand pianos (Salamander, Headroom), a cello, a double bass, a flute and a war tuba.

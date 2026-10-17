@@ -137,11 +137,24 @@ pub fn import_musicxml_text<H: Host>(host: &H, xml: &str) -> Result<Vec<TrackId>
     import_song(host, song)
 }
 
+pub use daw_notation::musicxml::GuitarView;
+
 /// The song (or some tracks) as MusicXML text.
 pub fn sheet_music<H: Host>(host: &H, track_ids: Option<&[TrackId]>) -> Result<String, String> {
-    Ok(daw_notation::musicxml::export_musicxml(
+    sheet_music_with(host, track_ids, GuitarView::Both)
+}
+
+/// [`sheet_music`], choosing how guitar tracks are shown (notes and tab,
+/// tab, or notes).
+pub fn sheet_music_with<H: Host>(
+    host: &H,
+    track_ids: Option<&[TrackId]>,
+    guitar: GuitarView,
+) -> Result<String, String> {
+    Ok(daw_notation::musicxml::export_musicxml_with(
         host.session()?.project(),
         track_ids,
+        guitar,
     ))
 }
 

@@ -1370,13 +1370,17 @@ export function createPreviewBackend(): PreviewBackend {
       return { files, left_behind: [] };
     },
     // A one-bar score per track, so the view has something to draw.
-    sheetMusic: async (trackIds) => {
+    sheetMusic: async (trackIds, guitar) => {
       const tracks = project.tracks.filter((t) => t.instrument.kind !== "audio" && (!trackIds || trackIds.includes(t.id)));
       const parts = tracks.map((t, i) => `<score-part id="P${i + 1}"><part-name>${t.name}</part-name></score-part>`);
-      const bodies = tracks.map(
-        (_, i) =>
-          `<part id="P${i + 1}"><measure number="1"><attributes><divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes><note><rest measure="yes"/><duration>16</duration></note></measure></part>`,
-      );
+      // Guitar tracks show an empty tab staff unless notes only (the app draws real frets).
+      const bodies = tracks.map((t, i) => {
+        const tab = t.instrument.kind === "guitar" && guitar !== "notes";
+        const clef = tab
+          ? `<clef><sign>TAB</sign><line>5</line></clef><staff-details><staff-lines>6</staff-lines></staff-details>`
+          : `<clef><sign>G</sign><line>2</line></clef>`;
+        return `<part id="P${i + 1}"><measure number="1"><attributes><divisions>4</divisions><time><beats>4</beats><beat-type>4</beat-type></time>${clef}</attributes><note><rest measure="yes"/><duration>16</duration></note></measure></part>`;
+      });
       return `<?xml version="1.0"?><score-partwise version="4.0"><part-list>${parts.join("")}</part-list>${bodies.join("")}</score-partwise>`;
     },
     audioPeaks: async (): Promise<Peaks> => {
