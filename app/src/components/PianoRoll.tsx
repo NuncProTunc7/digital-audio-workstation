@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { snap, snapDown } from "../format";
 import { isBlackKey, noteName } from "../keymap";
-import type { Chord, Clip, Command, DrumPad, Key, Note, Track } from "../types";
+import type { Chord, Clip, Command, DrumPad, GuitarNote, Key, Note, Track } from "../types";
 import { chordTones, keyName, scaleOf } from "../music";
 
 const ROW_HEIGHT = 14;
@@ -290,6 +290,20 @@ export default function PianoRoll(props: PianoRollProps) {
           />
           <span className="param-value">{selectedNotes.length > 0 ? velocity : "–"}</span>
         </label>
+        {track.instrument.kind === "guitar" && (
+          <GuitarControls
+            notes={selectedNotes}
+            onChange={(change) =>
+              void props
+                .onCommand({
+                  command: "edit_notes",
+                  clip_id: clip.id,
+                  edits: selectedNotes.map((n) => ({ id: n.id, guitar: change(n.guitar ?? {}) })),
+                })
+                .then(props.onEndGesture)
+            }
+          />
+        )}
         <div className="button-group" role="group" aria-label="Copy clip">
           {[false, true].map((linked) => (
             <button
@@ -416,6 +430,7 @@ export default function PianoRoll(props: PianoRollProps) {
                     .then(props.onEndGesture);
                 }}
               >
+                {n.guitar && techniqueMark(n.guitar) && <span className="roll-note-mark">{techniqueMark(n.guitar)}</span>}
                 <div className="roll-note-resize" onPointerDown={(e) => startNoteDrag(e, n, true)} />
               </div>
             ))}
@@ -425,6 +440,111 @@ export default function PianoRoll(props: PianoRollProps) {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** A guitar note's technique as a short key ("picked", "slide", "legato", "bend_1"). */
+function techniqueKey(g: GuitarNote | undefined): string {
+  if (g?.slide) return "slide";
+  if (g?.legato) return "legato";
+  if (g?.bend_semitones) return `bend_${g.bend_semitones}`;
+  return "picked";
+}
+
+/** The mark drawn on a note: / slide, H hammer-on/pull-off, ↑ bend. */
+function techniqueMark(g: GuitarNote): string {
+  if (g.slide) return "/";
+  if (g.legato) return "H";
+  if (g.bend_semitones) return `↑${g.bend_semitones}`;
+  return "";
+}
+
+/** The guitar detail without empty fields. */
+function tidy(g: GuitarNote): GuitarNote {
+  const out: GuitarNote = {};
+  if (g.bend_semitones) out.bend_semitones = g.bend_semitones;
+  if (g.legato) out.legato = true;
+  if (g.slide) out.slide = true;
+  if (g.string) out.string = g.string;
+  return out;
+}
+
+const TECHNIQUES: [string, string][] = [
+  ["picked", "Picked"],
+  ["slide", "Slide in (/)"],
+  ["legato", "Hammer-on / pull-off (H)"],
+  ["bend_0.5", "Bend ½ step"],
+  ["bend_1", "Bend 1 step (half)"],
+  ["bend_2", "Bend 2 (full)"],
+  ["bend_3", "Bend 3 (overbend)"],
+];
+
+/** String and technique of the selected notes on a guitar track. */
+function GuitarControls({
+  notes,
+  onChange,
+}: {
+  notes: Note[];
+  onChange: (change: (g: GuitarNote) => GuitarNote) => void;
+}) {
+  const common = <T,>(f: (n: Note) => T): T | "" => {
+    const values = new Set(notes.map(f));
+    return values.size === 1 ? [...values][0] : "";
+  };
+  const string = common((n) => (n.guitar?.string ? String(n.guitar.string) : "auto"));
+  const technique = common((n) => techniqueKey(n.guitar));
+  const disabled = notes.length === 0;
+  return (
+    <div className="button-group guitar-controls" role="group" aria-label="Guitar">
+      <label className="field" title="Which string plays the selected notes (Auto: the highest string that reaches them)">
+        <span>String</span>
+        <select
+          aria-label="String"
+          disabled={disabled}
+          value={string}
+          onChange={(e) => {
+            const v = e.target.value;
+            e.currentTarget.blur();
+            onChange((g) => tidy({ ...g, string: v === "auto" ? undefined : Number(v) }));
+          }}
+        >
+          {string === "" && <option value="">Mixed</option>}
+          <option value="auto">Auto</option>
+          {[1, 2, 3, 4, 5, 6].map((s) => (
+            <option key={s} value={s}>
+              {s === 1 ? "1 (thinnest)" : s === 6 ? "6 (thickest)" : String(s)}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="field" title="How the selected notes are played (slides and hammer-ons join the note before on the same string)">
+        <span>Technique</span>
+        <select
+          aria-label="Technique"
+          disabled={disabled}
+          value={technique}
+          onChange={(e) => {
+            const v = e.target.value;
+            e.currentTarget.blur();
+            onChange((g) =>
+              tidy({
+                string: g.string,
+                slide: v === "slide",
+                legato: v === "legato",
+                bend_semitones: v.startsWith("bend_") ? Number(v.slice(5)) : undefined,
+              }),
+            );
+          }}
+        >
+          {technique === "" && <option value="">Mixed</option>}
+          {TECHNIQUES.map(([v, label]) => (
+            <option key={v} value={v}>
+              {label}
+            </option>
+          ))}
+        </select>
+      </label>
     </div>
   );
 }

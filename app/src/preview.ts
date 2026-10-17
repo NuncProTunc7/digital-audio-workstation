@@ -118,6 +118,7 @@ export function applyCommand(project: Project, command: Command): Project {
       length_beats: n.length_beats,
       velocity: n.velocity ?? 100,
       ...(n.chance !== undefined && n.chance < 100 ? { chance: n.chance } : {}),
+      ...(n.guitar && Object.keys(n.guitar).length > 0 ? { guitar: { ...n.guitar } } : {}),
     }));
   const sortNotes = (c: Clip) => c.notes.sort((a, b) => a.start_beats - b.start_beats || a.pitch - b.pitch);
 
@@ -604,6 +605,10 @@ export function applyCommand(project: Project, command: Command): Project {
         if (e.length_beats != null) n.length_beats = e.length_beats;
         if (e.velocity != null) n.velocity = e.velocity;
         if (e.chance != null) n.chance = e.chance;
+        if (e.guitar != null) {
+          if (Object.keys(e.guitar).length > 0) n.guitar = { ...e.guitar };
+          else delete n.guitar;
+        }
       }
       sortNotes(c);
       break;

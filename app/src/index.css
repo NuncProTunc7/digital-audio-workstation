@@ -3046,3 +3046,14 @@ button.tiny.power.on {
 .fretboard-chords button {
   min-width: 38px;
 }
+
+/* Guitar techniques on piano roll notes: / slide, H hammer-on, ↑ bend. */
+.roll-note-mark {
+  position: absolute;
+  left: 2px;
+  top: -1px;
+  font-size: 9px;
+  font-weight: 700;
+  color: #fff;
+  pointer-events: none;
+}

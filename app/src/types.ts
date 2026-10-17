@@ -88,6 +88,20 @@ export interface Note {
   velocity: number;
   /** How often it plays, 1–100 % (missing = 100, every time). */
   chance?: number;
+  /** Guitar tracks: string and technique. */
+  guitar?: GuitarNote;
+}
+
+/** How a guitar plays a note (all optional: missing = picked, automatic string). */
+export interface GuitarNote {
+  /** 1 (thinnest) to 6 (thickest). */
+  string?: number;
+  /** Slide in from the note ringing on the same string. */
+  slide?: boolean;
+  /** Hammer-on or pull-off from the note ringing on the same string. */
+  legato?: boolean;
+  /** Bend up this many semitones (0.5–3). */
+  bend_semitones?: number;
 }
 
 /** Shuffle: every second `grid_beats` step plays late. */
@@ -444,6 +458,7 @@ export interface NoteInput {
   /** 1–100 % (default 100). */
   chance?: number;
   id?: number;
+  guitar?: GuitarNote;
 }
 
 export interface NoteEdit {
@@ -453,6 +468,8 @@ export interface NoteEdit {
   length_beats?: number | null;
   velocity?: number | null;
   chance?: number | null;
+  /** Replaces the note's guitar detail ({} = back to plain). */
+  guitar?: GuitarNote | null;
 }
 
 type Opt<T> = T | null;
