@@ -21,13 +21,14 @@ const THIRD_OCTAVES_HZ: [f64; 28] = [
 ];
 
 /// Where the render sits in the song, so stretches can be named by bar.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct Timing {
     /// Song position of the first sample, in beats.
     pub start_beats: f64,
     /// Where the requested region ends (anything after is reverb tail).
     pub end_beats: f64,
-    pub tempo_bpm: f64,
+    /// The song's tempo and tempo changes.
+    pub tempo: daw_model::TempoMap,
     pub beats_per_bar: f64,
 }
 
@@ -57,8 +58,9 @@ pub fn describe_spectrogram(stereo: &[f32], sample_rate_hz: u32, timing: Timing)
         .map(|&[l, r]| 0.5 * (l + r))
         .collect();
     let sr = f64::from(sample_rate_hz);
-    let samples_per_beat = sr * 60.0 / timing.tempo_bpm.max(1.0);
-    let render_end_beats = timing.start_beats + mono.len() as f64 / samples_per_beat;
+    let tempo = &timing.tempo;
+    let render_end_beats =
+        tempo.beats_at(tempo.seconds_at(timing.start_beats) + mono.len() as f64 / sr);
 
     // Whole bars per stretch, doubling until the song fits in the limit.
     let bar = timing.beats_per_bar.max(1.0);
@@ -89,7 +91,7 @@ pub fn describe_spectrogram(stereo: &[f32], sample_rate_hz: u32, timing: Timing)
     let mut buf = vec![Complex::new(0.0f64, 0.0); FFT_SIZE];
 
     let to_sample = |beats: f64| {
-        (((beats - timing.start_beats) * samples_per_beat)
+        ((tempo.seconds_between(timing.start_beats, beats) * sr)
             .round()
             .max(0.0) as usize)
             .min(mono.len())
@@ -371,7 +373,7 @@ mod tests {
         let t = Timing {
             start_beats: 0.0,
             end_beats: bars * 4.0,
-            tempo_bpm: 120.0,
+            tempo: daw_model::TempoMap::steady(120.0),
             beats_per_bar: 4.0,
         };
         (t, ((bars * 2.0 + tail_s) * f64::from(SR)) as usize)
@@ -428,6 +430,42 @@ mod tests {
         );
         assert!(changes.contains("highs come in at bar 2"), "{changes}");
         assert!(changes.contains("the lows drop out at bar 2"), "{changes}");
+    }
+
+    #[test]
+    fn bars_follow_tempo_changes() {
+        // 120 BPM for bar 1 (2 s), then 60 BPM: bar 2 lasts 4 s (2..6 s)
+        // and bar 3 starts at 6 s.
+        let t = Timing {
+            start_beats: 0.0,
+            end_beats: 12.0,
+            tempo: daw_model::TempoMap::new(
+                120.0,
+                &[daw_model::TempoChange {
+                    id: 1,
+                    beats: 4.0,
+                    bpm: 60.0,
+                    ramp: false,
+                }],
+            ),
+            beats_per_bar: 4.0,
+        };
+        // Bass until 6 s, then a 5 kHz tone: at one tempo that would be
+        // the middle of bar 4, but here it is exactly bar 3.
+        let n = 10 * SR as usize;
+        let a = audio(n, |_, t| {
+            0.3 * sine(if t < 6.0 { 100.0 } else { 5_000.0 }, t)
+        });
+        let lines = describe_spectrogram(&a, SR, t);
+        let bar = |name: &str| {
+            lines
+                .iter()
+                .find(|l| l.starts_with(name))
+                .unwrap_or_else(|| panic!("{name} in {lines:?}"))
+                .clone()
+        };
+        assert!(bar("Bar 2:").contains("lows 100%"), "{lines:?}");
+        assert!(bar("Bar 3:").contains("highs 100%"), "{lines:?}");
     }
 
     #[test]
@@ -505,7 +543,7 @@ mod tests {
         let t = Timing {
             start_beats: 2.0,
             end_beats: 10.0,
-            tempo_bpm: 120.0,
+            tempo: daw_model::TempoMap::steady(120.0),
             beats_per_bar: 4.0,
         };
         let a = audio(4 * SR as usize, |_, t| 0.2 * sine(300.0, t));

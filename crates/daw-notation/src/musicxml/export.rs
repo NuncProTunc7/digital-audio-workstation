@@ -220,7 +220,19 @@ pub fn export_musicxml(project: &Project, track_ids: Option<&[TrackId]>) -> Stri
     let end_div = (end_beats * quarters_per_beat(ts) * DIVISIONS as f64).round() as i64;
     let measures = ((end_div + measure - 1) / measure).max(1);
     let end = measures * measure;
-    let quarter_bpm = project.tempo_bpm * quarters_per_beat(ts);
+    let qpb = quarters_per_beat(ts);
+    // Tempo marks as (division from the start, quarter-note tempo, words):
+    // the start, then each change, with "accel." or "rit." where it glides.
+    let mut tempo_marks: Vec<(i64, f64, &str)> = vec![(0, project.tempo_bpm * qpb, "")];
+    for (k, c) in project.tempo_changes.iter().enumerate() {
+        let words = match project.tempo_changes.get(k + 1) {
+            Some(next) if c.ramp && next.bpm > c.bpm => "accel.",
+            Some(next) if c.ramp && next.bpm < c.bpm => "rit.",
+            _ => "",
+        };
+        let div = (c.beats * qpb * DIVISIONS as f64).round() as i64;
+        tempo_marks.push((div, c.bpm * qpb, words));
+    }
 
     let mut xml = String::new();
     xml.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?>\n");
@@ -286,15 +298,33 @@ pub fn export_musicxml(project: &Project, track_ids: Option<&[TrackId]>) -> Stri
                     ts.numerator,
                     ts.denominator
                 );
-                if i == 0 {
+            }
+            if i == 0 {
+                // Tempo marks in this bar, placed from its start.
+                for &(div, quarter_bpm, words) in tempo_marks
+                    .iter()
+                    .filter(|t| t.0 >= m * measure && t.0 < (m + 1) * measure)
+                {
+                    let words = if words.is_empty() {
+                        String::new()
+                    } else {
+                        format!("<direction-type><words>{words}</words></direction-type>")
+                    };
+                    let offset = div - m * measure;
+                    let offset = if offset > 0 {
+                        format!("<offset>{offset}</offset>")
+                    } else {
+                        String::new()
+                    };
                     let _ = write!(
                         w.xml,
-                        "<direction placement=\"above\"><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>{}</per-minute></metronome></direction-type><sound tempo=\"{}\"/></direction>",
+                        "<direction placement=\"above\"><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>{}</per-minute></metronome></direction-type>{words}{offset}<sound tempo=\"{}\"/></direction>",
                         quarter_bpm.round(),
                         quarter_bpm
                     );
                 }
             }
+
             let bar_end = (m + 1) * measure;
             let mut at = m * measure;
             while at < bar_end {
@@ -424,6 +454,31 @@ mod tests {
         assert!(xml.contains("<tie type=\"stop\"/>"));
         assert!(xml.contains("<sound tempo=\"120\"/>"));
         assert!(xml.contains("<clef><sign>G</sign><line>2</line></clef>"));
+    }
+
+    #[test]
+    fn tempo_changes_are_marked_where_they_happen_and_read_back() {
+        let mut p = project_with(1, vec![note(60, 0.0, 1.0)], 16.0);
+        // Mid-bar 2 (beat 6), a glide up to 150 at bar 4.
+        for (beats, bpm, ramp) in [(6.0, 90.0, true), (12.0, 150.0, false)] {
+            Command::AddTempoChange { beats, bpm, ramp }
+                .apply(&mut p)
+                .expect("tempo");
+        }
+        let xml = export_musicxml(&p, None);
+        assert!(xml.contains("<sound tempo=\"120\"/>"));
+        assert!(xml.contains("<words>accel.</words>"), "{xml}");
+        assert!(xml.contains("<sound tempo=\"90\"/>"));
+        assert!(xml.contains("<sound tempo=\"150\"/>"));
+        assert!(xml.contains("<offset>"), "{xml}");
+        assert!(
+            measure_lengths(&xml)
+                .iter()
+                .all(|&l| l == measure_lengths(&xml)[0])
+        );
+        let back = crate::musicxml::import_musicxml(&xml).expect("read");
+        assert_eq!(back.tempo_bpm, Some(120.0));
+        assert_eq!(back.tempo_changes, vec![(6.0, 90.0), (12.0, 150.0)]);
     }
 
     #[test]

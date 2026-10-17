@@ -4,8 +4,6 @@
 use std::fmt::Write as _;
 use std::path::Path;
 
-use daw_model::Project;
-
 use crate::{AudioFormat, ExportError, RenderedLoop, io_err};
 
 /// Validates a folder inside the project (`music/boss`), normalizing slashes.
@@ -42,7 +40,6 @@ pub(crate) fn write_import(
     audio_path: &Path,
     format: AudioFormat,
     rendered: &RenderedLoop,
-    project: &Project,
 ) -> Result<(), ExportError> {
     let mut import_path = audio_path.as_os_str().to_owned();
     import_path.push(".import");
@@ -69,7 +66,9 @@ pub(crate) fn write_import(
             // After the intro, Godot jumps back here.
             let _ = writeln!(s, "loop_offset={:?}", rendered.loop_start_seconds());
             if whole_beats {
-                let _ = writeln!(s, "bpm={}", project.tempo_bpm);
+                // The average tempo, so beat_count * 60 / bpm is the file length
+                // even when the tempo changes inside it.
+                let _ = writeln!(s, "bpm={}", rendered.tempo_bpm);
                 let _ = writeln!(s, "beat_count={}", rendered.beats.round() as i64);
             } else {
                 s.push_str("bpm=0.0\nbeat_count=0\n");

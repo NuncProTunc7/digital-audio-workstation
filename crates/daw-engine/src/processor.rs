@@ -1102,8 +1102,14 @@ fn mix_audio(
         if r.end_seconds <= window_seconds || r.start_seconds >= window_end {
             continue;
         }
-        let first = ((r.start_seconds - window_seconds) * sr).ceil().max(0.0) as usize;
-        let last = ((r.end_seconds - window_seconds) * sr).ceil().max(0.0) as usize;
+        // Song seconds carry float error; a hair off a whole sample still
+        // means that sample.
+        let first = ((r.start_seconds - window_seconds) * sr - 1e-6)
+            .ceil()
+            .max(0.0) as usize;
+        let last = ((r.end_seconds - window_seconds) * sr - 1e-6)
+            .ceil()
+            .max(0.0) as usize;
         let (first, last) = (first.min(n), last.min(n));
         // Frames since this piece started, at sample 0 of the window.
         let since_piece = (window_seconds - r.start_seconds) * sr;
@@ -1119,7 +1125,7 @@ fn mix_audio(
             if pos < 0.0 {
                 continue;
             }
-            let idx = pos as usize;
+            let idx = (pos + 1e-6) as usize;
             let Some(&l) = buf.left.get(idx) else {
                 break;
             };

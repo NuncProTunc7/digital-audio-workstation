@@ -30,8 +30,11 @@ pub enum NotationError {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ImportedSong {
     pub title: Option<String>,
-    /// In beats per minute of the time signature's beat.
+    /// Starting tempo, in beats per minute of the time signature's beat.
     pub tempo_bpm: Option<f64>,
+    /// Later tempo changes as (beats from the song start, bpm), in order,
+    /// all after beat 0.
+    pub tempo_changes: Vec<(f64, f64)>,
     pub time_signature: Option<TimeSignature>,
     pub parts: Vec<ImportedPart>,
 }
@@ -49,6 +52,42 @@ pub struct ImportedPart {
     pub notes: Vec<NoteInput>,
     /// Clip length in beats (whole bars).
     pub length_beats: f64,
+}
+
+/// Splits tempo marks `(beats, bpm)` found in a file into a starting tempo
+/// and later changes: sorted, the last mark on a beat wins, and marks that
+/// don't change the tempo are dropped. Before the first mark the tempo is
+/// `before_first` (MIDI's 120) or, if None, the first mark's.
+pub(crate) fn split_tempo_marks(
+    mut marks: Vec<(f64, f64)>,
+    before_first: Option<f64>,
+) -> (Option<f64>, Vec<(f64, f64)>) {
+    marks.retain(|&(b, bpm)| b.is_finite() && b >= 0.0 && bpm.is_finite() && bpm > 0.0);
+    // Stable: marks on one beat keep their order, so the last one wins.
+    marks.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let mut merged: Vec<(f64, f64)> = Vec::new();
+    for (b, bpm) in marks {
+        let bpm = bpm.clamp(daw_model::MIN_TEMPO_BPM, daw_model::MAX_TEMPO_BPM);
+        match merged.last_mut() {
+            Some(last) if (last.0 - b).abs() < 1e-6 => last.1 = bpm,
+            _ => merged.push((b, bpm)),
+        }
+    }
+    let start = match merged.first() {
+        Some(&(b, bpm)) if b < 1e-6 => Some(bpm),
+        Some(&(_, bpm)) => before_first.or(Some(bpm)),
+        None => None,
+    };
+    let mut changes = Vec::new();
+    let mut current = start;
+    for (b, bpm) in merged.into_iter().filter(|&(b, _)| b >= 1e-6) {
+        if current.is_none_or(|c| (c - bpm).abs() > 1e-3) {
+            changes.push((b, bpm));
+            current = Some(bpm);
+        }
+    }
+    changes.truncate(daw_model::MAX_TEMPO_CHANGES);
+    (start, changes)
 }
 
 /// How many quarter notes one beat of `ts` is (1 in 4/4, 0.5 in 6/8).

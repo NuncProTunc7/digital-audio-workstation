@@ -127,7 +127,8 @@ pub fn analyze(project: &Project, audio: &Arc<AudioPool>, options: &AnalyzeOptio
         let timing = Timing {
             start_beats: start,
             end_beats: end,
-            tempo_bpm: project.tempo_bpm,
+            tempo: project.tempo_map(),
+
             beats_per_bar: project.beats_per_bar(),
         };
         describe_spectrogram(&rendered, SAMPLE_RATE_HZ, timing)

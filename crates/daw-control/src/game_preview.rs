@@ -96,9 +96,13 @@ pub fn switch<H: Host>(host: &H, index: usize) -> Result<(), String> {
 
 /// Fades a track in or out over `fade_beats` (0 = at once).
 pub fn fade<H: Host>(host: &H, track_id: TrackId, on: bool, fade_beats: f64) -> Result<(), String> {
-    let tempo = host.session()?.project().tempo_bpm;
-    let seconds = (fade_beats.max(0.0) * 60.0 / tempo) as f32;
-    engine(host)?.fade_layer(track_id, if on { 1.0 } else { 0.0 }, seconds);
+    let tempo = host.session()?.project().tempo_map();
+    let engine = engine(host)?;
+    // From the playhead, through any tempo changes ahead.
+    let at = engine.status().position_beats;
+    let seconds = tempo.seconds_between(at, at + fade_beats.max(0.0)) as f32;
+    engine.fade_layer(track_id, if on { 1.0 } else { 0.0 }, seconds);
+
     Ok(())
 }
 

@@ -8,7 +8,8 @@ use daw_notation::ImportedSong;
 use crate::host::{Host, sync};
 
 /// Turns an imported song into Commands: one new track (with one clip) per
-/// part. An empty project also takes the song's tempo, meter, and title.
+/// part. An empty project also takes the song's tempo (with its tempo
+/// changes), meter, and title.
 /// Everything is one undo step. Returns the new track ids.
 pub fn import_song<H: Host>(host: &H, song: ImportedSong) -> Result<Vec<TrackId>, String> {
     let mut session = host.session()?;
@@ -30,7 +31,23 @@ pub fn import_song<H: Host>(host: &H, song: ImportedSong) -> Result<Vec<TrackId>
                     bpm: bpm.clamp(20.0, 999.0),
                 },
             )?;
+            // The file's tempo map replaces the song's.
+            let old: Vec<_> = scratch.tempo_changes.iter().map(|c| c.id).collect();
+            for tempo_change_id in old {
+                apply(&mut scratch, Command::RemoveTempoChange { tempo_change_id })?;
+            }
+            for &(beats, bpm) in &song.tempo_changes {
+                apply(
+                    &mut scratch,
+                    Command::AddTempoChange {
+                        beats,
+                        bpm: bpm.clamp(20.0, 999.0),
+                        ramp: false,
+                    },
+                )?;
+            }
         }
+
         if let Some(ts) = song.time_signature {
             // Meters this app doesn't support are kept as they were.
             let c = Command::SetTimeSignature {
@@ -158,6 +175,12 @@ mod tests {
         {
             let mut s = host.session().expect("s");
             s.execute(Command::SetTempo { bpm: 96.0 }).expect("tempo");
+            s.execute(Command::AddTempoChange {
+                beats: 2.0,
+                bpm: 60.0,
+                ramp: false,
+            })
+            .expect("tempo change");
             s.execute(Command::CreateClip {
                 track_id: 2,
                 start_beats: 0.0,
@@ -200,7 +223,11 @@ mod tests {
             let s = other.session().expect("s");
             let p = s.project();
             assert!((p.tempo_bpm - 96.0).abs() < 0.01);
+            assert_eq!(p.tempo_changes.len(), 1, "and its tempo changes");
+            assert_eq!(p.tempo_changes[0].beats, 2.0);
+            assert!((p.tempo_changes[0].bpm - 60.0).abs() < 0.01);
             let t = p.tracks.last().expect("track");
+
             assert_eq!(t.name, "Bass");
             assert_eq!(t.instrument.preset, "Fat Bass");
             assert_eq!(t.clips[0].notes[0].pitch, 40);

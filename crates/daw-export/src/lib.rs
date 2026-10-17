@@ -207,7 +207,7 @@ pub fn export_to_godot(
                     .then_some((rendered.loop_start_frame(), samples.len() / 2)),
             )?,
         }
-        godot::write_import(&path, spec.format, rendered, project)?;
+        godot::write_import(&path, spec.format, rendered)?;
         let res = godot::res_path(&folder, &file);
         files.push(res.clone());
         Ok(res)

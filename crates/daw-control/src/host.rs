@@ -747,18 +747,31 @@ fn with_safety_version<H: Host>(
 /// count-in) or before the song's start is trimmed off rather than shifting
 /// the take, so everything after stays in time. None if almost nothing is
 /// left. `late_ms` is the microphone's known recording delay: the take moves
-/// that much earlier.
+/// that much earlier. Times go through the song's tempo map; before
+/// `from_beats` the count-in clicked at the tempo there.
 fn place_take(
     start_beats: f64,
     seconds: f64,
-    tempo_bpm: f64,
+    tempo: &daw_model::TempoMap,
     late_ms: f64,
     from_beats: f64,
 ) -> Option<(f64, f64)> {
-    let start_beats = start_beats - late_ms / 1000.0 * tempo_bpm / 60.0;
     let keep_from = from_beats.max(0.0);
-    let offset_seconds = ((keep_from - start_beats) * 60.0 / tempo_bpm).max(0.0);
-    (seconds - offset_seconds >= 0.05).then_some((start_beats.max(keep_from), offset_seconds))
+    // Seconds from `keep_from` to where the take really starts (negative =
+    // before it).
+    let captured = if start_beats < keep_from {
+        (start_beats - keep_from) * 60.0 / tempo.bpm_at(keep_from)
+    } else {
+        tempo.seconds_between(keep_from, start_beats)
+    };
+    let starts = captured - late_ms / 1000.0;
+    let offset_seconds = (-starts).max(0.0);
+    let start_beats = if starts > 0.0 {
+        tempo.beats_at(tempo.seconds_at(keep_from) + starts)
+    } else {
+        keep_from
+    };
+    (seconds - offset_seconds >= 0.05).then_some((start_beats, offset_seconds))
 }
 
 /// Starts a take on `track_id`: checks it is an audio track, starts the
@@ -832,7 +845,7 @@ pub fn end_take<H: Host>(
     let placed = place_take(
         take.start_beats,
         take.seconds,
-        session.project().tempo_bpm,
+        &session.project().tempo_map(),
         late_ms,
         take.requested_beats,
     );
@@ -2079,18 +2092,44 @@ pub(crate) mod tests {
         assert!(err.contains("can't record"), "{err}");
     }
 
+    fn steady() -> daw_model::TempoMap {
+        daw_model::TempoMap::steady(120.0)
+    }
+
+    #[test]
+    fn takes_land_on_their_beat_across_tempo_changes() {
+        // 120 BPM until beat 4, then 60 BPM.
+        let map = daw_model::TempoMap::new(
+            120.0,
+            &[daw_model::TempoChange {
+                id: 1,
+                beats: 4.0,
+                bpm: 60.0,
+                ramp: false,
+            }],
+        );
+        // A take the clock puts at beat 6.18 with a 180 ms delay was
+        // played on beat 6 (0.18 beats = 180 ms at 60 BPM).
+        let (start, offset) = place_take(6.18, 4.0, &map, 180.0, 0.0).expect("kept");
+        assert!((start - 6.0).abs() < 1e-9 && offset == 0.0, "{start}");
+        // Counting in two beats to beat 8 (60 BPM there): 2 s skipped.
+        let (start, offset) = place_take(6.0, 6.0, &map, 0.0, 8.0).expect("kept");
+        assert_eq!(start, 8.0);
+        assert!((offset - 2.0).abs() < 1e-12);
+    }
+
     #[test]
     fn takes_that_start_before_the_song_are_trimmed_not_shifted() {
         // Starts on beat 8: placed as is.
-        assert_eq!(place_take(8.0, 4.0, 120.0, 0.0, 0.0), Some((8.0, 0.0)));
+        assert_eq!(place_take(8.0, 4.0, &steady(), 0.0, 0.0), Some((8.0, 0.0)));
         // Capture began 0.05 beats (25 ms at 120 BPM) before beat 0: the
         // first 25 ms are skipped so beat 1 of the take is beat 1 of the song.
-        let (start, offset) = place_take(-0.05, 4.0, 120.0, 0.0, 0.0).expect("kept");
+        let (start, offset) = place_take(-0.05, 4.0, &steady(), 0.0, 0.0).expect("kept");
         assert_eq!(start, 0.0);
         assert!((offset - 0.025).abs() < 1e-12);
         // Nothing left after trimming.
-        assert_eq!(place_take(-1.0, 0.5, 120.0, 0.0, 0.0), None);
-        assert_eq!(place_take(0.0, 0.01, 120.0, 0.0, 0.0), None);
+        assert_eq!(place_take(-1.0, 0.5, &steady(), 0.0, 0.0), None);
+        assert_eq!(place_take(0.0, 0.01, &steady(), 0.0, 0.0), None);
     }
 
     #[test]
@@ -2098,10 +2137,10 @@ pub(crate) mod tests {
         // A Bluetooth headset delivers sound 180 ms late: a take the clock
         // puts at beat 8.36 (at 120 BPM, 0.36 beats = 180 ms) was played
         // on beat 8.
-        let (start, offset) = place_take(8.36, 4.0, 120.0, 180.0, 0.0).expect("kept");
+        let (start, offset) = place_take(8.36, 4.0, &steady(), 180.0, 0.0).expect("kept");
         assert!((start - 8.0).abs() < 1e-9 && offset == 0.0);
         // Moved before the song start: trimmed, as usual.
-        let (start, offset) = place_take(0.2, 4.0, 120.0, 180.0, 0.0).expect("kept");
+        let (start, offset) = place_take(0.2, 4.0, &steady(), 180.0, 0.0).expect("kept");
         assert_eq!(start, 0.0);
         assert!((offset - 0.08).abs() < 1e-9);
     }
@@ -2110,14 +2149,14 @@ pub(crate) mod tests {
     fn the_count_in_is_trimmed_off_a_take() {
         // Recording from beat 8 with a one-bar count-in: capture began at
         // beat 4, so the first 4 beats (2 s at 120 BPM) are skipped.
-        let (start, offset) = place_take(4.0, 6.0, 120.0, 0.0, 8.0).expect("kept");
+        let (start, offset) = place_take(4.0, 6.0, &steady(), 0.0, 8.0).expect("kept");
         assert_eq!(start, 8.0);
         assert!((offset - 2.0).abs() < 1e-12);
         // With a recording delay, the corrected take is trimmed the same way.
-        let (start, offset) = place_take(4.36, 6.0, 120.0, 180.0, 8.0).expect("kept");
+        let (start, offset) = place_take(4.36, 6.0, &steady(), 180.0, 8.0).expect("kept");
         assert_eq!(start, 8.0);
         assert!((offset - 2.0).abs() < 1e-9);
         // Stopped during the count-in: nothing to keep.
-        assert_eq!(place_take(4.0, 1.5, 120.0, 0.0, 8.0), None);
+        assert_eq!(place_take(4.0, 1.5, &steady(), 0.0, 8.0), None);
     }
 }
