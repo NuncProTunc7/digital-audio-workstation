@@ -100,6 +100,7 @@ pub(super) fn restore(
             length_beats: n.length_beats,
             velocity: n.velocity,
             id: Some(n.id),
+            guitar: n.guitar,
         })
         .collect();
     clip.notes = materialize(project, inputs)?;
@@ -250,6 +251,7 @@ pub(super) fn duplicate(
             length_beats: n.length_beats,
             velocity: n.velocity,
             id: None,
+            guitar: n.guitar,
         })
         .collect();
     let (length, name) = (clip.length_beats, clip.name.clone());

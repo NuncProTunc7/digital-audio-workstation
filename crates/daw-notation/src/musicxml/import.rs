@@ -375,6 +375,7 @@ pub fn import_musicxml(xml: &str) -> Result<ImportedSong, NotationError> {
                 length_beats: ((n.end_q - n.start_q) / qpb).max(MIN_LENGTH_BEATS),
                 velocity: n.velocity,
                 id: None,
+                guitar: None,
             })
             .collect();
         notes.sort_by(|a, b| {
@@ -436,6 +437,7 @@ mod tests {
             length_beats: len,
             velocity: 100,
             id: None,
+            guitar: None,
         }
     }
 

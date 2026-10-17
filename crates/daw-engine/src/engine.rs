@@ -1054,6 +1054,7 @@ mod tests {
                     length_beats: 0.25,
                     velocity: 127,
                     id: None,
+                    guitar: None,
                 })
                 .collect(),
         })
@@ -1331,6 +1332,7 @@ mod tests {
                     length_beats: 0.25,
                     velocity: 127,
                     id: None,
+                    guitar: None,
                 })
                 .collect(),
         })
@@ -1369,6 +1371,7 @@ mod tests {
                     length_beats: 0.1,
                     velocity: 127,
                     id: None,
+                    guitar: None,
                 })
                 .collect(),
         })
@@ -1444,6 +1447,7 @@ mod tests {
                 length_beats: 4.0,
                 velocity: 110,
                 id: None,
+                guitar: None,
             }],
         })
         .expect("bass");
@@ -1720,6 +1724,7 @@ mod tests {
                 length_beats: 0.1,
                 velocity: 127,
                 id: None,
+                guitar: None,
             }],
         })
         .expect("snare");
@@ -1842,6 +1847,7 @@ mod tests {
                 length_beats: 0.25,
                 velocity: 127,
                 id: None,
+                guitar: None,
             }],
         })
         .expect("clip");
@@ -1880,6 +1886,7 @@ mod tests {
                     length_beats: 0.1,
                     velocity: 127,
                     id: None,
+                    guitar: None,
                 })
                 .collect(),
         })

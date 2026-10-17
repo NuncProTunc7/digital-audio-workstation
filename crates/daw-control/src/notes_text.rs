@@ -152,6 +152,7 @@ mod tests {
             length_beats: len,
             velocity,
             chance: 100,
+            guitar: None,
         }
     }
 

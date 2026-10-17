@@ -55,6 +55,7 @@ pub(crate) fn validate_note_pub(n: &crate::project::Note) -> Result<(), CommandE
         length_beats: n.length_beats,
         velocity: n.velocity,
         id: None,
+        guitar: n.guitar,
     })
 }
 

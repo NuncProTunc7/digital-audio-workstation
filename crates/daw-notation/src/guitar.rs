@@ -1,10 +1,19 @@
 //! Guitar tab: which string and fret each note of a guitar track is played
 //! on, found by replaying the track the way the guitar hears it.
 
-use daw_model::Track;
 use daw_model::instrument::{guitar_reach, guitar_string_for, guitar_strings, strings_for};
+use daw_model::{GuitarNote, Track};
 
-/// Where one note sits on the neck.
+/// How a note joins the note before it on the same string.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Connection {
+    Slide,
+    /// A hammer-on (going up) or pull-off (going down): no new pick.
+    HammerOn,
+    PullOff,
+}
+
+/// Where one note sits on the neck, and how it is played.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TabNote {
     /// Written start, in beats from the song start (not swung).
@@ -14,6 +23,12 @@ pub struct TabNote {
     pub string: u8,
     /// Frets above the open string; with a capo, counted from the capo.
     pub fret: u8,
+    /// Semitones it is bent up after the pick.
+    pub bend: Option<f64>,
+    /// Joined to the note before on this string (this note ends the mark).
+    pub from_previous: Option<Connection>,
+    /// The next note on this string joins this one (this note starts the mark).
+    pub into_next: Option<Connection>,
 }
 
 /// The guitar's open strings for `track` with the capo, and the low string
@@ -29,13 +44,17 @@ pub fn open_strings(track: &Track) -> ([u8; 6], u8) {
 /// Every note of a guitar track the guitar can reach, on the string the
 /// engine plays it on. The notes are replayed in the sequencer's order (by
 /// played time, note-offs before note-ons at the same moment, then as
-/// stored) so busy strings are the ones the engine sees. Notes out of the
+/// stored) so busy strings are the ones the engine sees. A note that names
+/// its string (and can reach the note) goes there; a slide or hammer-on
+/// stays on the string just played, as on the guitar. Notes out of the
 /// tuning's reach are left out.
 pub fn guitar_frets(track: &Track) -> Vec<TabNote> {
     let (open, low) = open_strings(track);
     let reach = guitar_reach(open, low);
-    // (played beat, is note-on, index into `notes`).
-    let mut notes = Vec::new();
+    let reaches = |i: usize, pitch: u8| pitch >= open[i] && pitch <= open[i].saturating_add(reach);
+    // (written start, pitch, guitar detail).
+    let mut notes: Vec<(f64, u8, GuitarNote)> = Vec::new();
+    // (played beat, is note-on, index into `notes`, velocity).
     let mut events = Vec::new();
     for clip in track.clips.iter().filter(|c| !c.muted && c.audio.is_none()) {
         for n in &clip.notes {
@@ -46,7 +65,11 @@ pub fn guitar_frets(track: &Track) -> Vec<TabNote> {
             let off =
                 clip.played_song_beats((n.start_beats + n.length_beats).min(clip.length_beats));
             let k = notes.len();
-            notes.push((clip.start_beats + n.start_beats, n.pitch.min(127)));
+            notes.push((
+                clip.start_beats + n.start_beats,
+                n.pitch.min(127),
+                n.guitar.unwrap_or_default(),
+            ));
             events.push((on, true, k, n.velocity));
             events.push((off, false, k, 0));
         }
@@ -55,15 +78,41 @@ pub fn guitar_frets(track: &Track) -> Vec<TabNote> {
     events.sort_by(|a, b| a.0.total_cmp(&b.0).then_with(|| a.3.cmp(&b.3)));
 
     let mut busy: [Option<u8>; 6] = [None; 6];
-    // Which note each string is holding (index into `notes`).
+    // Which note each string is holding, and the last note it played.
     let mut holder: [Option<usize>; 6] = [None; 6];
+    let mut last_on: [Option<usize>; 6] = [None; 6];
+    let mut last_string: Option<usize> = None;
     let mut placed: Vec<Option<usize>> = vec![None; notes.len()];
+    let mut from_previous: Vec<Option<Connection>> = vec![None; notes.len()];
+    let mut into_next: Vec<Option<Connection>> = vec![None; notes.len()];
     for (_, on, k, _) in events {
-        let pitch = notes[k].1;
+        let (_, pitch, g) = notes[k];
         if on {
-            let i = guitar_string_for(pitch, open, low, busy);
+            let named = g
+                .string
+                .and_then(|s| 6usize.checked_sub(usize::from(s)))
+                .filter(|&i| reaches(i, pitch));
+            let connected = g.slide || g.legato;
+            let stays = last_string.filter(|&i| connected && reaches(i, pitch));
+            let i = named
+                .or(stays)
+                .unwrap_or_else(|| guitar_string_for(pitch, open, low, busy));
+            // Joined to the note just before on this string.
+            if connected && let Some(prev) = last_on[i] {
+                let kind = if g.slide {
+                    Connection::Slide
+                } else if pitch >= notes[prev].1 {
+                    Connection::HammerOn
+                } else {
+                    Connection::PullOff
+                };
+                from_previous[k] = Some(kind);
+                into_next[prev] = Some(kind);
+            }
             busy[i] = Some(pitch);
             holder[i] = Some(k);
+            last_on[i] = Some(k);
+            last_string = Some(i);
             placed[k] = Some(i);
         } else if let Some(i) = (0..6).find(|&i| holder[i] == Some(k)) {
             busy[i] = None;
@@ -73,7 +122,8 @@ pub fn guitar_frets(track: &Track) -> Vec<TabNote> {
     notes
         .iter()
         .zip(placed)
-        .filter_map(|(&(start_beats, pitch), i)| {
+        .enumerate()
+        .filter_map(|(k, (&(start_beats, pitch, g), i))| {
             let i = i?;
             let fret = pitch.checked_sub(open[i]).filter(|&f| f <= reach)?;
             Some(TabNote {
@@ -81,6 +131,9 @@ pub fn guitar_frets(track: &Track) -> Vec<TabNote> {
                 pitch,
                 string: 6 - i as u8,
                 fret,
+                bend: g.bend_semitones,
+                from_previous: from_previous[k],
+                into_next: into_next[k],
             })
         })
         .collect()
@@ -125,6 +178,7 @@ mod tests {
                     length_beats,
                     velocity: 100,
                     id: None,
+                    guitar: None,
                 })
                 .collect(),
         }

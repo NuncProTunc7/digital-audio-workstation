@@ -11,6 +11,7 @@ fn note(pitch: u8, start: f64, len: f64) -> NoteInput {
         length_beats: len,
         velocity: 100,
         id: None,
+        guitar: None,
     }
 }
 
@@ -258,6 +259,7 @@ fn sample_commands(p: &Project) -> Vec<Command> {
                 start_beats: None,
                 length_beats: Some(2.0),
                 velocity: Some(50),
+                guitar: None,
             }],
         },
         Command::QuantizeNotes {
@@ -380,6 +382,7 @@ fn sample_commands(p: &Project) -> Vec<Command> {
                 length_beats: None,
                 velocity: None,
                 chance: Some(25),
+                guitar: None,
             }],
         },
         Command::InsertBars { at_bar: 2, bars: 1 },
@@ -449,6 +452,7 @@ fn chance_and_swing_survive_undo_of_deletes_and_saving() {
             length_beats: None,
             velocity: None,
             chance: Some(40),
+            guitar: None,
         }],
     }
     .apply(&mut p)
@@ -1189,6 +1193,7 @@ fn linked_clips_keep_the_same_notes_and_undo_exactly() {
             length_beats: None,
             velocity: None,
             chance: None,
+            guitar: None,
         }],
     })
     .expect("edit copy");
@@ -2385,4 +2390,91 @@ fn a_rig_replaces_the_chain_and_undo_brings_the_old_one_back() {
     .expect_err("no such rig")
     .to_string();
     assert!(err.contains("Metal"), "{err}");
+}
+
+#[test]
+fn guitar_details_are_kept_edited_undone_and_checked() {
+    use crate::project::GuitarNote;
+    let mut p = fixture();
+    let clip = clip_id(&p);
+    let bend = GuitarNote {
+        string: Some(2),
+        bend_semitones: Some(2.0),
+        ..GuitarNote::default()
+    };
+    let mut input = note(64, 4.0, 1.0);
+    input.guitar = Some(bend);
+    // Round trip through JSON, as the AI sends it.
+    let add = Command::AddNotes {
+        clip_id: clip,
+        notes: vec![input],
+    };
+    let json = serde_json::to_string(&add).expect("json");
+    assert!(
+        json.contains("\"bend_semitones\":2.0") && json.contains("\"string\":2"),
+        "{json}"
+    );
+    assert_eq!(serde_json::from_str::<Command>(&json).expect("back"), add);
+    add.apply(&mut p).expect("add");
+    let added = p.tracks[0].clips[0]
+        .notes
+        .iter()
+        .find(|n| n.pitch == 64 && n.start_beats == 4.0)
+        .expect("note")
+        .clone();
+    assert_eq!(added.guitar, Some(bend));
+    // A slide replaces the bend; undo brings the bend back.
+    let slide = GuitarNote {
+        slide: true,
+        ..GuitarNote::default()
+    };
+    let edit = |g: GuitarNote| Command::EditNotes {
+        clip_id: clip,
+        edits: vec![NoteEdit {
+            id: added.id,
+            pitch: None,
+            start_beats: None,
+            length_beats: None,
+            velocity: None,
+            chance: None,
+            guitar: Some(g),
+        }],
+    };
+    let undo = edit(slide).apply(&mut p).expect("edit");
+    let find = |p: &Project| {
+        p.tracks[0].clips[0]
+            .notes
+            .iter()
+            .find(|n| n.id == added.id)
+            .and_then(|n| n.guitar)
+    };
+    assert_eq!(find(&p), Some(slide));
+    undo.apply(&mut p).expect("undo");
+    assert_eq!(find(&p), Some(bend));
+    // An empty detail clears it.
+    edit(GuitarNote::default()).apply(&mut p).expect("clear");
+    assert_eq!(find(&p), None);
+    // Nonsense is refused.
+    for bad in [
+        GuitarNote {
+            string: Some(7),
+            ..GuitarNote::default()
+        },
+        GuitarNote {
+            bend_semitones: Some(5.0),
+            ..GuitarNote::default()
+        },
+    ] {
+        assert!(edit(bad).apply(&mut p).is_err(), "{bad:?}");
+    }
+    // Removing and restoring the note keeps its detail.
+    edit(bend).apply(&mut p).expect("bend again");
+    let undo = Command::RemoveNotes {
+        clip_id: clip,
+        note_ids: vec![added.id],
+    }
+    .apply(&mut p)
+    .expect("remove");
+    undo.apply(&mut p).expect("restore");
+    assert_eq!(find(&p), Some(bend));
 }

@@ -127,6 +127,7 @@ mod tests {
                     length_beats: 0.9,
                     velocity: 110,
                     id: None,
+                    guitar: None,
                 })
                 .collect(),
         })

@@ -15,6 +15,7 @@ fn n(pitch: u8, start: f64, len: f64, velocity: u8) -> NoteInput {
         length_beats: len,
         velocity,
         id: None,
+        guitar: None,
     }
 }
 

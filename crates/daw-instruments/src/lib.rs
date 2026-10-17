@@ -23,6 +23,12 @@ pub trait InstrumentProcessor: Send {
     /// `velocity` is 0.0–1.0.
     // RT-SAFE
     fn note_on(&mut self, note: u8, velocity: f32);
+    /// A note-on with a guitar note's string and technique. Instruments
+    /// other than the guitar play it as an ordinary note.
+    // RT-SAFE
+    fn note_on_guitar(&mut self, note: u8, velocity: f32, _guitar: daw_model::GuitarNote) {
+        self.note_on(note, velocity);
+    }
     // RT-SAFE
     fn note_off(&mut self, note: u8);
     /// Releases every note, including ones held by the sustain pedal.

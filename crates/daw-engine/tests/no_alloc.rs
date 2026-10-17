@@ -349,6 +349,7 @@ fn audio_thread_never_allocates() {
                     length_beats: 0.2,
                     velocity: 100,
                     id: None,
+                    guitar: None,
                 })
                 .collect(),
         })

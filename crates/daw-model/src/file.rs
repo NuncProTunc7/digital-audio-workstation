@@ -220,6 +220,7 @@ mod tests {
                 length_beats: 1.0,
                 velocity: 90,
                 id: None,
+                guitar: None,
             }],
         })
         .expect("clip");

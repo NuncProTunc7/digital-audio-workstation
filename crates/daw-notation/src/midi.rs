@@ -359,6 +359,7 @@ pub fn import_midi(bytes: &[u8]) -> Result<ImportedSong, NotationError> {
                 length_beats: ((e.saturating_sub(s)) as f64 * beats_per_tick).max(MIN_LENGTH_BEATS),
                 velocity: vel.clamp(1, 127),
                 id: None,
+                guitar: None,
             })
             .collect();
         notes.sort_by(|a, b| {
@@ -415,6 +416,7 @@ mod tests {
             length_beats: len,
             velocity: 90,
             id: None,
+            guitar: None,
         };
         Command::CreateClip {
             track_id: 1,
@@ -473,6 +475,7 @@ mod tests {
                 length_beats: 0.5,
                 velocity: 100,
                 id: None,
+                guitar: None,
             }],
         })
         .expect("clip");

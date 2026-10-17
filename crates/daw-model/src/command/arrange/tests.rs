@@ -15,6 +15,7 @@ fn note(pitch: u8, start: f64) -> NoteInput {
         length_beats: 0.5,
         velocity: 100,
         id: None,
+        guitar: None,
     }
 }
 

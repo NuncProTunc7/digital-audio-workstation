@@ -173,12 +173,14 @@ pub fn build_sequence(
                 note: n.pitch.min(127),
                 velocity: (f32::from(n.velocity) / 127.0).clamp(1.0 / 127.0, 1.0),
                 chance: n.chance.min(100),
+                guitar: n.guitar,
             });
             events.push(SeqEvent {
                 beat: off,
                 note: n.pitch.min(127),
                 velocity: 0.0,
                 chance: 100,
+                guitar: None,
             });
         }
     }
@@ -214,6 +216,7 @@ mod tests {
             start_beats: start,
             length_beats: len,
             velocity: 127,
+            guitar: None,
         }
     }
 

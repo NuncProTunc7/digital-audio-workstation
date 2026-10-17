@@ -74,6 +74,7 @@ pub fn clip_from_recording(
                 length_beats: len,
                 velocity,
                 id: None,
+                guitar: None,
             })
             .collect(),
     })

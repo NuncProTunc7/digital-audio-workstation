@@ -51,6 +51,7 @@ fn plugin_song() -> (Session, daw_model::TrackId) {
             length_beats: 4.0,
             velocity: 127,
             id: None,
+            guitar: None,
         }],
     })
     .expect("clip");
