@@ -361,6 +361,15 @@ fn audio_thread_never_allocates() {
         (Some(2), EffectKind::Chorus),
         (Some(2), EffectKind::Distortion),
         (None, EffectKind::Limiter),
+        (Some(2), EffectKind::Overdrive),
+        (Some(2), EffectKind::Fuzz),
+        (Some(2), EffectKind::Amp),
+        (Some(1), EffectKind::Phaser),
+        (Some(1), EffectKind::Flanger),
+        (Some(1), EffectKind::Tremolo),
+        (Some(1), EffectKind::Wah),
+        (Some(3), EffectKind::NoiseGate),
+        (Some(2), EffectKind::Octaver),
     ] {
         session
             .execute(Command::AddEffect {

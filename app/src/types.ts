@@ -7,7 +7,24 @@ export interface TimeSignature {
 }
 
 export type InstrumentKind = "synth" | "drums" | "audio" | "sampler" | "plugin" | "guitar";
-export type EffectKind = "eq" | "compressor" | "reverb" | "delay" | "chorus" | "distortion" | "limiter" | "plugin";
+export type EffectKind =
+  | "eq"
+  | "compressor"
+  | "reverb"
+  | "delay"
+  | "chorus"
+  | "distortion"
+  | "limiter"
+  | "overdrive"
+  | "fuzz"
+  | "amp"
+  | "phaser"
+  | "flanger"
+  | "tremolo"
+  | "wah"
+  | "noise_gate"
+  | "octaver"
+  | "plugin";
 
 export interface Instrument {
   kind: InstrumentKind;

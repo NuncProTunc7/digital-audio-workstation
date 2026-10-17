@@ -4,14 +4,24 @@
 //! up front) and then run on it through [`EffectProcessor`], whose methods
 //! never allocate, lock, or do I/O.
 
+mod amp;
 mod chorus;
 mod compressor;
 mod delay;
 mod distortion;
 mod eq;
+mod flanger;
+mod fuzz;
+mod gate;
 mod limiter;
+mod octaver;
+mod overdrive;
+mod oversample;
+mod phaser;
 mod plugin;
 mod reverb;
+mod tremolo;
+mod wah;
 
 pub use plugin::{create_plugin, passthrough};
 
@@ -61,6 +71,15 @@ pub fn create(effect: &Effect, sample_rate_hz: f32) -> Box<dyn EffectProcessor> 
         EffectKind::Chorus => Box::new(chorus::Chorus::new(sr)),
         EffectKind::Distortion => Box::new(distortion::Distortion::new(sr)),
         EffectKind::Limiter => Box::new(limiter::Limiter::new(sr)),
+        EffectKind::Overdrive => Box::new(overdrive::Overdrive::new(sr)),
+        EffectKind::Fuzz => Box::new(fuzz::Fuzz::new(sr)),
+        EffectKind::Amp => Box::new(amp::Amp::new(sr)),
+        EffectKind::Phaser => Box::new(phaser::Phaser::new(sr)),
+        EffectKind::Flanger => Box::new(flanger::Flanger::new(sr)),
+        EffectKind::Tremolo => Box::new(tremolo::Tremolo::new(sr)),
+        EffectKind::Wah => Box::new(wah::Wah::new(sr)),
+        EffectKind::NoiseGate => Box::new(gate::NoiseGate::new(sr)),
+        EffectKind::Octaver => Box::new(octaver::Octaver::new(sr)),
         // Offline renders get their own copy, from the song's settings.
         EffectKind::Plugin => return create_plugin(effect, sr, None).0,
     };
@@ -150,6 +169,26 @@ pub(crate) mod test_util {
 
     pub fn rms(x: &[f32]) -> f32 {
         (x.iter().map(|s| s * s).sum::<f32>() / x.len().max(1) as f32).sqrt()
+    }
+
+    /// Level of `freq_hz` in `x` (a single-bin DFT), relative to full scale.
+    pub fn level_at(x: &[f32], freq_hz: f32) -> f32 {
+        let (mut re, mut im) = (0.0f64, 0.0f64);
+        for (i, &s) in x.iter().enumerate() {
+            let w = std::f64::consts::TAU * f64::from(freq_hz) * i as f64 / f64::from(SR);
+            re += f64::from(s) * w.cos();
+            im += f64::from(s) * w.sin();
+        }
+        (2.0 * (re * re + im * im).sqrt() / x.len().max(1) as f64) as f32
+    }
+
+    /// The quietest and loudest RMS over windows of `window` samples.
+    pub fn window_levels(x: &[f32], window: usize) -> (f32, f32) {
+        x.chunks_exact(window)
+            .map(rms)
+            .fold((f32::INFINITY, 0.0f32), |(lo, hi), v| {
+                (lo.min(v), hi.max(v))
+            })
     }
 
     pub fn with(kind: EffectKind, params: &[(&str, f64)]) -> Box<dyn EffectProcessor> {

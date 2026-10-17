@@ -27,13 +27,31 @@ pub enum EffectKind {
     Distortion,
     /// Stops the signal from going over a ceiling. Best last on the master.
     Limiter,
+    /// Guitar pedal: a warm, mid-boosted tube-style push.
+    Overdrive,
+    /// Guitar pedal: hard, buzzy, square-ish clipping.
+    Fuzz,
+    /// A guitar amp and speaker cabinet: gain, tone stack, cabinet.
+    Amp,
+    /// Guitar pedal: a swirling all-pass sweep.
+    Phaser,
+    /// Guitar pedal: a jet-plane comb sweep.
+    Flanger,
+    /// Guitar pedal: volume pulsing.
+    Tremolo,
+    /// Guitar pedal: a sweeping band-pass "wow", automatic or fixed.
+    Wah,
+    /// Silences quiet hiss and hum between phrases.
+    NoiseGate,
+    /// Guitar pedal: adds an octave below (and a fuzzy octave above).
+    Octaver,
     /// A third-party VST3 effect installed on this computer. Add one with
     /// add_plugin_effect; its controls are in plugin_params.
     Plugin,
 }
 
 impl EffectKind {
-    pub const ALL: [EffectKind; 7] = [
+    pub const ALL: [EffectKind; 16] = [
         EffectKind::Eq,
         EffectKind::Compressor,
         EffectKind::Reverb,
@@ -41,7 +59,32 @@ impl EffectKind {
         EffectKind::Chorus,
         EffectKind::Distortion,
         EffectKind::Limiter,
+        EffectKind::Overdrive,
+        EffectKind::Fuzz,
+        EffectKind::Amp,
+        EffectKind::Phaser,
+        EffectKind::Flanger,
+        EffectKind::Tremolo,
+        EffectKind::Wah,
+        EffectKind::NoiseGate,
+        EffectKind::Octaver,
     ];
+
+    /// Guitar pedals (shown on the pedalboard's + Pedal list first).
+    pub fn is_pedal(self) -> bool {
+        matches!(
+            self,
+            EffectKind::Overdrive
+                | EffectKind::Fuzz
+                | EffectKind::Amp
+                | EffectKind::Phaser
+                | EffectKind::Flanger
+                | EffectKind::Tremolo
+                | EffectKind::Wah
+                | EffectKind::NoiseGate
+                | EffectKind::Octaver
+        )
+    }
 
     pub fn display_name(self) -> &'static str {
         match self {
@@ -52,6 +95,15 @@ impl EffectKind {
             EffectKind::Chorus => "Chorus",
             EffectKind::Distortion => "Distortion",
             EffectKind::Limiter => "Limiter",
+            EffectKind::Overdrive => "Overdrive",
+            EffectKind::Fuzz => "Fuzz",
+            EffectKind::Amp => "Amp",
+            EffectKind::Phaser => "Phaser",
+            EffectKind::Flanger => "Flanger",
+            EffectKind::Tremolo => "Tremolo",
+            EffectKind::Wah => "Wah",
+            EffectKind::NoiseGate => "Noise gate",
+            EffectKind::Octaver => "Octaver",
             EffectKind::Plugin => "Plugin",
         }
     }
@@ -443,6 +495,253 @@ pub const LIMITER_PARAMS: &[ParamSpec] = &[
     ),
 ];
 
+pub const AMP_CHANNELS: &[&str] = &["Clean", "Crunch", "High gain"];
+pub const AMP_CABINETS: &[&str] = &["Off", "1x12 open back", "2x12", "4x12 closed"];
+pub const TREMOLO_SHAPES: &[&str] = &["Smooth (sine)", "Choppy (square)"];
+pub const WAH_MODES: &[&str] = &["Auto (follows playing)", "Sweep", "Fixed"];
+
+pub const OVERDRIVE_PARAMS: &[ParamSpec] = &[
+    p(
+        "drive",
+        "Drive",
+        "Overdrive",
+        0.0,
+        1.0,
+        0.5,
+        Unit::Percent,
+        false,
+    ),
+    p(
+        "tone",
+        "Tone",
+        "Overdrive",
+        0.0,
+        1.0,
+        0.5,
+        Unit::Percent,
+        false,
+    ),
+    p(
+        "level_db",
+        "Level",
+        "Overdrive",
+        -24.0,
+        6.0,
+        -3.0,
+        Unit::Decibels,
+        false,
+    ),
+];
+
+pub const FUZZ_PARAMS: &[ParamSpec] = &[
+    p("fuzz", "Fuzz", "Fuzz", 0.0, 1.0, 0.7, Unit::Percent, false),
+    p("tone", "Tone", "Fuzz", 0.0, 1.0, 0.5, Unit::Percent, false),
+    p(
+        "level_db",
+        "Level",
+        "Fuzz",
+        -24.0,
+        6.0,
+        -8.0,
+        Unit::Decibels,
+        false,
+    ),
+];
+
+pub const AMP_PARAMS: &[ParamSpec] = &[
+    choice("channel", "Channel", "Amp", AMP_CHANNELS, 1.0),
+    p("gain", "Gain", "Amp", 0.0, 10.0, 5.0, Unit::None, false),
+    p("bass", "Bass", "Amp", 0.0, 10.0, 5.0, Unit::None, false),
+    p("mid", "Mid", "Amp", 0.0, 10.0, 5.0, Unit::None, false),
+    p("treble", "Treble", "Amp", 0.0, 10.0, 5.0, Unit::None, false),
+    p(
+        "master_db",
+        "Master",
+        "Amp",
+        -24.0,
+        6.0,
+        -6.0,
+        Unit::Decibels,
+        false,
+    ),
+    choice("cabinet", "Cabinet", "Amp", AMP_CABINETS, 2.0),
+];
+
+pub const PHASER_PARAMS: &[ParamSpec] = &[
+    p(
+        "rate_hz",
+        "Rate",
+        "Phaser",
+        0.05,
+        5.0,
+        0.5,
+        Unit::Hertz,
+        true,
+    ),
+    p(
+        "depth",
+        "Depth",
+        "Phaser",
+        0.0,
+        1.0,
+        0.7,
+        Unit::Percent,
+        false,
+    ),
+    p(
+        "feedback",
+        "Feedback",
+        "Phaser",
+        0.0,
+        0.9,
+        0.4,
+        Unit::Percent,
+        false,
+    ),
+    p("mix", "Mix", "Phaser", 0.0, 1.0, 0.5, Unit::Percent, false),
+];
+
+pub const FLANGER_PARAMS: &[ParamSpec] = &[
+    p(
+        "rate_hz",
+        "Rate",
+        "Flanger",
+        0.05,
+        5.0,
+        0.25,
+        Unit::Hertz,
+        true,
+    ),
+    p(
+        "depth",
+        "Depth",
+        "Flanger",
+        0.0,
+        1.0,
+        0.7,
+        Unit::Percent,
+        false,
+    ),
+    p(
+        "feedback",
+        "Feedback",
+        "Flanger",
+        -0.9,
+        0.9,
+        0.5,
+        Unit::Percent,
+        false,
+    ),
+    p("mix", "Mix", "Flanger", 0.0, 1.0, 0.5, Unit::Percent, false),
+];
+
+pub const TREMOLO_PARAMS: &[ParamSpec] = &[
+    p(
+        "rate_hz",
+        "Rate",
+        "Tremolo",
+        0.5,
+        15.0,
+        5.0,
+        Unit::Hertz,
+        true,
+    ),
+    p(
+        "depth",
+        "Depth",
+        "Tremolo",
+        0.0,
+        1.0,
+        0.6,
+        Unit::Percent,
+        false,
+    ),
+    choice("shape", "Shape", "Tremolo", TREMOLO_SHAPES, 0.0),
+];
+
+pub const WAH_PARAMS: &[ParamSpec] = &[
+    choice("mode", "Mode", "Wah", WAH_MODES, 0.0),
+    p(
+        "position",
+        "Position",
+        "Wah",
+        0.0,
+        1.0,
+        0.5,
+        Unit::Percent,
+        false,
+    ),
+    p(
+        "sensitivity",
+        "Sensitivity",
+        "Wah",
+        0.0,
+        1.0,
+        0.6,
+        Unit::Percent,
+        false,
+    ),
+    p("rate_hz", "Rate", "Wah", 0.1, 8.0, 1.5, Unit::Hertz, true),
+    p(
+        "resonance",
+        "Resonance",
+        "Wah",
+        0.0,
+        1.0,
+        0.7,
+        Unit::Percent,
+        false,
+    ),
+    p("mix", "Mix", "Wah", 0.0, 1.0, 1.0, Unit::Percent, false),
+];
+
+pub const NOISE_GATE_PARAMS: &[ParamSpec] = &[
+    p(
+        "threshold_db",
+        "Threshold",
+        "Noise gate",
+        -90.0,
+        -10.0,
+        -55.0,
+        Unit::Decibels,
+        false,
+    ),
+    p(
+        "release_s",
+        "Release",
+        "Noise gate",
+        0.01,
+        1.0,
+        0.12,
+        Unit::Seconds,
+        true,
+    ),
+];
+
+pub const OCTAVER_PARAMS: &[ParamSpec] = &[
+    p(
+        "down",
+        "Octave down",
+        "Octaver",
+        0.0,
+        1.0,
+        0.6,
+        Unit::Percent,
+        false,
+    ),
+    p(
+        "up",
+        "Octave up",
+        "Octaver",
+        0.0,
+        1.0,
+        0.0,
+        Unit::Percent,
+        false,
+    ),
+    p("dry", "Dry", "Octaver", 0.0, 1.0, 0.8, Unit::Percent, false),
+];
+
 pub fn effect_params(kind: EffectKind) -> &'static [ParamSpec] {
     match kind {
         EffectKind::Eq => EQ_PARAMS,
@@ -452,6 +751,15 @@ pub fn effect_params(kind: EffectKind) -> &'static [ParamSpec] {
         EffectKind::Chorus => CHORUS_PARAMS,
         EffectKind::Distortion => DISTORTION_PARAMS,
         EffectKind::Limiter => LIMITER_PARAMS,
+        EffectKind::Overdrive => OVERDRIVE_PARAMS,
+        EffectKind::Fuzz => FUZZ_PARAMS,
+        EffectKind::Amp => AMP_PARAMS,
+        EffectKind::Phaser => PHASER_PARAMS,
+        EffectKind::Flanger => FLANGER_PARAMS,
+        EffectKind::Tremolo => TREMOLO_PARAMS,
+        EffectKind::Wah => WAH_PARAMS,
+        EffectKind::NoiseGate => NOISE_GATE_PARAMS,
+        EffectKind::Octaver => OCTAVER_PARAMS,
         EffectKind::Plugin => &[],
     }
 }
@@ -483,6 +791,15 @@ pub fn describe_effects() -> Vec<EffectDescription> {
                 EffectKind::Chorus => "Thickens and widens with moving copies.",
                 EffectKind::Distortion => "Warm saturation to hard fuzz.",
                 EffectKind::Limiter => "Keeps peaks under a ceiling. Use last on the master.",
+                EffectKind::Overdrive => "Guitar pedal: a warm, mid-boosted push. Before an Amp for crunch, or alone for a gritty edge.",
+                EffectKind::Fuzz => "Guitar pedal: hard, buzzy, square-ish fuzz for 60s and stoner tones.",
+                EffectKind::Amp => "A guitar amp and speaker cabinet. Channel Clean/Crunch/High gain, gain, bass/mid/treble, master, cabinet. Put it after drive pedals and before time effects.",
+                EffectKind::Phaser => "Guitar pedal: a swirling sweep.",
+                EffectKind::Flanger => "Guitar pedal: a jet-plane whoosh.",
+                EffectKind::Tremolo => "Guitar pedal: volume pulsing, for surf and western.",
+                EffectKind::Wah => "Guitar pedal: a band-pass 'wow'. Auto follows how hard notes are played; Sweep moves by itself; Fixed holds Position (automate it to rock the pedal).",
+                EffectKind::NoiseGate => "Silences hiss and hum between phrases; tightens high-gain chugs. Put it first.",
+                EffectKind::Octaver => "Guitar pedal: adds a note an octave below (and a fuzzy octave above). Works best on single notes.",
                 EffectKind::Plugin => "A VST3 effect you installed.",
             },
             params: effect_params(kind),
