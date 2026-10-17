@@ -5,7 +5,7 @@ How an AI (Claude, Codex, or another) writes music in Nunc Pro Tune. The user ca
 ## Workflow
 
 1. **Brief.** Know (or ask, briefly) the use: menu, exploration, combat, boss, victory, ambience. The mood, references, tempo, loop length, and whether layers or sections are needed. If the user gives little, choose sensible defaults and say what they are.
-2. **Read first.** `get_song` (and `describe_instruments` before changing sounds). Don't overwrite the user's work: add tracks, or ask. Never `new_project` without asking.
+2. **Read first.** `get_song` (and `describe_instruments` before changing sounds). To read what a clip plays, use the `notes_text` from `get_clip` (bar by bar, note names and lengths; `from_bar`/`to_bar` for long clips); the note list beside it has the ids for `edit_notes`. Don't overwrite the user's work: add tracks, or ask. Never `new_project` without asking.
 3. **Build in one undo step per idea**, with `batch`: e.g. add a track, load a preset, create a clip, add notes.
 4. **Order**: tempo and time signature → drums → bass → harmony → melody → texture (pads, arps, counter-melody) → mix → automation.
 5. **Check.** `analyze_mix` (with `spectrogram` when judging tone: a picture plus `spectrogram_summary`, the same bar by bar in words; `per_track` for balance). Fix clipping and masking.
