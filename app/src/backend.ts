@@ -12,6 +12,7 @@ import type {
   AiStatus,
   CompareSide,
   Comparison,
+  GuitarView,
   Inspection,
   MixAnalysis,
   InstrumentKind,
@@ -192,8 +193,8 @@ export interface Backend {
   exportGodot(options: GodotOptions): Promise<ExportReport>;
   /** Writes sound effects as WAVs into a Godot project. */
   exportSounds(options: SoundExportOptions): Promise<SoundExportReport>;
-  /** The song (or some tracks) as MusicXML, for the sheet music view. */
-  sheetMusic(trackIds: number[] | null): Promise<string>;
+  /** The song (or some tracks) as MusicXML, for the sheet music view; guitar tracks as notes and tab, tab, or notes. */
+  sheetMusic(trackIds: number[] | null, guitar: GuitarView): Promise<string>;
   /** Files dropped on the window, with the drop point in CSS pixels. */
   onFileDrop(callback: (paths: string[], x: number, y: number) => void): Promise<() => void>;
 
@@ -315,7 +316,7 @@ export const tauriBackend: Backend = {
   exportMidi: (path) => invoke("export_midi", { path }),
   importMusicXml: (path) => invoke("import_musicxml", { path }),
   exportMusicXml: (path, trackIds) => invoke("export_musicxml", { path, trackIds }),
-  sheetMusic: (trackIds) => invoke("sheet_music", { trackIds }),
+  sheetMusic: (trackIds, guitar) => invoke("sheet_music", { trackIds, guitar }),
   pickSamplePack: async () => {
     const picked = await open({
       multiple: false,

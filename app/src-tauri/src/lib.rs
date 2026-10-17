@@ -1322,12 +1322,21 @@ fn export_musicxml(
 }
 
 /// The song (or some tracks) as MusicXML, for the sheet music view.
+/// `guitar` shows guitar tracks as "both" (notes and tab, the default),
+/// "tab", or "notes".
 #[tauri::command]
 fn sheet_music(
     state: State<'_, AppState>,
     track_ids: Option<Vec<TrackId>>,
+    guitar: Option<String>,
 ) -> Result<String, String> {
-    daw_control::notation::sheet_music(&*state, track_ids.as_deref())
+    use daw_control::notation::GuitarView;
+    let view = match guitar.as_deref() {
+        Some("tab") => GuitarView::Tab,
+        Some("notes") => GuitarView::Notes,
+        _ => GuitarView::Both,
+    };
+    daw_control::notation::sheet_music_with(&*state, track_ids.as_deref(), view)
 }
 
 /// Renders loops (and stems, adaptive-music resources) into a Godot project.

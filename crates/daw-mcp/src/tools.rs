@@ -496,7 +496,7 @@ fn extra_tools() -> Vec<ToolDef> {
         ),
         tool(
             "export_musicxml",
-            "Write the song as sheet music (MusicXML 4.0) for MuseScore or other notation apps. Notes are snapped to sixteenths. With `path`, writes a file; without, returns the MusicXML text.",
+            "Write the song as sheet music (MusicXML 4.0) for MuseScore or other notation apps. Notes are snapped to sixteenths. Guitar tracks get a tab staff too (string and fret per note, as the app's guitar plays them, with the tuning and capo); chord-track chords are written as chord names. With `path`, writes a file; without, returns the MusicXML text.",
             object_schema(
                 json!({
                     "path": { "type": "string", "description": "Absolute path ending in .musicxml (optional)." },
