@@ -164,10 +164,22 @@ export interface LoopRegion {
   end_beats: number;
 }
 
+/** From `beats` on, the song plays at `bpm` (after the starting tempo). */
+export interface TempoChange {
+  id: number;
+  beats: number;
+  bpm: number;
+  /** Glide from here to the next change's tempo. */
+  ramp?: boolean;
+}
+
 export interface Project {
   format_version: number;
   name: string;
+  /** The starting tempo. */
   tempo_bpm: number;
+  /** Later tempo changes, in beat order. */
+  tempo_changes?: TempoChange[];
   time_signature: TimeSignature;
   tracks: Track[];
   master: { volume_db: number; effects: Effect[] };
@@ -301,6 +313,7 @@ export interface Marker {
 /** The music a saved version keeps. */
 export interface SongState {
   tempo_bpm: number;
+  tempo_changes?: TempoChange[];
   time_signature: TimeSignature;
   tracks: Track[];
   master: { volume_db: number; effects: Effect[] };
@@ -428,6 +441,11 @@ type Opt<T> = T | null;
 export type Command =
   | { command: "rename_project"; name: string }
   | { command: "set_tempo"; bpm: number }
+  | { command: "add_tempo_change"; beats: number; bpm: number; ramp?: boolean }
+  | { command: "move_tempo_change"; tempo_change_id: number; beats: number }
+  | { command: "set_tempo_change"; tempo_change_id: number; bpm: Opt<number>; ramp: Opt<boolean> }
+  | { command: "remove_tempo_change"; tempo_change_id: number }
+  | { command: "restore_tempo_change"; change: TempoChange }
   | { command: "set_time_signature"; numerator: number; denominator: number }
   | { command: "set_loop"; enabled: Opt<boolean>; start_beats: Opt<number>; end_beats: Opt<number> }
   | { command: "add_track"; name: string; instrument: InstrumentKind; preset: Opt<string>; index: Opt<number> }

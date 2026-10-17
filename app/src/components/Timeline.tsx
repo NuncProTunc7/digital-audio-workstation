@@ -1,7 +1,21 @@
 import { Fragment, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { meterPercent, snap, snapDown } from "../format";
-import type { AutomationTarget, Catalog, Chord, ChordQuality, Clip, Command, Marker, Peaks, Project, Track } from "../types";
+import type {
+  AutomationTarget,
+  Catalog,
+  Chord,
+  ChordQuality,
+  Clip,
+  Command,
+  Marker,
+  Peaks,
+  Project,
+  TempoChange,
+  Track,
+} from "../types";
+import { tempoMap } from "../tempo";
+import type { TempoMap } from "../tempo";
 import { CHORD_QUALITIES, NOTE_NAMES, chordName, homeChord } from "../music";
 import { AUTOMATION_HEIGHT, automatableTargets, targetScale } from "../automation";
 import AutomationLaneEditor from "./AutomationLane";
@@ -81,6 +95,7 @@ type Drag =
   | { kind: "resize"; clip: Clip; x0: number; lastLength: number }
   | { kind: "trim"; clip: Clip; x0: number; lastStart: number }
   | { kind: "marker"; marker: Marker; x0: number; lastStart: number }
+  | { kind: "tempo"; change: TempoChange; x0: number; lastStart: number }
   | { kind: "chord"; chord: Chord; x0: number; lastStart: number; moved: boolean }
   | { kind: "loop"; anchor: number };
 
@@ -95,6 +110,10 @@ export default function Timeline(props: TimelineProps) {
   const [renamingMarker, setRenamingMarker] = useState<number | null>(null);
   const markers = project.markers ?? [];
   const chords = project.chords ?? [];
+  const tempoChanges = project.tempo_changes ?? [];
+  const tempo = tempoMap(project);
+  // The tempo change whose BPM is being typed.
+  const [editingTempo, setEditingTempo] = useState<number | null>(null);
   // The chord being edited in its little menu, and where to show it.
   const [chordMenu, setChordMenu] = useState<{ id: number; x: number; y: number } | null>(null);
   // A note clip's new start while its left edge is dragged. Trimming a note
@@ -210,8 +229,12 @@ export default function Timeline(props: TimelineProps) {
       const g = d.clip.audio ? grid / 4 : grid;
       let length = Math.max(g, d.clip.length_beats + snap((e.clientX - d.x0) / ppb, g));
       if (d.clip.audio) {
-        const fileBpm = d.clip.audio.source_bpm ?? project.tempo_bpm;
-        const available = ((d.clip.audio.file_seconds - d.clip.audio.offset_seconds) * fileBpm) / 60;
+        const a = d.clip.audio;
+        const remaining = a.file_seconds - a.offset_seconds;
+        const available =
+          a.source_bpm != null
+            ? (remaining * a.source_bpm) / 60
+            : tempo.beatsAt(tempo.secondsAt(d.clip.start_beats) + remaining) - d.clip.start_beats;
         length = Math.min(length, Math.max(available, g));
       }
       if (length !== d.lastLength) {
@@ -222,8 +245,11 @@ export default function Timeline(props: TimelineProps) {
       const g = d.clip.audio ? grid / 4 : grid;
       const end = d.clip.start_beats + d.clip.length_beats;
       // Can't reveal audio from before the recording started.
-      const earliest = d.clip.audio
-        ? d.clip.start_beats - (d.clip.audio.offset_seconds * (d.clip.audio.source_bpm ?? project.tempo_bpm)) / 60
+      const a = d.clip.audio;
+      const earliest = a
+        ? a.source_bpm != null
+          ? d.clip.start_beats - (a.offset_seconds * a.source_bpm) / 60
+          : tempo.beatsAt(tempo.secondsAt(d.clip.start_beats) - a.offset_seconds)
         : 0;
       const start = Math.min(
         end - g,
@@ -244,6 +270,14 @@ export default function Timeline(props: TimelineProps) {
         d.lastStart = start;
         d.moved = true;
         void props.onCommand({ command: "move_chord", chord_id: d.chord.id, start_beats: start });
+      }
+    } else if (d.kind === "tempo") {
+      // Changes stay after the song start; the starting tempo is set above.
+      const start = Math.max(grid, d.change.beats + snap((e.clientX - d.x0) / ppb, grid));
+      const taken = tempoChanges.some((c) => c.id !== d.change.id && Math.abs(c.beats - start) < 1e-9);
+      if (start !== d.lastStart && !taken) {
+        d.lastStart = start;
+        void props.onCommand({ command: "move_tempo_change", tempo_change_id: d.change.id, beats: start });
       }
     } else if (d.kind === "marker") {
       const start = Math.max(0, d.marker.start_beats + snap((e.clientX - d.x0) / ppb, grid));
@@ -332,6 +366,26 @@ export default function Timeline(props: TimelineProps) {
     props.onEndGesture();
     const created = p?.markers?.find((m) => Math.abs(m.start_beats - start) < 1e-9);
     if (created) setRenamingMarker(created.id);
+  };
+
+  /** Adds a tempo change under the pointer (at the tempo already playing
+   * there) and starts typing its BPM. */
+  const addTempoChangeAt = async (clientX: number) => {
+    const start = Math.max(grid, snapDown(beatAt(clientX), grid));
+    if (tempoChanges.some((c) => Math.abs(c.beats - start) < 1e-9)) return;
+    const bpm = Math.round(tempo.bpmAt(start));
+    const p = await props.onCommand({ command: "add_tempo_change", beats: start, bpm, ramp: false });
+    props.onEndGesture();
+    const created = p?.tempo_changes?.find((c) => Math.abs(c.beats - start) < 1e-9);
+    if (created) setEditingTempo(created.id);
+  };
+  const setChangeBpm = (c: TempoChange, text: string) => {
+    const bpm = Number(text);
+    if (Number.isFinite(bpm) && bpm !== c.bpm) {
+      void props
+        .onCommand({ command: "set_tempo_change", tempo_change_id: c.id, bpm, ramp: null })
+        .then(props.onEndGesture);
+    }
   };
 
   const loop = project.loop_region;
@@ -438,6 +492,103 @@ export default function Timeline(props: TimelineProps) {
                 </button>
               </div>
             ))}
+          </div>
+          <div
+            className="tempo-strip"
+            role="group"
+            aria-label="Tempo changes"
+            title="Tempo changes: double-click to change the tempo from that point, drag a change to move it, click its number to type a tempo, ⟋ to glide into the next change."
+            onDoubleClick={(e) => {
+              if (e.target === e.currentTarget) void addTempoChangeAt(e.clientX);
+            }}
+          >
+            <span className="tempo-start" title="The starting tempo (change it in the Tempo box above)">
+              ♩ {project.tempo_bpm}
+            </span>
+            {tempoChanges.length === 0 && (
+              <span className="marker-hint tempo-hint">Double-click here to change the tempo partway</span>
+            )}
+            {tempoChanges.map((c, k) => {
+              const next = tempoChanges[k + 1];
+              return (
+                <Fragment key={c.id}>
+                  {c.ramp && next && (
+                    <div
+                      className={`tempo-ramp ${next.bpm >= c.bpm ? "up" : "down"}`}
+                      style={{ left: c.beats * ppb, width: (next.beats - c.beats) * ppb }}
+                      aria-hidden
+                    />
+                  )}
+                  <div
+                    className={c.ramp ? "tempo-change ramp" : "tempo-change"}
+                    style={{ left: c.beats * ppb }}
+                    onPointerDown={(e) => {
+                      if (e.button !== 0 || editingTempo === c.id) return;
+                      e.stopPropagation();
+                      e.currentTarget.setPointerCapture?.(e.pointerId);
+                      drag.current = { kind: "tempo", change: c, x0: e.clientX, lastStart: c.beats };
+                    }}
+                    title={`${c.bpm} BPM from bar ${Math.floor(c.beats / beatsPerBar) + 1}${c.ramp ? ", gliding to the next change" : ""}: drag to move`}
+                  >
+                    {editingTempo === c.id ? (
+                      <input
+                        autoFocus
+                        aria-label="Tempo change in BPM"
+                        inputMode="decimal"
+                        defaultValue={String(c.bpm)}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => {
+                          e.stopPropagation();
+                          if (e.key === "Enter") e.currentTarget.blur();
+                          if (e.key === "Escape") setEditingTempo(null);
+                        }}
+                        onBlur={(e) => {
+                          setEditingTempo(null);
+                          setChangeBpm(c, e.target.value);
+                        }}
+                      />
+                    ) : (
+                      <button
+                        className="tempo-bpm"
+                        aria-label={`Tempo change at bar ${Math.floor(c.beats / beatsPerBar) + 1}: ${c.bpm} BPM`}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={() => setEditingTempo(c.id)}
+                      >
+                        ♩ {c.bpm}
+                      </button>
+                    )}
+                    <button
+                      className={c.ramp ? "tempo-glide on" : "tempo-glide"}
+                      aria-label={`Glide from bar ${Math.floor(c.beats / beatsPerBar) + 1} to the next tempo`}
+                      aria-pressed={!!c.ramp}
+                      title={next ? "Glide smoothly to the next tempo change" : "Glide to the next tempo change (add one after this to glide into)"}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void props
+                          .onCommand({ command: "set_tempo_change", tempo_change_id: c.id, bpm: null, ramp: !c.ramp })
+                          .then(props.onEndGesture);
+                      }}
+                    >
+                      ⟋
+                    </button>
+                    <button
+                      className="marker-delete"
+                      aria-label={`Delete tempo change at bar ${Math.floor(c.beats / beatsPerBar) + 1}`}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void props
+                          .onCommand({ command: "remove_tempo_change", tempo_change_id: c.id })
+                          .then(props.onEndGesture);
+                      }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </Fragment>
+              );
+            })}
           </div>
           <div
             className="chord-strip"
@@ -807,7 +958,7 @@ export default function Timeline(props: TimelineProps) {
                       key={c.id}
                       clip={c}
                       ppb={ppb}
-                      tempoBpm={project.tempo_bpm}
+                      tempo={tempo}
                       peaks={props.peaks[c.audio.file]}
                       missing={props.missingAudio.has(c.audio.file)}
                       selected={c.id === props.selectedClipId}
@@ -949,7 +1100,7 @@ function ClipBox({ clip, ppb, selected, drums, onPointerDown, onDoubleClick }: C
 interface AudioClipBoxProps {
   clip: Clip;
   ppb: number;
-  tempoBpm: number;
+  tempo: TempoMap;
   peaks: Peaks | undefined;
   missing: boolean;
   selected: boolean;
@@ -961,15 +1112,20 @@ interface AudioClipBoxProps {
 }
 
 /** An audio clip: waveform, fades, and handles to trim either end. */
-function AudioClipBox({ clip, ppb, tempoBpm, peaks, missing, selected, lane, onUse, onPointerDown }: AudioClipBoxProps) {
+function AudioClipBox({ clip, ppb, tempo, peaks, missing, selected, lane, onUse, onPointerDown }: AudioClipBoxProps) {
   const audio = clip.audio;
   if (!audio) return null;
   const width = Math.max(4, clip.length_beats * ppb);
-  const secondsToPx = (s: number) => ((s * tempoBpm) / 60) * ppb;
+  const start = clip.start_beats;
+  const end = start + clip.length_beats;
+  // Fades last real seconds from each end of the clip.
+  const fadeInPx = (s: number) => (tempo.beatsAt(tempo.secondsAt(start) + s) - start) * ppb;
+  const fadeOutPx = (s: number) => (end - tempo.beatsAt(tempo.secondsAt(end) - s)) * ppb;
   const gain = 10 ** (audio.gain_db / 20);
   // How much of the file the clip shows (at the recording's own tempo when
   // it follows the song's).
-  const seconds = (clip.length_beats * 60) / (audio.source_bpm ?? tempoBpm);
+  const seconds =
+    audio.source_bpm != null ? (clip.length_beats * 60) / audio.source_bpm : tempo.secondsBetween(start, end);
   return (
     <div
       className={`clip audio${selected ? " selected" : ""}${missing ? " missing" : ""}${clip.muted ? " muted-clip" : ""}`}
@@ -1002,10 +1158,11 @@ function AudioClipBox({ clip, ppb, tempoBpm, peaks, missing, selected, lane, onU
         />
       )}
       {audio.fade_in_seconds > 0 && (
-        <div className="clip-fade in" style={{ width: Math.min(width, secondsToPx(audio.fade_in_seconds)) }} aria-hidden />
+        <div className="clip-fade in" style={{ width: Math.min(width, fadeInPx(audio.fade_in_seconds)) }} aria-hidden />
       )}
       {audio.fade_out_seconds > 0 && (
-        <div className="clip-fade out" style={{ width: Math.min(width, secondsToPx(audio.fade_out_seconds)) }} aria-hidden />
+        <div className="clip-fade out" style={{ width: Math.min(width, fadeOutPx(audio.fade_out_seconds)) }} aria-hidden />
+
       )}
       {onUse && (
         <button

@@ -730,6 +730,62 @@ describe("Section markers", () => {
   });
 });
 
+describe("Tempo changes", () => {
+  it("adds a tempo change, types its tempo, glides into the next, moves and deletes it", async () => {
+    const backend = createPreviewBackend();
+    await renderApp(backend);
+    const strip = screen.getByRole("group", { name: "Tempo changes" });
+    const ppb = parseFloat((document.querySelector(".ruler") as HTMLElement).style.width) / 128; // 32 empty bars
+    // Double-click on bar 3 (beat 8): a change at the tempo playing there.
+    await act(async () => {
+      fireEvent.doubleClick(strip, { clientX: 8.5 * ppb });
+    });
+    const bpm = await screen.findByLabelText("Tempo change in BPM");
+    expect((bpm as HTMLInputElement).value).toBe("120");
+    fireEvent.change(bpm, { target: { value: "150" } });
+    await act(async () => {
+      fireEvent.blur(bpm);
+    });
+    let changes = (await backend.getProject()).project.tempo_changes ?? [];
+    expect(changes).toMatchObject([{ beats: 8, bpm: 150, ramp: false }]);
+    // A second change later, and the first glides into it.
+    await act(async () => {
+      fireEvent.doubleClick(strip, { clientX: 16.5 * ppb });
+    });
+    await act(async () => {
+      fireEvent.blur(await screen.findByLabelText("Tempo change in BPM"));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Glide from bar 3 to the next tempo" }));
+    });
+    changes = (await backend.getProject()).project.tempo_changes ?? [];
+    expect(changes).toMatchObject([
+      { beats: 8, bpm: 150, ramp: true },
+      { beats: 16, bpm: 150 },
+    ]);
+    expect(document.querySelector(".tempo-ramp")).not.toBeNull();
+    // Drag the first one a bar later.
+    const change = screen.getByTitle(/^150 BPM from bar 3, gliding/);
+    const timeline = document.querySelector(".timeline") as HTMLElement;
+    await act(async () => {
+      fireEvent.pointerDown(change, { button: 0, clientX: 100 });
+      fireEvent.pointerMove(timeline, { clientX: 100 + 4 * ppb });
+      fireEvent.pointerUp(timeline);
+    });
+    changes = (await backend.getProject()).project.tempo_changes ?? [];
+    expect(changes[0].beats).toBe(12);
+    // Delete it; undo brings it back.
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Delete tempo change at bar 4" }));
+    });
+    expect((await backend.getProject()).project.tempo_changes).toHaveLength(1);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    });
+    expect((await backend.getProject()).project.tempo_changes).toHaveLength(2);
+  });
+});
+
 describe("Buses", () => {
   it("groups a track into a bus and sends another to it", async () => {
     const backend = createPreviewBackend();

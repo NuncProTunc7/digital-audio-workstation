@@ -6,6 +6,7 @@ import catalogJson from "./generated/instruments.json";
 import { DEFAULT_RECIPE, clampRecipe, previewGenerate, previewVary, recipeSeconds } from "./sound";
 import type { Backend } from "./backend";
 import type {
+  AudioRegion,
   AudioStatus,
   Catalog,
   AiStatus,
@@ -29,6 +30,14 @@ import type {
   RecordingDelay,
   Track,
 } from "./types";
+import { tempoMap } from "./tempo";
+
+/** Seconds of a clip's file played between two song positions (song time
+ * for audio at its own speed, the recording's beats when it follows the
+ * tempo). */
+function fileSecondsBetween(p: Project, a: AudioRegion, from: number, to: number): number {
+  return a.source_bpm != null ? ((to - from) * 60) / a.source_bpm : tempoMap(p).secondsBetween(from, to);
+}
 
 const catalog = catalogJson as Catalog;
 
@@ -401,6 +410,44 @@ export function applyCommand(project: Project, command: Command): Project {
       p.sounds = sounds;
       break;
     }
+    case "add_tempo_change":
+    case "restore_tempo_change": {
+      const c =
+        command.command === "add_tempo_change"
+          ? { id: id(), beats: command.beats, bpm: command.bpm, ramp: !!command.ramp }
+          : command.change;
+      if (!(c.beats > 0)) throw new Error("tempo change must be after beat 0 (use set_tempo to change the starting tempo)");
+      if (!(c.bpm >= 20 && c.bpm <= 999)) throw new Error("tempo must be between 20 and 999 BPM");
+      if ((p.tempo_changes ?? []).some((x) => Math.abs(x.beats - c.beats) < 1e-9)) {
+        throw new Error("there is already a tempo change on that beat");
+      }
+      p.tempo_changes = [...(p.tempo_changes ?? []), c].sort((a, b) => a.beats - b.beats);
+      break;
+    }
+    case "move_tempo_change": {
+      const c = (p.tempo_changes ?? []).find((x) => x.id === command.tempo_change_id);
+      if (!c) throw new Error(`there is no tempo change with id ${command.tempo_change_id}`);
+      if (!(command.beats > 0)) throw new Error("tempo change must be after beat 0");
+      if ((p.tempo_changes ?? []).some((x) => x.id !== c.id && Math.abs(x.beats - command.beats) < 1e-9)) {
+        throw new Error("there is already a tempo change on that beat");
+      }
+      c.beats = command.beats;
+      p.tempo_changes = [...(p.tempo_changes ?? [])].sort((a, b) => a.beats - b.beats);
+      break;
+    }
+    case "set_tempo_change": {
+      const c = (p.tempo_changes ?? []).find((x) => x.id === command.tempo_change_id);
+      if (!c) throw new Error(`there is no tempo change with id ${command.tempo_change_id}`);
+      if (command.bpm !== null) {
+        if (!(command.bpm >= 20 && command.bpm <= 999)) throw new Error("tempo must be between 20 and 999 BPM");
+        c.bpm = command.bpm;
+      }
+      if (command.ramp !== null) c.ramp = command.ramp;
+      break;
+    }
+    case "remove_tempo_change":
+      p.tempo_changes = (p.tempo_changes ?? []).filter((x) => x.id !== command.tempo_change_id);
+      break;
     case "add_marker":
     case "restore_marker": {
       const m =
@@ -573,7 +620,7 @@ export function applyCommand(project: Project, command: Command): Project {
       c.length_beats = cut;
       c.notes = c.notes.filter((n) => n.start_beats < cut);
       if (c.audio && second.audio) {
-        second.audio.offset_seconds = c.audio.offset_seconds + (cut * 60) / (c.audio.source_bpm ?? p.tempo_bpm);
+        second.audio.offset_seconds = c.audio.offset_seconds + fileSecondsBetween(p, c.audio, c.start_beats, command.at_beats);
         c.audio.fade_out_seconds = 0;
         second.audio.fade_in_seconds = 0;
       }
@@ -586,7 +633,7 @@ export function applyCommand(project: Project, command: Command): Project {
       const delta = command.start_beats - c.start_beats;
       if (delta >= c.length_beats) throw new Error("clip length must stay positive");
       if (c.audio) {
-        const offset = c.audio.offset_seconds + (delta * 60) / (c.audio.source_bpm ?? p.tempo_bpm);
+        const offset = c.audio.offset_seconds + fileSecondsBetween(p, c.audio, c.start_beats, command.start_beats);
         if (offset < -1e-6) throw new Error("can't move before the beginning of the recording");
         c.audio.offset_seconds = Math.max(0, offset);
       }
@@ -599,11 +646,16 @@ export function applyCommand(project: Project, command: Command): Project {
       const t = track(command.track_id);
       if (t.instrument.kind !== "audio") throw new Error(`"${t.name}" is not an audio track`);
       const remaining = command.audio.file_seconds - command.audio.offset_seconds;
+      const map = tempoMap(p);
+      const naturalBeats =
+        command.audio.source_bpm != null
+          ? (remaining * command.audio.source_bpm) / 60
+          : map.beatsAt(map.secondsAt(command.start_beats) + remaining) - command.start_beats;
       t.clips.push({
         id: id(),
         name: command.name ?? command.audio.file.replace(/(-[0-9a-f]{8})?\.[^.]+$/, ""),
         start_beats: command.start_beats,
-        length_beats: command.length_beats ?? (remaining * p.tempo_bpm) / 60,
+        length_beats: command.length_beats ?? naturalBeats,
         notes: [],
         audio: structuredClone(command.audio),
       });
@@ -800,7 +852,12 @@ export function createPreviewBackend(): PreviewBackend {
     error: null,
     midi_inputs: [],
   });
-  const position = () => (playing ? startBeats + ((performance.now() - startedAt) / 60000) * project.tempo_bpm : startBeats);
+  const position = () => {
+    if (!playing) return startBeats;
+    const map = tempoMap(project);
+    return map.beatsAt(map.secondsAt(startBeats) + (performance.now() - startedAt) / 1000);
+  };
+
   const noop = async () => {};
   const changeListeners = new Set<(description: string) => void>();
   const dropListeners = new Set<(paths: string[], x: number, y: number) => void>();
