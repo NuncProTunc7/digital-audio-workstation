@@ -342,8 +342,10 @@ mod tests {
 
     #[test]
     fn old_projects_without_tempo_changes_load_with_one_tempo() {
-        let mut p = Project::default();
-        p.tempo_bpm = 96.0;
+        let p = Project {
+            tempo_bpm: 96.0,
+            ..Project::default()
+        };
         let json = crate::file::project_to_json(&p);
         assert!(!json.contains("tempo_changes"), "nothing extra is written");
         let back = crate::file::project_from_json(&json).expect("load");
@@ -360,13 +362,15 @@ mod tests {
             bpm,
             ramp: false,
         };
-        let mut p = Project::default();
-        p.tempo_changes = vec![
-            change(50, 8.0, 90.0),
-            change(51, 0.0, 90.0),
-            change(52, 4.0, 5000.0),
-            change(53, 2.0, 100.0),
-        ];
+        let p = Project {
+            tempo_changes: vec![
+                change(50, 8.0, 90.0),
+                change(51, 0.0, 90.0),
+                change(52, 4.0, 5000.0),
+                change(53, 2.0, 100.0),
+            ],
+            ..Project::default()
+        };
         let json = crate::file::project_to_json(&p);
         let back = crate::file::project_from_json(&json).expect("load");
         let kept: Vec<(f64, f64)> = back
