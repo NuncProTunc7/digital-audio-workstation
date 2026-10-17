@@ -1,6 +1,7 @@
 //! Every edit to a project is a [`Command`]. Applying one returns the
 //! Command that undoes it, which is how undo/redo works.
 
+mod arrange;
 mod audio;
 mod automation;
 mod buses;
@@ -90,6 +91,51 @@ pub enum Command {
         start_beats: Option<f64>,
         /// Loop end in beats; must be after the start.
         end_beats: Option<f64>,
+    },
+
+    // ---- Arrangement (whole bars, every track) ----
+    /// Open empty bars in the song: everything at or after the start of bar
+    /// `at_bar` (clips on every track, section markers, chords, automation
+    /// points, the loop region) moves `bars` bars later. A clip that crosses
+    /// that point is split there and its second half moves (audio keeps its
+    /// place in the recording). Bars count from 1 like the ruler; bar length
+    /// follows the time signature. One undo step. Example: 4 bars before a
+    /// chorus starting at bar 9 is at_bar 9, bars 4.
+    InsertBars {
+        /// Bar number where the gap opens (1 = song start).
+        at_bar: u32,
+        /// How many empty bars to add (at least 1).
+        bars: u32,
+    },
+    /// Remove whole bars from the song and close the gap: bars `from_bar`
+    /// to `from_bar + bars - 1` disappear on every track and everything
+    /// after moves earlier. Clips that cross an edge of the range are cut
+    /// there and only the part inside is removed (audio clips skip that part
+    /// of the recording). Markers, chords and automation inside the range are
+    /// removed, except that the section and chord playing at the end of the
+    /// range carry on where the range began. A loop region inside the range
+    /// stays where it was. One undo step.
+    DeleteBars {
+        /// First bar to remove (1 = song start).
+        from_bar: u32,
+        /// How many bars to remove (at least 1).
+        bars: u32,
+    },
+    /// Play a range of bars again right after itself, e.g. "play the chorus
+    /// twice": copies bars `from_bar` to `from_bar + bars - 1` on every
+    /// track (clips, chords, automation, section markers) `times` times
+    /// (1-64), and moves everything after the range later to make room.
+    /// Clips crossing the range edges are copied only for the part inside.
+    /// Copies are independent clips (not linked); copied markers are named
+    /// "Chorus 2", "Chorus 3"... One undo step.
+    RepeatBars {
+        /// First bar of the range (1 = song start).
+        from_bar: u32,
+        /// Length of the range in bars (at least 1).
+        bars: u32,
+        /// How many extra copies (default 1 = the range plays twice).
+        #[serde(default = "one")]
+        times: u32,
     },
 
     // ---- Tracks ----
@@ -618,6 +664,10 @@ pub enum Command {
     Batch { commands: Vec<Command> },
 }
 
+fn one() -> u32 {
+    1
+}
+
 /// Why a Command was rejected. A rejected Command leaves the project unchanged.
 #[derive(Debug, Clone, PartialEq, Error)]
 pub enum CommandError {
@@ -718,6 +768,14 @@ impl Command {
                 start_beats,
                 end_beats,
             } => song::set_loop(project, enabled, start_beats, end_beats),
+
+            C::InsertBars { at_bar, bars } => arrange::insert(project, at_bar, bars),
+            C::DeleteBars { from_bar, bars } => arrange::delete(project, from_bar, bars),
+            C::RepeatBars {
+                from_bar,
+                bars,
+                times,
+            } => arrange::repeat(project, from_bar, bars, times),
 
             C::AddTrack {
                 name,

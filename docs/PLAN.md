@@ -163,6 +163,7 @@ Planned tool groups (✅ = built; the rest arrive with their phase):
 | Session | ✅ `get_song`, `new_project`, `open_project`, `save_project`, `set_tempo`, `set_time_signature`, `batch`, `undo`, `redo`; later `set_key` |
 | Tracks | ✅ `get_track`, `add_track`, `remove_track`, `rename_track`, `move_track`, `set_instrument`, `load_preset`, `set_instrument_param` |
 | Notes | ✅ `get_clip`, `create_clip`, `add_notes`, `edit_notes`, `remove_notes`, `quantize_notes`, `transpose_notes`, clip move/resize/duplicate; later `humanize` |
+| Arrangement | ✅ `insert_bars`, `delete_bars`, `repeat_bars` (whole bars, every track, one undo step) |
 | Audio | ✅ `import_audio`, `add_audio_clip`, `set_audio_clip` (gain, fades), `split_clip`, `trim_clip_start`, `record_audio`, `stop_recording`; later `time_stretch` |
 | Mixer | ✅ `set_track_mixer`, `set_master_volume`, `add_effect`, `set_effect_param`, `set_effect_enabled`; later `add_send`, `automate` |
 | Transport | ✅ `play`, `stop`, `locate`, `set_loop`, `set_metronome`, `set_count_in`, `transport_status` |

@@ -74,6 +74,16 @@ The strip under the bar numbers holds **section markers**: named points where a 
 - **Ctrl+D** duplicates the selected clip right after itself: the fastest way to repeat a pattern.
 - **Ctrl+Shift+D** (or the piano roll's **Linked copy** button; **Duplicate** beside it makes an ordinary copy) makes a *linked* copy (🔗 in its name): change the notes in any linked copy and all of them change. Use it for a melody or beat that comes back in several sections, so a fix in one is a fix everywhere. **Unlink** (in the piano roll) makes a copy independent; splitting or trimming a linked clip unlinks it too.
 
+## Changing the song's structure (insert, delete, repeat bars)
+
+**Right-click the bar numbers** to change the whole song at once, on every track. The menu starts on the bar you clicked, or on the whole loop region if looping is on and you clicked inside it; change **From bar** and **Bars** to pick another range.
+
+- **Insert empty bars before bar N** opens a gap: everything from that bar on (clips, section markers, chords, automation, the loop) moves later. A clip that runs across the point is split there.
+- **Delete bars** removes the range from every track and closes the gap. Clips that run into the range are cut at its edges; audio skips that part of the recording. The section and chord that were playing at the end of the range carry on where it began.
+- **Repeat bars** plays the range again right after itself ("play the chorus twice"): notes, audio, chords, automation and markers are copied (a copied *Chorus* marker becomes *Chorus 2*), and the rest of the song moves later. The copies are ordinary clips, not linked.
+
+Each is one step: **Ctrl+Z** puts everything back. Your AI can do the same with `insert_bars`, `delete_bars` and `repeat_bars`.
+
 ## Quiet, normal and boss versions of one theme
 
 Games often need the same music in several intensities. One way to build them in one song:

@@ -672,6 +672,10 @@ export function applyCommand(project: Project, command: Command): Project {
       lane.enabled = command.enabled;
       break;
     }
+    case "insert_bars":
+    case "delete_bars":
+    case "repeat_bars":
+      return arrangeBars(p, command);
     case "batch": {
       // All-or-nothing: a throw leaves the original project untouched.
       let next = p;
@@ -711,6 +715,96 @@ export interface PreviewBackend extends Backend {
   simulateRemoteChange(command: Command, description: string): void;
   /** Acts as if files were dropped on the window at (x, y). */
   simulateFileDrop(paths: string[], x: number, y: number): void;
+}
+
+type BarsCommand = Extract<Command, { command: "insert_bars" | "delete_bars" | "repeat_bars" }>;
+
+/** Loose mirror of the Rust arrangement Commands (crates/daw-model/src/command/arrange.rs). */
+function arrangeBars(p: Project, command: BarsCommand): Project {
+  const bpb = p.time_signature.numerator;
+  const first = command.command === "insert_bars" ? command.at_bar : command.from_bar;
+  if (first < 1) throw new Error("bar numbers start at 1 (the song start)");
+  if (command.bars < 1) throw new Error("bars must be at least 1");
+  const times = command.command === "repeat_bars" ? (command.times ?? 1) : 1;
+  if (times < 1 || times > 64) throw new Error("times must be 1 to 64");
+  const from = (first - 1) * bpb;
+  const len = command.bars * bpb;
+  const end = from + len;
+  const split = (at: number) => {
+    for (const t of p.tracks) {
+      for (const c of [...t.clips]) {
+        if (c.start_beats < at && c.start_beats + c.length_beats > at) {
+          p = applyCommand(p, { command: "split_clip", clip_id: c.id, at_beats: at });
+        }
+      }
+    }
+  };
+  const shiftFrom = (at: number, by: number) => {
+    for (const t of p.tracks) {
+      for (const c of t.clips) if (c.start_beats >= at) c.start_beats += by;
+      for (const l of t.automation ?? []) for (const pt of l.points) if (pt.beats >= at) pt.beats += by;
+    }
+    for (const m of p.markers ?? []) if (m.start_beats >= at) m.start_beats += by;
+    for (const c of p.chords ?? []) if (c.start_beats >= at) c.start_beats += by;
+    if (p.loop_region.start_beats >= at) p.loop_region.start_beats += by;
+    if (p.loop_region.end_beats > at) p.loop_region.end_beats += by;
+  };
+  if (command.command === "insert_bars") {
+    split(from);
+    shiftFrom(from, len);
+    return p;
+  }
+  if (command.command === "delete_bars") {
+    split(end);
+    split(from);
+    const inside = (b: number) => b >= from && b < end;
+    for (const t of p.tracks) {
+      t.clips = t.clips.filter((c) => !(c.start_beats >= from && c.start_beats + c.length_beats <= end));
+      for (const l of t.automation ?? []) l.points = l.points.filter((pt) => !inside(pt.beats));
+    }
+    p.markers = (p.markers ?? []).filter((m) => !inside(m.start_beats));
+    p.chords = (p.chords ?? []).filter((c) => !inside(c.start_beats));
+    shiftFrom(end, -len);
+    return p;
+  }
+  split(end);
+  const sources = p.tracks.flatMap((t) =>
+    t.clips.filter((c) => c.start_beats < end && c.start_beats + c.length_beats > from).map((c) => structuredClone(c)),
+  );
+  const markers = (p.markers ?? []).filter((m) => m.start_beats >= from && m.start_beats < end);
+  const chords = (p.chords ?? []).filter((c) => c.start_beats >= from && c.start_beats < end);
+  shiftFrom(end, len * times);
+  for (let k = 1; k <= times; k++) {
+    const offset = len * k;
+    for (const c of sources) {
+      const t = p.tracks.find((x) => x.clips.some((y) => y.id === c.id));
+      if (!t) continue;
+      const start = Math.max(c.start_beats, from);
+      const cut = start - c.start_beats;
+      const copy: Clip = {
+        ...structuredClone(c),
+        id: p.next_id++,
+        link: undefined,
+        start_beats: start + offset,
+        length_beats: Math.min(c.start_beats + c.length_beats, end) - start,
+        notes: c.notes
+          .filter((n) => n.start_beats >= cut && n.start_beats < cut + len)
+          .map((n) => ({ ...n, id: p.next_id++, start_beats: n.start_beats - cut })),
+      };
+      if (copy.audio) copy.audio.offset_seconds += (cut * 60) / (copy.audio.source_bpm ?? p.tempo_bpm);
+      t.clips.push(copy);
+      t.clips.sort((a, b) => a.start_beats - b.start_beats);
+    }
+    for (const m of markers) {
+      p.markers = [...(p.markers ?? []), { id: p.next_id++, name: `${m.name} ${k + 1}`, start_beats: m.start_beats + offset }];
+    }
+    for (const c of chords) {
+      p.chords = [...(p.chords ?? []), { ...c, id: p.next_id++, start_beats: c.start_beats + offset }];
+    }
+  }
+  p.markers = (p.markers ?? []).sort((a, b) => a.start_beats - b.start_beats);
+  p.chords = (p.chords ?? []).sort((a, b) => a.start_beats - b.start_beats);
+  return p;
 }
 
 export function createPreviewBackend(): PreviewBackend {

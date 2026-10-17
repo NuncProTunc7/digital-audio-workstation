@@ -97,6 +97,9 @@ export default function Timeline(props: TimelineProps) {
   const chords = project.chords ?? [];
   // The chord being edited in its little menu, and where to show it.
   const [chordMenu, setChordMenu] = useState<{ id: number; x: number; y: number } | null>(null);
+  // The right-click menu on the ruler: a range of whole bars (1-based) to
+  // insert before, delete, or repeat.
+  const [barsMenu, setBarsMenu] = useState<{ x: number; y: number; from: number; bars: number } | null>(null);
   // A note clip's new start while its left edge is dragged. Trimming a note
   // clip removes the notes before the start, so it's applied once, on
   // release: dragging back out must not lose them.
@@ -337,6 +340,28 @@ export default function Timeline(props: TimelineProps) {
   const loop = project.loop_region;
   const bars = Math.ceil(beats / beatsPerBar);
 
+  /** Opens the bars menu on the loop region if the click is inside it,
+   * otherwise on the bar that was clicked. */
+  const openBarsMenu = (clientX: number, clientY: number) => {
+    const bar = Math.floor(beatAt(clientX) / beatsPerBar) + 1;
+    const loopFrom = Math.floor(loop.start_beats / beatsPerBar) + 1;
+    const loopTo = Math.ceil(loop.end_beats / beatsPerBar);
+    const inLoop = loop.enabled && bar >= loopFrom && bar <= loopTo;
+    setChordMenu(null);
+    setBarsMenu({
+      x: clientX,
+      y: clientY,
+      from: inLoop ? loopFrom : bar,
+      bars: inLoop ? Math.max(1, loopTo - loopFrom + 1) : 1,
+    });
+  };
+  const barsCommand = (command: Command) => {
+    setBarsMenu(null);
+    void props.onCommand(command).then(props.onEndGesture);
+  };
+  const barsLabel = (from: number, count: number) =>
+    count === 1 ? `bar ${from}` : `bars ${from}–${from + count - 1}`;
+
   return (
     <div className="timeline" onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}>
       <div className="timeline-content" style={{ width: width + HEADER_WIDTH_PX }}>
@@ -362,7 +387,11 @@ export default function Timeline(props: TimelineProps) {
                 props.onLocate(snapDown(beatAt(e.clientX), 1));
               }
             }}
-            title="Click to move the playhead. Drag along the top strip to set the loop."
+            onContextMenu={(e) => {
+              e.preventDefault();
+              openBarsMenu(e.clientX, e.clientY);
+            }}
+            title="Click to move the playhead. Drag along the top strip to set the loop. Right-click to insert, delete or repeat bars."
           >
             <div
               className={loop.enabled ? "loop-region on" : "loop-region"}
@@ -533,6 +562,67 @@ export default function Timeline(props: TimelineProps) {
                 Done
               </button>
             </div>
+          </FixedMenu>
+        )}
+
+        {barsMenu && (
+          <FixedMenu
+            className="step-menu bars-menu"
+            role="dialog"
+            aria-label="Bars"
+            x={barsMenu.x}
+            y={barsMenu.y + 12}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === "Escape") setBarsMenu(null);
+            }}
+          >
+            <div className="step-menu-row">
+              <span>From bar</span>
+              <input
+                type="number"
+                aria-label="From bar"
+                min={1}
+                value={barsMenu.from}
+                onChange={(e) => setBarsMenu({ ...barsMenu, from: Math.max(1, Math.round(Number(e.target.value) || 1)) })}
+              />
+            </div>
+            <div className="step-menu-row">
+              <span>Bars</span>
+              <input
+                type="number"
+                aria-label="How many bars"
+                min={1}
+                value={barsMenu.bars}
+                onChange={(e) => setBarsMenu({ ...barsMenu, bars: Math.max(1, Math.round(Number(e.target.value) || 1)) })}
+              />
+            </div>
+            <button
+              className="small"
+              title="Every track, marker, chord and automation point from here on moves later"
+              onClick={() => barsCommand({ command: "insert_bars", at_bar: barsMenu.from, bars: barsMenu.bars })}
+            >
+              Insert {barsMenu.bars === 1 ? "1 empty bar" : `${barsMenu.bars} empty bars`} before bar {barsMenu.from}
+            </button>
+            <button
+              className="small"
+              title="Removes these bars on every track and closes the gap"
+              onClick={() => barsCommand({ command: "delete_bars", from_bar: barsMenu.from, bars: barsMenu.bars })}
+            >
+              Delete {barsLabel(barsMenu.from, barsMenu.bars)}
+            </button>
+            <button
+              className="small"
+              title="Plays these bars again right after themselves, on every track"
+              onClick={() =>
+                barsCommand({ command: "repeat_bars", from_bar: barsMenu.from, bars: barsMenu.bars, times: 1 })
+              }
+            >
+              Repeat {barsLabel(barsMenu.from, barsMenu.bars)}
+            </button>
+            <button className="small" onClick={() => setBarsMenu(null)}>
+              Cancel
+            </button>
           </FixedMenu>
         )}
 

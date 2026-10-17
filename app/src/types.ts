@@ -530,6 +530,10 @@ export type Command =
     }
   | { command: "transpose_notes"; clip_id: number; semitones: number; note_ids: Opt<number[]> }
   | { command: "split_clip"; clip_id: number; at_beats: number }
+  /** Bars count from 1 like the ruler; every track, marker, chord and automation point moves. */
+  | { command: "insert_bars"; at_bar: number; bars: number }
+  | { command: "delete_bars"; from_bar: number; bars: number }
+  | { command: "repeat_bars"; from_bar: number; bars: number; times?: number }
   | { command: "trim_clip_start"; clip_id: number; start_beats: number }
   | {
       command: "add_audio_clip";

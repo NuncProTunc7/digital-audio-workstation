@@ -378,6 +378,16 @@ fn sample_commands(p: &Project) -> Vec<Command> {
                 chance: Some(25),
             }],
         },
+        Command::InsertBars { at_bar: 2, bars: 1 },
+        Command::DeleteBars {
+            from_bar: 1,
+            bars: 1,
+        },
+        Command::RepeatBars {
+            from_bar: 1,
+            bars: 1,
+            times: 2,
+        },
     ]
 }
 
