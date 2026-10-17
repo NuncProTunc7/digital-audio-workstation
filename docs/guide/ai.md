@@ -28,9 +28,11 @@ The guide your AI reads is built into the bridge (`npt-mcp`). If your AI describ
 - "Export the explore and combat sections to my Godot project as adaptive music."
 - "Make a coin, a jump and a hit sound for my platformer, retro and a bit crunchy, then export them to my Godot project."
 - "Make the jump sound softer and a little lower."
+- "Make this clip louder." / "Fix these notes, they sound wrong." / "Make this sound punchier." (select it first: see below)
 
 ## Getting what you want
 
+- **Select, then say "this"**: click a clip on the timeline, select notes in the piano roll, or pick a sound in the **Sound FX** panel, then talk about "this clip", "these notes" or "this sound". Your AI can see what you have selected (and where the playhead is), so it doesn't have to guess which one you mean. It can't see the rest of the screen, so if it picks the wrong thing, select it again and say "this one".
 - **Give a reference**: a game, composer or mood ("Celeste-style, melancholy, piano and soft synths").
 - **Say how it's used**: menu, town, boss fight; how long before it loops; does it need layers?
 - **React in your own words**: "too busy", "the lead is annoying", "needs more energy at bar 9". Your AI turns that into specific changes.

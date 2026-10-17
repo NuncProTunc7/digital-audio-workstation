@@ -99,6 +99,11 @@ pub trait Host: Send + Sync {
     fn calibrate_recording(&self) -> Result<CalibrationResult, String> {
         Err("this copy of Nunc Pro Tune can't record audio".into())
     }
+    /// What the user has selected in the window, as the UI last reported
+    /// it (a live view, not saved). Hosts without a window select nothing.
+    fn selection(&self) -> crate::Selection {
+        crate::Selection::default()
+    }
 }
 
 /// A microphone's recording delay setting.
@@ -339,6 +344,16 @@ fn handle_inner<H: Host>(host: &H, request: Request, ai: &str) -> Result<Value, 
                 .track(track_id)
                 .ok_or_else(|| format!("there is no track with id {track_id}"))?;
             Ok(clip_detail(track, clip))
+        }
+        Request::GetSelection => {
+            let selection = host.selection();
+            let position = host.engine().map(|e| e.status().position_beats);
+            let session = host.session()?;
+            Ok(crate::selection::describe(
+                session.project(),
+                &selection,
+                position,
+            ))
         }
         Request::Describe => {
             serde_json::to_value(daw_instruments::catalog()).map_err(|e| e.to_string())
@@ -1221,6 +1236,8 @@ pub(crate) mod tests {
         pub keep_versions: bool,
         pub presets: PathBuf,
         pub last_claude: Mutex<Option<std::time::Instant>>,
+        /// What the "window" has selected.
+        pub selection: Mutex<crate::Selection>,
         // Keeps the scratch folder alive for the test.
         _scratch: tempfile::TempDir,
     }
@@ -1236,6 +1253,7 @@ pub(crate) mod tests {
                 keep_versions: false,
                 presets: scratch.path().join("presets.json"),
                 last_claude: Mutex::default(),
+                selection: Mutex::default(),
                 _scratch: scratch,
             }
         }
@@ -1282,6 +1300,9 @@ pub(crate) mod tests {
             }
             let mut last = self.last_claude.lock().ok()?;
             Some(last.replace(std::time::Instant::now()))
+        }
+        fn selection(&self) -> crate::Selection {
+            self.selection.lock().map(|s| s.clone()).unwrap_or_default()
         }
     }
 
@@ -1879,6 +1900,71 @@ pub(crate) mod tests {
         assert_eq!(clip["instrument"], "drums");
         let catalog = ok(handle(&host, Request::Describe));
         assert!(catalog["effects"].as_array().is_some_and(|e| e.len() == 7));
+    }
+
+    #[test]
+    fn the_ai_sees_what_the_user_selected() {
+        let host = TestHost::default();
+        let nothing = ok(handle(&host, Request::GetSelection));
+        assert_eq!(nothing["summary"], "Nothing is selected.");
+
+        let note = |pitch, start_beats| daw_model::NoteInput {
+            chance: 100,
+            pitch,
+            start_beats,
+            length_beats: 1.0,
+            velocity: 100,
+            id: None,
+        };
+        let v = ok(execute(
+            &host,
+            Command::CreateClip {
+                track_id: 1,
+                start_beats: 4.0,
+                length_beats: 8.0,
+                name: Some("Melody".into()),
+                notes: vec![note(60, 0.0), note(67, 1.0), note(72, 2.0)],
+            },
+        ));
+        let clip_id = v["song"]["tracks"][0]["clips"][0]["id"]
+            .as_u64()
+            .expect("id") as u32;
+        let clip = ok(handle(&host, Request::GetClip { clip_id }));
+        let ids: Vec<u32> = clip["clip"]["notes"]
+            .as_array()
+            .expect("notes")
+            .iter()
+            .filter(|n| n["pitch"] != 72)
+            .map(|n| n["id"].as_u64().expect("id") as u32)
+            .collect();
+        *host.selection.lock().expect("lock") = crate::Selection {
+            view: Some("pianoroll".into()),
+            track_id: Some(1),
+            clip_id: Some(clip_id),
+            note_ids: ids.clone(),
+            sound_id: None,
+        };
+        let track_name = host.session().expect("s").project().tracks[0].name.clone();
+
+        let changes = host.changes.lock().expect("lock").len();
+        let sel = ok(handle(&host, Request::GetSelection));
+        assert_eq!(sel["view"], "pianoroll");
+        assert_eq!(sel["track"]["id"], 1);
+        assert_eq!(sel["track"]["name"], json!(track_name));
+        assert_eq!(sel["clip"]["name"], "Melody");
+        assert_eq!(sel["clip"]["start_bar"], 2.0);
+        assert_eq!(sel["clip"]["end_bar"], 4.0);
+        assert_eq!(sel["notes"]["count"], 2);
+        assert_eq!(sel["notes"]["ids"], json!(ids));
+        assert_eq!(sel["notes"]["lowest"], "C4");
+        assert_eq!(sel["notes"]["highest"], "G4");
+        let summary = sel["summary"].as_str().expect("summary");
+        assert!(summary.contains("\"Melody\""), "{summary}");
+        assert!(summary.contains("2 selected notes (C4-G4)"), "{summary}");
+        // No sound card here, so no playhead.
+        assert!(sel.get("playhead").is_none());
+        // Reading the selection is not an edit.
+        assert_eq!(host.changes.lock().expect("lock").len(), changes);
     }
 
     #[test]

@@ -203,6 +203,37 @@ describe("Arranging", () => {
     );
   });
 
+  it("tells the app what is selected, so an AI can act on \"this\"", async () => {
+    const backend = createPreviewBackend();
+    const reported = vi.spyOn(backend, "setSelection");
+    await renderApp(backend);
+    const last = () => reported.mock.calls.at(-1)?.[0];
+    await waitFor(() => expect(last()).toMatchObject({ view: "instrument", track_id: 1, clip_id: null }));
+    await act(async () => {
+      fireEvent.doubleClick(document.querySelectorAll(".lane")[0], { clientX: 10, clientY: 10 });
+    });
+    const clipId = backend.getProject().then((v) => v.project.tracks[0].clips[0].id);
+    await waitFor(async () => expect(last()).toMatchObject({ view: "pianoroll", clip_id: await clipId }));
+    // A new note in the piano roll; selecting all reports the notes.
+    await act(async () => {
+      fireEvent.pointerDown(await waitForElement(".roll-grid"), { clientX: 5, clientY: 5, button: 0 });
+    });
+    await act(async () => {
+      fireEvent.keyDown(window, { code: "KeyA", key: "a", ctrlKey: true });
+    });
+    await waitFor(() => expect(last()?.note_ids).toHaveLength(1));
+    // Unchanged selection isn't sent again.
+    const calls = reported.mock.calls.length;
+    fireEvent.click(screen.getByRole("tab", { name: /Piano roll/ }));
+    expect(reported.mock.calls.length).toBe(calls);
+    // The Sound FX panel's sound counts while the panel is open.
+    fireEvent.click(screen.getByRole("button", { name: /Sound FX/ }));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Coin" })));
+    await waitFor(() => expect(last()?.sound_id).toEqual(expect.any(Number)));
+    fireEvent.click(screen.getByRole("button", { name: /Sound FX/ }));
+    await waitFor(() => expect(last()?.sound_id).toBeNull());
+  });
+
   it("deletes the selected clip with the Delete key and undoes it", async () => {
     await renderApp(spyBackend());
     await act(async () => {

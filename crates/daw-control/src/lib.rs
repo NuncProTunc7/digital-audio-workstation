@@ -21,6 +21,7 @@ pub mod notation;
 pub mod plugins;
 pub mod presets;
 mod protocol;
+pub mod selection;
 mod server;
 pub mod settings;
 
@@ -33,4 +34,5 @@ pub use host::{
     save_project, save_user_preset,
 };
 pub use protocol::{GodotOptions, Request, Response, SoundExportOptions};
+pub use selection::Selection;
 pub use server::ControlServer;

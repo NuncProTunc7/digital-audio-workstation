@@ -51,6 +51,9 @@ struct AppState {
     midi: Mutex<Option<MidiInputs>>,
     /// Track that MIDI keyboards play.
     selected_track: Arc<AtomicU32>,
+    /// What the window has selected, for AIs asked about "this" (a live
+    /// view: not saved, not undoable). Only locked to copy it in or out.
+    selection: Mutex<daw_control::Selection>,
     metronome_on: AtomicBool,
     /// Where the open project was last saved or opened from.
     project_path: Mutex<Option<PathBuf>>,
@@ -121,6 +124,7 @@ impl Default for AppState {
             audio_error: Mutex::new(None),
             midi: Mutex::new(None),
             selected_track: Arc::new(AtomicU32::new(1)),
+            selection: Mutex::default(),
             metronome_on: AtomicBool::new(true),
             project_path: Mutex::new(None),
             recording_track: Mutex::new(None),
@@ -242,6 +246,10 @@ impl daw_control::Host for AppState {
 
     fn count_in_bars(&self) -> u32 {
         self.settings.lock().map_or(0, |s| s.count_in_bars)
+    }
+
+    fn selection(&self) -> daw_control::Selection {
+        self.selection.lock().map(|s| s.clone()).unwrap_or_default()
     }
 
     fn note_ai_edit(&self) -> Option<Option<Instant>> {
@@ -767,6 +775,17 @@ fn all_notes_off(state: State<'_, AppState>) {
 #[tauri::command]
 fn select_track(state: State<'_, AppState>, track_id: TrackId) {
     state.selected_track.store(track_id, Ordering::Relaxed);
+}
+
+/// Remembers what the window has selected, so an AI asked about "this"
+/// can see it. Not a project edit. The lock is only held to swap the value
+/// (never across another call), so this can't keep the window waiting; it
+/// stays a plain command so quick changes arrive in order.
+#[tauri::command]
+fn set_selection(state: State<'_, AppState>, selection: daw_control::Selection) {
+    if let Ok(mut s) = state.selection.lock() {
+        *s = selection;
+    }
 }
 
 #[tauri::command]
@@ -1858,6 +1877,7 @@ pub fn run() {
             record_stop,
             execute,
             end_gesture,
+            set_selection,
             undo,
             redo,
             instrument_catalog,
@@ -2065,6 +2085,24 @@ mod tests {
         // Nobody is looking at the meter, or it never failed.
         assert!(!input_should_retry(false, Some(&none), &headset));
         assert!(!input_should_retry(true, None, &headset));
+    }
+
+    #[test]
+    fn ais_see_the_selection_the_window_reported() {
+        use daw_control::Host;
+        let state = AppState::default();
+        assert_eq!(state.selection(), daw_control::Selection::default());
+        let picked = daw_control::Selection {
+            view: Some("mixer".into()),
+            track_id: Some(2),
+            ..Default::default()
+        };
+        if let Ok(mut s) = state.selection.lock() {
+            *s = picked.clone();
+        }
+        assert_eq!(state.selection(), picked);
+        // Not an edit: nothing to undo.
+        assert!(!state.session().expect("session").can_undo());
     }
 
     #[test]
