@@ -21,6 +21,9 @@ bar_beats=4
 
 With `loop` on and `bpm`/`beat_count` set, the loop length is `beat_count*60/bpm` (not the file length) and Godot crossfades 256 frames of what follows the loop end into the restart, so export the loop plus its tail.
 
+Tempo changes: a loop is still the exported region in beats, rendered through the song's tempo map, so the file is exactly that long in seconds; on each lap it restarts at the region's starting tempo. Godot only knows one tempo per file, so we write `bpm` as the region's average tempo (`beats * 60 / seconds`): `beat_count * 60 / bpm` stays equal to the file length and the loop point stays exact. Beat-synced switching in `AudioStreamInteractive` follows that average, so sections that switch on the bar should be steady.
+
+
 ## `.wav.import` (importer `wav`)
 `edit/loop_mode`: 0 Detect From WAV (reads the `smpl` chunk's first loop), 1 Disabled, 2 Forward, 3 Ping-Pong, 4 Backward; `edit/loop_begin`/`edit/loop_end` in frames; `compress/mode` 0 PCM, 1 IMA ADPCM, 2 Quite OK Audio (default). Godot treats loop end as exclusive: write the exclusive end frame.
 

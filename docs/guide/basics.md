@@ -23,6 +23,7 @@
 | Click track | **Metronome** button |
 | Count in before recording | **Count-in**: Off, 1 bar (the default) or 2 bars of clicks before the song starts |
 | Change speed | Type in **Tempo** (BPM) |
+| Change speed partway | Double-click the **tempo strip** under the section markers (see [tempo changes](writing-music.md)) |
 
 ## Saving
 

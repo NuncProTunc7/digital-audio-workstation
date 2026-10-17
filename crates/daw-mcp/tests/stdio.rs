@@ -197,11 +197,34 @@ fn claude_can_list_tools_edit_the_song_and_analyze_it() {
         Some("Codex: set tempo")
     );
 
+    // A boss phase: from bar 5 the song speeds up to 150 BPM.
+    assert!(names.iter().any(|n| n == "add_tempo_change"));
+    assert!(!names.iter().any(|n| n == "restore_tempo_change"));
+    let r = mcp.call("add_tempo_change", json!({ "beats": 16, "bpm": 150 }));
+    assert_eq!(r["isError"], json!(false), "{r}");
+    {
+        let session = host.session.lock().expect("lock");
+        let p = session.project();
+        assert_eq!(p.tempo_bpm, 133.0, "the starting tempo stays");
+        assert_eq!(p.tempo_map().bpm_at(20.0), 150.0);
+    }
+    let song: Value =
+        serde_json::from_str(&text_of(&mcp.call("get_song", json!({})))).expect("song json");
+    assert_eq!(song["tempo_changes"][0]["bpm"], 150.0);
+    assert_eq!(song["tempo_changes"][0]["bar"], 5.0);
+    assert_eq!(song["tempo_changes"][0]["ramp"], false);
+    // A change on the song's first beat is the starting tempo's job.
+    let r = mcp.call("add_tempo_change", json!({ "beats": 0, "bpm": 90 }));
+    assert_eq!(r["isError"], json!(true));
+    assert!(text_of(&r).contains("set_tempo"), "{}", text_of(&r));
+
+    // Ids are shared: the tempo change took 4, so the new track is 5.
     let r = mcp.call(
         "batch",
         json!({ "commands": [
             { "command": "add_track", "name": "Lead", "instrument": "synth", "preset": "Chip Square" },
-            { "command": "create_clip", "track_id": 4, "start_beats": 0, "length_beats": 4,
+
+            { "command": "create_clip", "track_id": 5, "start_beats": 0, "length_beats": 4,
               "notes": [ { "pitch": 72, "start_beats": 0, "length_beats": 1 },
                          { "pitch": 76, "start_beats": 1, "length_beats": 1 } ] }
         ] }),

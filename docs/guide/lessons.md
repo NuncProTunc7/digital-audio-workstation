@@ -75,6 +75,7 @@ Goal: direct your AI like a composer directs a band.
 2. Listen, then react in plain words: "warmer", "less busy", "the melody needs to resolve at the end".
 3. Ask for variations: "make a combat version with the same melody" and export both as adaptive music.
 4. Ask your AI to explain what it changed and why, and try one of the changes yourself.
+5. Try a tempo change: "make the last two bars slow down like an ending". Watch the tempo strip under the section markers: the AI's change appears there, and you can drag it or type a new tempo.
 
 ## Lesson 8: Sound effects for your game
 

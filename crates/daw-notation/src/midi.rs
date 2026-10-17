@@ -78,17 +78,20 @@ pub fn export_midi(project: &Project) -> Vec<u8> {
     let to_tick = |beats: f64| (beats.max(0.0) * ticks_per_beat).round() as u64;
 
     let mut tracks: Vec<Vec<TrackEvent<'_>>> = Vec::new();
-    let quarter_bpm = project.tempo_bpm * quarters_per_beat(ts);
-    let us_per_quarter = (60_000_000.0 / quarter_bpm)
-        .round()
-        .clamp(1.0, 16_777_215.0) as u32;
+    let us_per_quarter = |bpm: f64| {
+        (60_000_000.0 / (bpm * quarters_per_beat(ts)))
+            .round()
+            .clamp(1.0, 16_777_215.0) as u32
+    };
     let meta = |m| TrackEvent {
         delta: u28::new(0),
         kind: TrackEventKind::Meta(m),
     };
     tracks.push(vec![
         meta(MetaMessage::TrackName(project.name.as_bytes())),
-        meta(MetaMessage::Tempo(u24::new(us_per_quarter))),
+        meta(MetaMessage::Tempo(u24::new(us_per_quarter(
+            project.tempo_bpm,
+        )))),
         meta(MetaMessage::TimeSignature(
             ts.numerator,
             ts.denominator.max(1).trailing_zeros() as u8,
@@ -101,6 +104,15 @@ pub fn export_midi(project: &Project) -> Vec<u8> {
             k.fifths(),
             k.mode.is_minor(),
         )));
+    }
+    let mut last = 0u64;
+    for (beats, bpm) in tempo_steps(project) {
+        let tick = to_tick(beats);
+        tracks[0].push(TrackEvent {
+            delta: u28::new((tick.saturating_sub(last)).min(0x0FFF_FFFF) as u32),
+            kind: TrackEventKind::Meta(MetaMessage::Tempo(u24::new(us_per_quarter(bpm)))),
+        });
+        last = last.max(tick);
     }
     tracks[0].push(meta(MetaMessage::EndOfTrack));
 
@@ -191,6 +203,32 @@ pub fn export_midi(project: &Project) -> Vec<u8> {
     out
 }
 
+/// How finely a glide is written to a MIDI file, in beats.
+const RAMP_STEP_BEATS: f64 = 0.25;
+
+/// The tempo events after the start, as (beats, bpm): one per change, and
+/// glides as small steps (each at its stretch's average tempo, so the file
+/// keeps the song's timing).
+fn tempo_steps(project: &Project) -> Vec<(f64, f64)> {
+    let map = project.tempo_map();
+    let changes = &project.tempo_changes;
+    let mut out = Vec::new();
+    for (i, c) in changes.iter().enumerate() {
+        match changes.get(i + 1) {
+            Some(next) if c.ramp => {
+                let mut b = c.beats;
+                while b < next.beats - 1e-9 {
+                    let e = (b + RAMP_STEP_BEATS).min(next.beats);
+                    out.push((b, map.average_bpm(b, e)));
+                    b = e;
+                }
+            }
+            _ => out.push((c.beats, c.bpm)),
+        }
+    }
+    out
+}
+
 /// Notes collected for one part while reading.
 #[derive(Default)]
 struct PartBuilder {
@@ -200,14 +238,16 @@ struct PartBuilder {
 }
 
 /// Reads a MIDI file. Each (track, channel) pair with notes becomes a part;
-/// channel 10 parts are drums. Uses the first tempo and time signature.
+/// channel 10 parts are drums. Reads every tempo event (later ones become
+/// tempo changes) and the first time signature.
 pub fn import_midi(bytes: &[u8]) -> Result<ImportedSong, NotationError> {
     let smf = Smf::parse(bytes).map_err(|e| NotationError::BadMidi(e.to_string()))?;
     let ppq = match smf.header.timing {
         Timing::Metrical(t) => f64::from(t.as_int().max(1)),
         Timing::Timecode(..) => return Err(NotationError::SmpteTiming),
     };
-    let mut us_per_quarter: Option<u32> = None;
+    // (tick, microseconds per quarter) from every track.
+    let mut tempo_events: Vec<(u64, u32)> = Vec::new();
     let mut time_signature: Option<TimeSignature> = None;
     let mut title: Option<String> = None;
     // Keyed by (track index, channel) so parts keep the file's order.
@@ -222,8 +262,8 @@ pub fn import_midi(bytes: &[u8]) -> Result<ImportedSong, NotationError> {
         for ev in track {
             tick += u64::from(ev.delta.as_int());
             match ev.kind {
-                TrackEventKind::Meta(MetaMessage::Tempo(t)) if us_per_quarter.is_none() => {
-                    us_per_quarter = Some(t.as_int());
+                TrackEventKind::Meta(MetaMessage::Tempo(t)) => {
+                    tempo_events.push((tick, t.as_int()));
                 }
                 TrackEventKind::Meta(MetaMessage::TimeSignature(n, d, ..))
                     if time_signature.is_none() =>
@@ -341,10 +381,17 @@ pub fn import_midi(bytes: &[u8]) -> Result<ImportedSong, NotationError> {
     if out.is_empty() {
         return Err(NotationError::NoNotes);
     }
+    let bpm = |us: u32| 60_000_000.0 / f64::from(us.max(1)) / quarters_per_beat(ts);
+    let marks = tempo_events
+        .iter()
+        .map(|&(tick, us)| (tick as f64 * beats_per_tick, bpm(us)))
+        .collect();
+    // Until the first tempo event, MIDI files play at 120 quarters a minute.
+    let (tempo_bpm, tempo_changes) = crate::split_tempo_marks(marks, Some(bpm(500_000)));
     Ok(ImportedSong {
         title,
-        tempo_bpm: us_per_quarter
-            .map(|us| 60_000_000.0 / f64::from(us.max(1)) / quarters_per_beat(ts)),
+        tempo_bpm,
+        tempo_changes,
         time_signature,
         parts: out,
     })
@@ -443,6 +490,68 @@ mod tests {
         // The off-eighth plays a quarter of a beat late; its end follows.
         assert!((n.start_beats - 0.75).abs() < 0.01, "{}", n.start_beats);
         assert!((n.start_beats + n.length_beats - 1.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn tempo_changes_and_glides_round_trip() {
+        let mut p = song();
+        for (beats, bpm, ramp) in [
+            (4.0, 100.0, false),
+            (8.0, 100.0, true),
+            (10.0, 160.0, false),
+        ] {
+            Command::AddTempoChange { beats, bpm, ramp }
+                .apply(&mut p)
+                .expect("tempo");
+        }
+        let back = import_midi(&export_midi(&p)).expect("parse");
+        let start = back.tempo_bpm.expect("tempo");
+        assert!((start - 140.0).abs() < 0.01);
+        let (b, bpm) = back.tempo_changes[0];
+        assert!(
+            b == 4.0 && (bpm - 100.0).abs() < 0.01,
+            "{:?}",
+            back.tempo_changes
+        );
+        // The glide comes back as small steps, and the timing is the same.
+        assert!(back.tempo_changes.len() > 4, "{:?}", back.tempo_changes);
+        let changes: Vec<daw_model::TempoChange> = back
+            .tempo_changes
+            .iter()
+            .map(|&(beats, bpm)| daw_model::TempoChange {
+                id: 1,
+                beats,
+                bpm,
+                ramp: false,
+            })
+            .collect();
+        let read = daw_model::TempoMap::new(start, &changes);
+        for b in [4.0, 9.0, 10.0, 12.0] {
+            let want = p.tempo_map().seconds_at(b);
+            assert!((read.seconds_at(b) - want).abs() < 2e-3, "beat {b}");
+        }
+        assert!((read.bpm_at(11.0) - 160.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn a_file_whose_first_tempo_comes_later_starts_at_120() {
+        let p = song();
+        let mut bytes = export_midi(&p);
+        let smf = Smf::parse(&bytes).expect("parse").make_static();
+        let mut smf = smf;
+        // Move the tempo off the first tick: 2 quarters in.
+        for ev in smf.tracks[0].iter_mut() {
+            if matches!(ev.kind, TrackEventKind::Meta(MetaMessage::Tempo(_))) {
+                ev.delta = u28::new(u32::from(PPQ) * 2);
+            }
+        }
+        bytes.clear();
+        smf.write_std(&mut bytes).expect("write");
+        let back = import_midi(&bytes).expect("parse");
+        assert!((back.tempo_bpm.expect("tempo") - 120.0).abs() < 0.01);
+        assert_eq!(back.tempo_changes.len(), 1);
+        assert!((back.tempo_changes[0].0 - 2.0).abs() < 1e-9);
+        assert!((back.tempo_changes[0].1 - 140.0).abs() < 0.01);
     }
 
     #[test]

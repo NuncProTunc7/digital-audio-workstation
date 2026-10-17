@@ -11,6 +11,15 @@ pub fn song_summary(project: &Project) -> Value {
     json!({
         "name": project.name,
         "tempo_bpm": project.tempo_bpm,
+        // Bars count from 1, like the ruler.
+        "tempo_changes": project.tempo_changes.iter().map(|c| json!({
+            "id": c.id,
+            "beats": c.beats,
+            "bar": c.beats / bpb + 1.0,
+            "bpm": c.bpm,
+            "ramp": c.ramp,
+        })).collect::<Vec<_>>(),
+        "length_seconds": (project.tempo_map().seconds_at(project.end_beats()) * 100.0).round() / 100.0,
         "time_signature": format!("{}/{}", project.time_signature.numerator, project.time_signature.denominator),
         "beats_per_bar": bpb,
         "key": project.key.map(|k| json!({

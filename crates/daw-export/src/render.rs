@@ -21,11 +21,18 @@ pub struct RenderedLoop {
     /// Interleaved stereo at [`GAME_SAMPLE_RATE_HZ`].
     pub stereo: Vec<f32>,
     pub looped: bool,
-    /// File length in beats and the tempo, for Godot's beat-synced looping.
+    /// File length in beats, for Godot's beat-synced looping.
     pub beats: f64,
     /// Beats of intro before the loop starts (0 = the whole file loops).
     pub intro_beats: f64,
+    /// The file's average tempo (its beats over its length in time), so
+    /// `beats * 60 / tempo_bpm` is exactly the file's length even when the
+    /// tempo changes inside it.
     pub tempo_bpm: f64,
+    /// Whether the tempo is the same all through the file.
+    pub steady_tempo: bool,
+    /// Seconds of intro before the loop starts.
+    pub intro_seconds: f64,
     pub beats_per_bar: u8,
 }
 
@@ -40,7 +47,7 @@ impl RenderedLoop {
 
     /// Where the loop starts, in frames from the file start.
     pub fn loop_start_frame(&self) -> usize {
-        (self.intro_beats * 60.0 / self.tempo_bpm * f64::from(GAME_SAMPLE_RATE_HZ)).round() as usize
+        (self.intro_seconds * f64::from(GAME_SAMPLE_RATE_HZ)).round() as usize
     }
 
     /// Where the loop starts, in seconds from the file start.
@@ -111,7 +118,8 @@ pub fn render_with_intro(
         }
     }
     let sr = f64::from(GAME_SAMPLE_RATE_HZ);
-    let frames_at = |beats: f64| ((beats - from) * 60.0 / p.tempo_bpm * sr).round() as usize;
+    let tempo = p.tempo_map();
+    let frames_at = |beats: f64| (tempo.seconds_between(from, beats) * sr).round() as usize;
     let file_frames = frames_at(end);
     let intro_frames = frames_at(loop_start.clamp(from, end));
     let tail = if looped {
@@ -134,16 +142,19 @@ pub fn render_with_intro(
         }
         stereo.truncate(file_frames * 2);
     }
+    let intro_beats = if looped {
+        loop_start.clamp(from, end) - from
+    } else {
+        0.0
+    };
     RenderedLoop {
         stereo,
         looped,
         beats: end - from,
-        intro_beats: if looped {
-            loop_start.clamp(from, end) - from
-        } else {
-            0.0
-        },
-        tempo_bpm: p.tempo_bpm,
+        intro_beats,
+        tempo_bpm: tempo.average_bpm(from, end),
+        steady_tempo: tempo.steady_between(from, end),
+        intro_seconds: tempo.seconds_between(from, from + intro_beats),
         beats_per_bar: p.time_signature.numerator,
     }
 }

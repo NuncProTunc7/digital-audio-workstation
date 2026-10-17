@@ -293,7 +293,7 @@ Original spec: adaptive "explore/combat" export was Claude-only.
 - Engine: `BusSlot`s with preallocated buffers, processed after the tracks and before the master; track output and sends (post-fader, or pre-fader respecting mute) per sample; bus peaks in the status. Routing changes rebuild tracks (and buses only when their layout changes); levels are live messages. `no_alloc.rs` covers buses and sends.
 - UI: bus strips (pan, mute, rename, delete, members), **+ Bus**, per-track **Out** and **→ Bus** sends. Godot `bus_stems`: one stem per bus plus "other".
 
-**9. Tempo changes mid-song** (future; owner agreed Oct 2026 to leave it for later). A tempo map (`Vec<(beats, bpm)>`), beats↔seconds conversion everywhere that assumes one tempo (engine, recording alignment, export, analysis, MIDI/MusicXML tempo events).
+**9. Tempo changes mid-song** ✅ (built Oct 2026 at the owner's request; spec `docs/superpowers/specs/2026-10-16-tempo-map-design.md`). `Project.tempo_changes: Vec<TempoChange { id, beats, bpm, ramp }>` after the starting `tempo_bpm` (ramp = glide linearly in BPM to the next change). One conversion, `daw_model::TempoMap` (`Project::tempo_map()`), used by the engine (render stretches stop at changes, glides in 64-frame stretches, count-in at the tempo where the song starts, audio clips placed in song seconds, tempo-following clips stretched per tempo stretch), recording, offline render, Godot export (a loop restarts at its starting tempo; `.import` gets the average tempo so `beat_count*60/bpm` = file length), analysis, MIDI (glides as quarter-beat steps) and MusicXML. Commands `Add/Move/Set/Remove/RestoreTempoChange`; tempo strip on the ruler. Time-shifting Commands must move tempo changes like markers.
 
 ### C. Smaller
 

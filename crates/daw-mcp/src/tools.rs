@@ -14,6 +14,7 @@ const HIDDEN_COMMANDS: &[&str] = &[
     "restore_automation_lane",
     "restore_snapshot",
     "restore_marker",
+    "restore_tempo_change",
     "restore_bus",
     "restore_chord",
     "restore_sound",
@@ -159,7 +160,7 @@ fn extra_tools() -> Vec<ToolDef> {
     vec![
         tool(
             "get_song",
-            "Overview of the open song: tempo, time signature, length, loop, master, and every track with its clips (ids, positions, note counts, muted). Each track says frozen: \"frozen\", \"out of date (plays live)\", or \"no\". Muted clips are kept but silent (e.g. unused recording takes stacked under the one that plays). Also lists the game sound effects (sounds: id, name, wave, seconds; details with get_sound). Start here. When the user says \"this\", \"these\", or \"here\", call get_selection to see what they have selected.",
+            "Overview of the open song: tempo (tempo_bpm is the starting tempo; tempo_changes lists later changes with id, beats, bar, bpm, and ramp), time signature, length (beats, bars, and seconds), loop, master, and every track with its clips (ids, positions, note counts, muted). Each track says frozen: \"frozen\", \"out of date (plays live)\", or \"no\". Muted clips are kept but silent (e.g. unused recording takes stacked under the one that plays). Also lists the game sound effects (sounds: id, name, wave, seconds; details with get_sound). Start here. When the user says \"this\", \"these\", or \"here\", call get_selection to see what they have selected.",
             object_schema(json!({}), &[]),
             true,
         ),

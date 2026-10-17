@@ -642,7 +642,7 @@ button.small {
   position: sticky;
   top: 0;
   z-index: 3;
-  height: 68px;
+  height: 88px;
 }
 
 .chord-strip {
@@ -741,6 +741,91 @@ button.small {
   display: inline;
 }
 
+.tempo-strip {
+  position: relative;
+  height: 20px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  cursor: copy;
+}
+
+.tempo-start {
+  position: absolute;
+  left: 4px;
+  top: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.tempo-hint {
+  left: 56px;
+}
+
+/* A glide: a wedge that rises when speeding up, falls when slowing down. */
+.tempo-ramp {
+  position: absolute;
+  top: 2px;
+  height: 16px;
+  background: rgba(245, 120, 90, 0.22);
+  pointer-events: none;
+}
+
+.tempo-ramp.up {
+  clip-path: polygon(0 100%, 100% 0, 100% 100%);
+}
+
+.tempo-ramp.down {
+  clip-path: polygon(0 0, 100% 100%, 0 100%);
+}
+
+.tempo-change {
+  position: absolute;
+  top: 1px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 17px;
+  padding: 0 4px 0 2px;
+  border-left: 2px solid #f5785a;
+  background: rgba(245, 120, 90, 0.18);
+  border-radius: 0 4px 4px 0;
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: grab;
+}
+
+.tempo-change input {
+  width: 48px;
+  font-size: 11px;
+  padding: 0 2px;
+}
+
+.tempo-bpm,
+.tempo-glide {
+  padding: 0 2px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tempo-glide {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.tempo-glide.on {
+  color: #f5785a;
+}
+
+.tempo-change:hover .marker-delete {
+  display: inline;
+}
+
 .marker-line {
   position: absolute;
   top: 0;
@@ -785,7 +870,7 @@ button.small {
   position: sticky;
   left: 0;
   z-index: 4;
-  height: 68px;
+  height: 88px;
   justify-content: flex-end;
   gap: 4px;
   cursor: default;

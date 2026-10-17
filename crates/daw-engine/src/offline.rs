@@ -81,15 +81,18 @@ pub fn render_region(
 ) -> Vec<f32> {
     let mut p = project.clone();
     p.loop_region.enabled = false;
-    let beats = (end_beats - start_beats).max(0.0);
-    let seconds = beats * 60.0 / p.tempo_bpm + tail_seconds.max(0.0);
+    let start_beats = start_beats.max(0.0);
+    let music = p
+        .tempo_map()
+        .seconds_between(start_beats, end_beats.max(start_beats));
+    let seconds = music + tail_seconds.max(0.0);
     render_project(
         &p,
         audio,
         vec![
             TimedMessage {
                 at_seconds: 0.0,
-                message: EngineMessage::Locate(start_beats.max(0.0)),
+                message: EngineMessage::Locate(start_beats),
             },
             TimedMessage {
                 at_seconds: 0.0,
@@ -111,7 +114,8 @@ pub fn render_song(
 ) -> Vec<f32> {
     let mut p = project.clone();
     p.loop_region.enabled = false;
-    let seconds = p.end_beats() * 60.0 / p.tempo_bpm + tail_seconds.max(0.0);
+    let seconds = p.tempo_map().seconds_at(p.end_beats()) + tail_seconds.max(0.0);
+
     render_project(
         &p,
         audio,

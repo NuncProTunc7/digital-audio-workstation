@@ -4,7 +4,7 @@
 use daw_audio::AudioPool;
 use daw_model::effect::effect_params;
 use daw_model::instrument::param_specs;
-use daw_model::{AutomationTarget, Project, Track};
+use daw_model::{AudioRegion, AutomationTarget, Clip, Project, TempoMap, Track};
 
 use crate::message::{AudioRegionPlay, AutoCurve, AutoTarget, SeqEvent, Sequence};
 
@@ -65,53 +65,98 @@ pub fn track_sequence(
         return Sequence {
             events: Vec::new(),
             audio: vec![AudioRegionPlay {
-                start_beats: 0.0,
-                end_beats: seconds * project.tempo_bpm / 60.0,
+                start_seconds: 0.0,
+                end_seconds: seconds,
                 buffer,
                 offset_frames: 0.0,
                 gain: 1.0,
+                clip_start_seconds: 0.0,
+                clip_end_seconds: seconds,
                 fade_in_frames: 0.0,
                 fade_out_frames: 0.0,
             }],
             automation: build_automation(track),
         };
     }
-    build_sequence(track, audio, sample_rate_hz, project.tempo_bpm)
+    build_sequence(track, audio, sample_rate_hz, &project.tempo_map())
+}
+
+/// The pieces an audio clip plays as. Audio at its own speed is one piece
+/// placed in song seconds. Audio that follows the tempo is one piece per
+/// tempo stretch, each stretched (pitch kept) to fill its beats exactly; a
+/// gliding stretch uses its average speed and lands on the beat at its end.
+fn audio_pieces(
+    clip: &Clip,
+    a: &AudioRegion,
+    audio: &AudioPool,
+    sample_rate_hz: u32,
+    map: &TempoMap,
+    regions: &mut Vec<AudioRegionPlay>,
+) {
+    let sr = f64::from(sample_rate_hz);
+    let (start, end) = (clip.start_beats, clip.start_beats + clip.length_beats);
+    let (clip_start_seconds, clip_end_seconds) = (map.seconds_at(start), map.seconds_at(end));
+    let gain = if a.gain_db <= daw_model::MIN_VOLUME_DB {
+        0.0
+    } else {
+        10f32.powf(a.gain_db as f32 / 20.0)
+    };
+    let piece = |from: f64, to: f64, buffer, offset_frames| AudioRegionPlay {
+        start_seconds: map.seconds_at(from),
+        end_seconds: map.seconds_at(to),
+        buffer,
+        offset_frames,
+        gain,
+        clip_start_seconds,
+        clip_end_seconds,
+        fade_in_frames: a.fade_in_seconds * sr,
+        fade_out_frames: a.fade_out_seconds * sr,
+    };
+    let Some(src) = a.source_bpm else {
+        if let Ok(buffer) = audio.stretched(&a.file, sample_rate_hz, 1.0) {
+            regions.push(piece(start, end, buffer, a.offset_seconds * sr));
+        }
+        return;
+    };
+    let cuts: Vec<f64> = std::iter::once(start)
+        .chain(
+            map.change_beats()
+                .filter(|&b| b > start + 1e-9 && b < end - 1e-9),
+        )
+        .chain(std::iter::once(end))
+        .collect();
+    for w in cuts.windows(2) {
+        let (from, to) = (w[0], w[1]);
+        // Seconds of the recording these beats hold, and of the song.
+        let file_seconds = (to - from) * 60.0 / src;
+        let song_seconds = map.seconds_between(from, to);
+        if file_seconds <= 0.0 || song_seconds <= 0.0 {
+            continue;
+        }
+        let ratio = song_seconds / file_seconds;
+        let file_at = a.offset_seconds + (from - start) * 60.0 / src;
+        if let Ok(buffer) = audio.stretched(&a.file, sample_rate_hz, ratio) {
+            regions.push(piece(from, to, buffer, file_at * sr * ratio));
+        }
+    }
 }
 
 /// Flattens all clips on a track. Notes are cut at their clip's end; at the
 /// same beat, note-offs come before note-ons so repeated notes retrigger.
-/// Audio clips whose file can't be loaded are left out (silent).
-/// Clips that follow the tempo are stretched to `tempo_bpm`.
+/// Audio clips whose file can't be loaded are left out (silent); audio is
+/// placed in song seconds through `map` (see [`audio_pieces`]).
 pub fn build_sequence(
     track: &Track,
     audio: &AudioPool,
     sample_rate_hz: u32,
-    tempo_bpm: f64,
+    map: &TempoMap,
 ) -> Sequence {
     let mut events = Vec::new();
-    let sr = f64::from(sample_rate_hz);
     let mut regions = Vec::new();
     // Muted clips (unused takes) are kept but not heard.
     for clip in track.clips.iter().filter(|c| !c.muted) {
         if let Some(a) = &clip.audio {
-            // Following the tempo: slower songs stretch the audio longer.
-            let ratio = a.source_bpm.map_or(1.0, |src| src / tempo_bpm);
-            if let Ok(buffer) = audio.stretched(&a.file, sample_rate_hz, ratio) {
-                regions.push(AudioRegionPlay {
-                    start_beats: clip.start_beats,
-                    end_beats: clip.start_beats + clip.length_beats,
-                    buffer,
-                    offset_frames: a.offset_seconds * sr * ratio,
-                    gain: if a.gain_db <= daw_model::MIN_VOLUME_DB {
-                        0.0
-                    } else {
-                        10f32.powf(a.gain_db as f32 / 20.0)
-                    },
-                    fade_in_frames: a.fade_in_seconds * sr,
-                    fade_out_frames: a.fade_out_seconds * sr,
-                });
-            }
+            audio_pieces(clip, a, audio, sample_rate_hz, map, &mut regions);
             continue;
         }
         for n in &clip.notes {
@@ -142,7 +187,7 @@ pub fn build_sequence(
             .total_cmp(&b.beat)
             .then_with(|| a.velocity.total_cmp(&b.velocity))
     });
-    regions.sort_by(|a, b| a.start_beats.total_cmp(&b.start_beats));
+    regions.sort_by(|a, b| a.start_seconds.total_cmp(&b.start_seconds));
     Sequence {
         events,
         audio: regions,
@@ -189,7 +234,13 @@ mod tests {
             ],
             audio: None,
         }]);
-        let s = build_sequence(&t, &AudioPool::in_temp_dir(), 48_000, 120.0);
+        let s = build_sequence(
+            &t,
+            &AudioPool::in_temp_dir(),
+            48_000,
+            &TempoMap::steady(120.0),
+        );
+
         let summary: Vec<(f64, u8, bool)> = s
             .events
             .iter()
@@ -219,7 +270,13 @@ mod tests {
             notes: vec![note(1, 60, 0.0, 1.0), note(2, 60, 1.0, 1.0)],
             audio: None,
         }]);
-        let s = build_sequence(&t, &AudioPool::in_temp_dir(), 48_000, 120.0);
+        let s = build_sequence(
+            &t,
+            &AudioPool::in_temp_dir(),
+            48_000,
+            &TempoMap::steady(120.0),
+        );
+
         assert_eq!(s.events[1].beat, 1.0);
         assert_eq!(s.events[1].velocity, 0.0);
         assert!(s.events[2].velocity > 0.0);

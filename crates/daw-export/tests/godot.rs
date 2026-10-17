@@ -586,3 +586,55 @@ fn muted_and_unsoloed_tracks_get_no_stem() {
         report.files
     );
 }
+
+#[test]
+fn loops_with_a_tempo_change_inside_stay_exact_and_tell_godot_the_average_tempo() {
+    // The song slows to 60 BPM at beat 2: beats 0..2 take 1 s, beats 2..8
+    // take 6 s, so the 8-beat loop is 7 s long.
+    let mut p = song();
+    Command::AddTempoChange {
+        beats: 2.0,
+        bpm: 60.0,
+        ramp: false,
+    }
+    .apply(&mut p)
+    .expect("tempo");
+    Command::SetLoop {
+        enabled: Some(true),
+        start_beats: Some(1.0),
+        end_beats: Some(8.0),
+    }
+    .apply(&mut p)
+    .expect("loop");
+    let pool = AudioPool::in_temp_dir();
+    let sr = GAME_SAMPLE_RATE_HZ as usize;
+    let file = daw_export::render_with_intro(&p, &pool, 0.0, 1.0, 8.0, true, None);
+    assert_eq!(file.stereo.len(), 7 * sr * 2);
+    // The intro (beat 0..1) is half a second at 120 BPM.
+    assert_eq!(file.loop_start_frame(), sr / 2);
+    assert!(!file.steady_tempo);
+    assert!((file.tempo_bpm - 8.0 * 60.0 / 7.0).abs() < 1e-9);
+
+    let dir = godot_project();
+    let mut ogg = spec(dir.path());
+    ogg.intro = true;
+    ogg.start_beats = Some(0.0);
+    ogg.end_beats = Some(8.0);
+    export_to_godot(&p, &pool, &ogg).expect("export");
+    let import = std::fs::read_to_string(dir.path().join("music/boss/boss_theme.ogg.import"))
+        .expect("import");
+    let bpm: f64 = import
+        .lines()
+        .find_map(|l| l.strip_prefix("bpm="))
+        .expect("bpm")
+        .parse()
+        .expect("number");
+    let beats: f64 = import
+        .lines()
+        .find_map(|l| l.strip_prefix("beat_count="))
+        .expect("beat_count")
+        .parse()
+        .expect("number");
+    // Godot's loop length (beat_count * 60 / bpm) is the file's length.
+    assert!((beats * 60.0 / bpm - 7.0).abs() < 1e-6, "{import}");
+}

@@ -67,6 +67,18 @@ The strip under the bar numbers holds **section markers**: named points where a 
 - A dashed line shows each marker across the tracks.
 - Godot export can turn the sections into music that switches between them in the game (see [Godot](godot.md)).
 
+## Tempo changes
+
+The **Tempo** box in the top bar is the speed the song *starts* at. To change speed partway through (a calm intro before a faster loop, a boss that speeds up, a slow last bar), use the **tempo strip**, the row under the section markers. On its left it shows the starting tempo (♩ 120).
+
+- **Double-click** the tempo strip where the new speed should start. A change appears at the tempo already playing there; type the new BPM and press **Enter**.
+- Click a change's number to type a different tempo. **Drag** a change to move it; hover and click **✕** to delete it.
+- **⟋ (glide)**: instead of jumping to the next tempo, the song speeds up (or slows down) smoothly from this change until it reaches the next one. Add the next change first, then turn on ⟋ on the one before it. A glide shows as a rising or falling wedge.
+- Notes stay on their beats and bars, so a melody keeps its rhythm; it just plays faster or slower. The metronome and the count-in follow the changes too.
+- Recorded and imported audio keeps its own speed unless you tick **Follow song tempo** for the clip (in its Instrument panel); then it stretches to stay on the beat, without changing pitch.
+- MIDI files and sheet music (MusicXML) keep the tempo changes both ways.
+- Your AI can do this too: "slow down to 70 BPM for the last two bars" or "speed up from bar 17 to bar 21".
+
 ## Clips
 
 - **Double-click** an empty spot on an instrument track to add a clip. Double-click a clip to open it in the piano roll.

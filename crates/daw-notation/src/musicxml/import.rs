@@ -261,7 +261,8 @@ pub fn import_musicxml(xml: &str) -> Result<ImportedSong, NotationError> {
         }
     }
 
-    let mut tempo_q: Option<f64> = None;
+    // (quarters from the start, quarter-note tempo) of every tempo mark.
+    let mut tempo_marks: Vec<(f64, f64)> = Vec::new();
     let mut time_signature: Option<TimeSignature> = None;
     let mut parts = Vec::new();
     for (index, part) in root
@@ -324,13 +325,15 @@ pub fn import_musicxml(xml: &str) -> Result<ImportedSong, NotationError> {
                         } else {
                             child(el, "sound")
                         };
-                        if tempo_q.is_none()
-                            && let Some(t) = sound
-                                .and_then(|s| s.attribute("tempo"))
-                                .and_then(|t| t.parse::<f64>().ok())
+                        if let Some(t) = sound
+                            .and_then(|s| s.attribute("tempo"))
+                            .and_then(|t| t.parse::<f64>().ok())
                             && t > 0.0
                         {
-                            tempo_q = Some(t);
+                            // A direction may sit later than where it is
+                            // written (<offset>, in divisions).
+                            let offset = child_num(el, "offset").unwrap_or(0.0) / r.divisions;
+                            tempo_marks.push((r.position_q + offset, t));
                         }
                     }
                     _ => {}
@@ -384,9 +387,16 @@ pub fn import_musicxml(xml: &str) -> Result<ImportedSong, NotationError> {
         return Err(NotationError::NoNotes);
     }
     let ts = time_signature.unwrap_or_default();
+    let qpb = quarters_per_beat(ts);
+    let marks = tempo_marks
+        .iter()
+        .map(|&(q, t)| (q / qpb, t / qpb))
+        .collect();
+    let (tempo_bpm, tempo_changes) = crate::split_tempo_marks(marks, None);
     Ok(ImportedSong {
         title,
-        tempo_bpm: tempo_q.map(|t| t / quarters_per_beat(ts)),
+        tempo_bpm,
+        tempo_changes,
         time_signature,
         parts,
     })

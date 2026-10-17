@@ -88,8 +88,9 @@ fn clip_starts_on_its_beat_and_plays_in_both_ears() {
     let p = project(region("dc.wav", 1.0), 1.0, None);
     let out = render_project(&p, &pool, play_from(0.0), 1.2, SR);
     let first = out.chunks(2).position(|f| f[0] != 0.0).expect("clip plays");
-    // Starts exactly on the beat, at the bottom of the declick ramp.
-    assert_eq!(first, FRAMES_PER_BEAT);
+    // Starts on the beat, at the bottom of the declick ramp (whose very
+    // first sample may be exactly silent).
+    assert!(first.abs_diff(FRAMES_PER_BEAT) <= 1, "{first}");
     assert!(out[first * 2].abs() < 0.01);
     let settled = &out[(FRAMES_PER_BEAT + 500) * 2..][..2];
     assert!((settled[0] - 0.5).abs() < 1e-4, "{settled:?}");
@@ -275,4 +276,76 @@ fn clips_that_follow_tempo_stretch_with_it_and_keep_their_pitch() {
         .count();
     let hz = crossings as f32 * SR as f32 / blip.len() as f32;
     assert!((hz - 440.0).abs() < 15.0, "{hz} Hz");
+}
+
+#[test]
+fn audio_keeps_its_own_speed_across_a_tempo_change() {
+    // Each sample's value says when in the file it is.
+    let ramp: Vec<f32> = (0..SR as usize * 4)
+        .map(|i| i as f32 / (SR as f32 * 10.0))
+        .collect();
+    let pool = pool_with("ramp.wav", ramp);
+    let mut p = project(region("ramp.wav", 4.0), 0.0, None);
+    // 120 BPM for 2 beats (1 s), then 60 BPM. Set before the clip went in,
+    // the clip would cover the whole file; here it keeps its length in
+    // beats, which is still plenty.
+    Command::AddTempoChange {
+        beats: 2.0,
+        bpm: 60.0,
+        ramp: false,
+    }
+    .apply(&mut p)
+    .expect("tempo");
+    let out = left(&render_project(&p, &pool, play_from(0.0), 3.9, SR));
+    for at in [10_000, 47_990, 48_010, 100_000, 180_000] {
+        let want = at as f32 / (SR as f32 * 10.0);
+        assert!(
+            (out[at] - want).abs() < 1e-5,
+            "sample {at}: {} vs {want}",
+            out[at]
+        );
+    }
+}
+
+#[test]
+fn clips_that_follow_tempo_stay_on_the_beat_across_a_tempo_change() {
+    // A 120 BPM "recording": a blip on every beat (0.5 s apart).
+    let blips: Vec<f32> = (0..SR as usize * 2)
+        .map(|i| {
+            let t = i % (SR as usize / 2);
+            if t < 2_400 {
+                0.5 * (std::f32::consts::TAU * 440.0 * i as f32 / SR as f32).sin()
+            } else {
+                0.0
+            }
+        })
+        .collect();
+    let pool = pool_with("blips.wav", blips);
+    let mut p = project(region("blips.wav", 2.0), 0.0, None);
+    let clip = p.tracks[0].clips[0].id;
+    Command::SetClipTempo {
+        clip_id: clip,
+        source_bpm: Some(120.0),
+    }
+    .apply(&mut p)
+    .expect("follow");
+    Command::AddTempoChange {
+        beats: 2.0,
+        bpm: 60.0,
+        ramp: false,
+    }
+    .apply(&mut p)
+    .expect("tempo");
+    let out = left(&render_project(&p, &pool, play_from(0.0), 3.5, SR));
+    // Beats 0 and 1 at 0 and 0.5 s, then beat 2 at 1 s and beat 3 at 2 s.
+    for seconds in [0.0, 0.5, 1.0, 2.0] {
+        let at = (seconds * f64::from(SR)) as usize;
+        assert!(
+            out[at + 500..at + 2_000].iter().any(|x| x.abs() > 0.3),
+            "a blip at {seconds} s"
+        );
+    }
+    // Nothing where the old tempo would have put beat 3 (1.5 s).
+    let old = (1.5 * f64::from(SR)) as usize;
+    assert!(out[old + 500..old + 2_000].iter().all(|x| x.abs() < 0.05));
 }

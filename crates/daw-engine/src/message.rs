@@ -21,14 +21,20 @@ pub struct SeqEvent {
 /// One audio clip, as the audio thread plays it.
 #[derive(Debug, Clone)]
 pub struct AudioRegionPlay {
-    pub start_beats: f64,
-    pub end_beats: f64,
+    /// Song time (seconds from the song start) where this piece plays.
+    pub start_seconds: f64,
+    pub end_seconds: f64,
     /// Audio at the engine's sample rate.
     pub buffer: Arc<AudioBuffer>,
-    /// Frame of `buffer` heard at `start_beats`.
+    /// Frame of `buffer` heard at `start_seconds`.
     pub offset_frames: f64,
     /// Linear clip gain.
     pub gain: f32,
+    /// The whole clip's span in song seconds. A clip that follows the
+    /// tempo plays as one piece per tempo stretch; fades and de-clicks
+    /// belong to the clip's own edges.
+    pub clip_start_seconds: f64,
+    pub clip_end_seconds: f64,
     pub fade_in_frames: f64,
     pub fade_out_frames: f64,
 }
@@ -275,6 +281,7 @@ pub enum Garbage {
     Instrument(#[allow(dead_code)] Box<dyn daw_instruments::InstrumentProcessor>),
     Effect(#[allow(dead_code)] Box<dyn EffectProcessor>),
     OneShot(#[allow(dead_code)] std::sync::Arc<[f32]>),
+    TempoMap(#[allow(dead_code)] Box<daw_model::TempoMap>),
 }
 
 /// Everything the audio thread can be told. Sent through a lock-free queue.
@@ -372,7 +379,9 @@ pub enum EngineMessage {
     Stop,
     /// Moves the playhead, in beats from the start.
     Locate(f64),
-    SetTempo(f64),
+    /// The song's tempo and tempo changes. The old map comes back as
+    /// garbage.
+    SetTempoMap(Box<daw_model::TempoMap>),
     SetTimeSignature {
         numerator: u8,
         denominator: u8,

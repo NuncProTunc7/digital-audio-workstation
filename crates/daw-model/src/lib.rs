@@ -14,6 +14,7 @@ mod project;
 mod session;
 pub mod sound;
 pub mod summary;
+mod tempo;
 
 pub use command::{
     Command, CommandError, MAX_BUSES, MAX_SNAPSHOTS, NoteEdit, NoteInput, command_schema,
@@ -25,9 +26,10 @@ pub use file::{
 pub use instrument::{Instrument, InstrumentKind};
 pub use project::{
     AudioRegion, AutomationLane, AutomationPoint, AutomationTarget, Bus, Clip, ClipId, EffectId,
-    FORMAT_VERSION, Frozen, Id, LaneId, LoopRegion, MAX_BEATS, MAX_TRACKS, MAX_VOLUME_DB,
-    MIN_LENGTH_BEATS, MIN_VOLUME_DB, Marker, MasterBus, Mixer, Note, NoteId, Project, Send,
-    Snapshot, SongSection, SongState, Swing, TimeSignature, Track, TrackId,
+    FORMAT_VERSION, Frozen, Id, LaneId, LoopRegion, MAX_BEATS, MAX_TEMPO_BPM, MAX_TRACKS,
+    MAX_VOLUME_DB, MIN_LENGTH_BEATS, MIN_TEMPO_BPM, MIN_VOLUME_DB, Marker, MasterBus, Mixer, Note,
+    NoteId, Project, Send, Snapshot, SongSection, SongState, Swing, TimeSignature, Track, TrackId,
 };
 pub use session::Session;
 pub use sound::{SoundCategory, SoundChanges, SoundEffect, SoundRecipe, Wave};
+pub use tempo::{MAX_TEMPO_CHANGES, TempoChange, TempoMap};

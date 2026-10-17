@@ -17,6 +17,7 @@ mod snapshots;
 pub use snapshots::MAX_SNAPSHOTS;
 mod song;
 mod sounds;
+mod tempo;
 mod tracks;
 
 #[cfg(test)]
@@ -71,11 +72,52 @@ pub enum Command {
         /// New project name. Must not be empty.
         name: String,
     },
-    /// Set the project tempo in beats per minute (20–999).
+    /// Set the song's starting tempo in beats per minute (20–999). Tempo
+    /// changes later in the song (add_tempo_change) stay where they are.
     SetTempo {
         /// Tempo in beats per minute.
         bpm: f64,
     },
+    /// Change the tempo partway through the song: from `beats` on, the song
+    /// plays at `bpm`. Use for a calm intro before a faster loop, a boss
+    /// phase that speeds up, or a slow-down at the end. With `ramp` the
+    /// tempo glides from this change to the next change's tempo, arriving
+    /// exactly on it (add the next change too, e.g. ramp at beat 64 from
+    /// 120, steady 140 at beat 80 = speeds up over bars 17-20 in 4/4).
+    /// Notes stay on their beats; audio keeps its own speed unless it
+    /// follows the tempo (set_clip_tempo). get_song lists the changes.
+    /// Errors if `beats` is not after 0 (use set_tempo for the starting
+    /// tempo) or another change is already on that beat.
+    AddTempoChange {
+        /// Where the new tempo starts, in beats from the song start (> 0).
+        beats: f64,
+        /// The new tempo in beats per minute (20–999).
+        bpm: f64,
+        /// Glide from here to the next change's tempo (default false:
+        /// a sudden change).
+        #[serde(default)]
+        ramp: bool,
+    },
+    /// Move a tempo change to another beat (after 0, not onto another
+    /// change).
+    MoveTempoChange {
+        tempo_change_id: Id,
+        /// New position in beats from the song start.
+        beats: f64,
+    },
+    /// Change a tempo change's tempo and/or whether it glides to the next
+    /// one. Omitted fields stay as they are.
+    SetTempoChange {
+        tempo_change_id: Id,
+        /// New tempo in beats per minute (20–999).
+        bpm: Option<f64>,
+        /// Glide from this change to the next change's tempo.
+        ramp: Option<bool>,
+    },
+    /// Delete a tempo change; the tempo before it carries on.
+    RemoveTempoChange { tempo_change_id: Id },
+    /// Put back a deleted tempo change exactly as it was (used by undo).
+    RestoreTempoChange { change: crate::tempo::TempoChange },
     /// Set the time signature, for example 4/4, 3/4, or 6/8.
     SetTimeSignature {
         /// Beats per bar (1–32).
@@ -759,6 +801,18 @@ impl Command {
         match self {
             C::RenameProject { name } => song::rename(project, name),
             C::SetTempo { bpm } => song::set_tempo(project, bpm),
+            C::AddTempoChange { beats, bpm, ramp } => tempo::add(project, beats, bpm, ramp),
+            C::MoveTempoChange {
+                tempo_change_id,
+                beats,
+            } => tempo::move_to(project, tempo_change_id, beats),
+            C::SetTempoChange {
+                tempo_change_id,
+                bpm,
+                ramp,
+            } => tempo::set(project, tempo_change_id, bpm, ramp),
+            C::RemoveTempoChange { tempo_change_id } => tempo::remove(project, tempo_change_id),
+            C::RestoreTempoChange { change } => tempo::restore(project, change),
             C::SetTimeSignature {
                 numerator,
                 denominator,
@@ -1244,6 +1298,26 @@ impl Command {
                 ta == tb && ba == bb && la.is_some() == lb.is_some() && pa.is_some() == pb.is_some()
             }
             (C::MoveMarker { marker_id: a, .. }, C::MoveMarker { marker_id: b, .. }) => a == b,
+            (
+                C::MoveTempoChange {
+                    tempo_change_id: a, ..
+                },
+                C::MoveTempoChange {
+                    tempo_change_id: b, ..
+                },
+            ) => a == b,
+            (
+                C::SetTempoChange {
+                    tempo_change_id: a,
+                    bpm: ba,
+                    ramp: ra,
+                },
+                C::SetTempoChange {
+                    tempo_change_id: b,
+                    bpm: bb,
+                    ramp: rb,
+                },
+            ) => a == b && ba.is_some() && bb.is_some() && ra.is_none() && rb.is_none(),
             (C::SetSound { sound_id: a, .. }, C::SetSound { sound_id: b, .. }) => a == b,
             (C::MoveChord { chord_id: a, .. }, C::MoveChord { chord_id: b, .. }) => a == b,
             (C::TrimClipStart { clip_id: a, .. }, C::TrimClipStart { clip_id: b, .. }) => a == b,
@@ -1359,6 +1433,11 @@ fn batch(project: &mut Project, commands: Vec<Command>) -> Result<Command, Comma
 /// JSON Schema for [`Command`]. The MCP server turns each variant into a tool.
 pub fn command_schema() -> serde_json::Value {
     serde_json::to_value(schemars::schema_for!(Command)).unwrap_or_default()
+}
+
+/// Tidies a loaded file's tempo changes (see `tempo::clean`).
+pub(crate) fn clean_tempo_changes(project: &mut Project) {
+    tempo::clean(project);
 }
 
 /// Checks a time in beats is a usable position.

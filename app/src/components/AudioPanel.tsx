@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { CalibrationResult, Clip, Command, InputStatus, Peaks, Track } from "../types";
 import { meterPercent } from "../format";
+import type { TempoMap } from "../tempo";
 
 const DEFAULT_INPUT = "__default__";
 /** Normalize brings the loudest moment to this level. */
@@ -14,7 +15,8 @@ interface AudioPanelProps {
   clip: Clip | undefined;
   peaks: Peaks | undefined;
   missing: boolean;
-  tempoBpm: number;
+  /** The song's tempo and tempo changes. */
+  tempo: TempoMap;
   playheadBeats: number;
   recording: boolean;
   input: InputStatus | null;
@@ -50,7 +52,10 @@ export default function AudioPanel(props: AudioPanelProps) {
   };
   const audio = clip?.audio ?? undefined;
   // Real playing time of the clip (stretched clips play at the song tempo).
-  const clipSeconds = clip ? (clip.length_beats * 60) / props.tempoBpm : 0;
+  const clipSeconds = clip ? props.tempo.secondsBetween(clip.start_beats, clip.start_beats + clip.length_beats) : 0;
+  // Following the tempo starts at the clip's own average tempo, so nothing
+  // moves until the tempo changes.
+  const clipBpm = clip && clipSeconds > 0 ? (clip.length_beats * 60) / clipSeconds : props.tempo.bpmAt(0);
   const maxFade = Math.max(0.01, Math.min(10, clipSeconds / 2));
   const insideClip =
     clip !== undefined &&
@@ -249,7 +254,7 @@ export default function AudioPanel(props: AudioPanelProps) {
                       .onCommand({
                         command: "set_clip_tempo",
                         clip_id: clip.id,
-                        source_bpm: e.target.checked ? props.tempoBpm : null,
+                        source_bpm: e.target.checked ? Math.round(clipBpm * 1000) / 1000 : null,
                       })
                       .then(props.onEndGesture);
                   }}

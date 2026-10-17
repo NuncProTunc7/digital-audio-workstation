@@ -420,9 +420,13 @@ pub fn report(info: &DiagnosticInfo, project: &Project) -> String {
     let clips: usize = project.tracks.iter().map(|t| t.clips.len()).sum();
     let _ = writeln!(
         r,
-        "Song: \"{}\" · {} BPM · {}/{} · {} tracks · {} clips",
+        "Song: \"{}\" · {} BPM{} · {}/{} · {} tracks · {} clips",
         project.name,
         project.tempo_bpm,
+        match project.tempo_changes.len() {
+            0 => String::new(),
+            n => format!(" ({n} tempo changes)"),
+        },
         project.time_signature.numerator,
         project.time_signature.denominator,
         project.tracks.len(),

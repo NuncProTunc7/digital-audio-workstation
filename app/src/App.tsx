@@ -20,6 +20,7 @@ import StatusBar from "./components/StatusBar";
 import Timeline from "./components/Timeline";
 import { formatPosition, snapDown } from "./format";
 import { MODES, NOTE_NAMES } from "./music";
+import { tempoMap } from "./tempo";
 import { baseNoteForRange, guitarRange, packRange, rangeText } from "./range";
 import {
   DEFAULT_BASE_NOTE,
@@ -1205,7 +1206,7 @@ export default function App({ backend }: AppProps) {
               clip={clipTrack?.id === selectedTrack.id ? selectedClip : undefined}
               peaks={selectedClip?.audio ? peaks[selectedClip.audio.file] : undefined}
               missing={selectedClip?.audio ? missingAudio.has(selectedClip.audio.file) : false}
-              tempoBpm={project.tempo_bpm}
+              tempo={tempoMap(project)}
               playheadBeats={position}
               recording={recording}
               input={input}

@@ -294,6 +294,44 @@ fn audio_thread_never_allocates() {
     engine.stop_recording();
     engine.stop();
 
+    // Tempo changes: a glide and a sudden change, crossed while playing,
+    // with the recording following the tempo (cut into one piece per tempo
+    // stretch). Changing the map hands the old one back.
+    let take = session.project().tracks[3].clips[0].id;
+    session
+        .execute(Command::SetClipTempo {
+            clip_id: take,
+            source_bpm: Some(120.0),
+        })
+        .expect("follow tempo");
+    for (beats, bpm, ramp) in [(0.5, 90.0, true), (1.0, 140.0, false)] {
+        session
+            .execute(Command::AddTempoChange { beats, bpm, ramp })
+            .expect("tempo change");
+    }
+    engine.sync(session.project());
+    engine.locate(0.0);
+    engine.play();
+    assert_eq!(
+        process_counting(&mut processor, &mut out),
+        0,
+        "tempo changes"
+    );
+    let first = session.project().tempo_changes[0].id;
+    session
+        .execute(Command::RemoveTempoChange {
+            tempo_change_id: first,
+        })
+        .expect("remove change");
+    engine.sync(session.project());
+    engine.locate(0.0);
+    assert_eq!(
+        process_counting(&mut processor, &mut out),
+        0,
+        "tempo map swap"
+    );
+    engine.stop();
+
     // Arrangement playback: clips, effects on tracks and master, a loop that
     // wraps several times, live recording, and edits while playing.
     session
@@ -614,7 +652,9 @@ fn audio_thread_never_allocates() {
         })
         .expect("effect param");
     engine.sync(session.project());
-    engine.send(EngineMessage::SetTempo(97.0));
+    engine.send(EngineMessage::SetTempoMap(Box::new(
+        daw_model::TempoMap::steady(97.0),
+    )));
     for n in 0..40 {
         engine.note_off(strings, 40 + n);
     }

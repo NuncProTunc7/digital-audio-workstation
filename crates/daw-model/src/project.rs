@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::effect::Effect;
 use crate::instrument::{Instrument, InstrumentKind};
+use crate::tempo::{TempoChange, TempoMap};
 
 /// Slowest tempo a project accepts, in beats per minute.
 pub const MIN_TEMPO_BPM: f64 = 20.0;
@@ -34,8 +35,13 @@ pub struct Project {
     pub format_version: u32,
     /// Display name shown in the title bar and used as the default export name.
     pub name: String,
-    /// Tempo in beats per minute.
+    /// Starting tempo in beats per minute.
     pub tempo_bpm: f64,
+    /// Where the tempo changes after the start, sorted by beat (all after
+    /// beat 0, one per beat). Convert beats and seconds with
+    /// [`Project::tempo_map`].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tempo_changes: Vec<TempoChange>,
     /// Meter, such as 4/4 or 6/8.
     pub time_signature: TimeSignature,
     /// Instrument tracks, top to bottom.
@@ -143,6 +149,8 @@ pub struct Snapshot {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct SongState {
     pub tempo_bpm: f64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tempo_changes: Vec<TempoChange>,
     pub time_signature: TimeSignature,
     pub tracks: Vec<Track>,
     #[serde(default)]
@@ -177,6 +185,7 @@ impl Project {
     pub fn song_state(&self) -> SongState {
         SongState {
             tempo_bpm: self.tempo_bpm,
+            tempo_changes: self.tempo_changes.clone(),
             time_signature: self.time_signature,
             tracks: self.tracks.clone(),
             master: self.master.clone(),
@@ -204,6 +213,7 @@ impl Project {
             "effects": track.mixer.effects,
             "automation": shaping,
             "tempo": self.tempo_bpm,
+            "tempo_changes": self.tempo_changes,
             "meter": self.time_signature,
         })
         .to_string();
@@ -256,6 +266,7 @@ impl Project {
     pub fn set_song_state(&mut self, song: SongState) -> SongState {
         let old = self.song_state();
         self.tempo_bpm = song.tempo_bpm;
+        self.tempo_changes = song.tempo_changes;
         self.time_signature = song.time_signature;
         self.tracks = song.tracks;
         self.master = song.master;
@@ -371,6 +382,7 @@ impl Project {
     /// Whether any track, clip, note, or effect already uses `id`.
     pub fn id_in_use(&self, id: Id) -> bool {
         self.chords.iter().any(|c| c.id == id)
+            || self.tempo_changes.iter().any(|c| c.id == id)
             || self.sounds.iter().any(|s| s.id == id)
             || self.snapshots.iter().any(|s| s.id == id)
             || self.markers.iter().any(|m| m.id == id)
@@ -395,6 +407,7 @@ impl Project {
         ids.extend(self.snapshots.iter().map(|s| s.id));
         ids.extend(self.markers.iter().map(|m| m.id));
         ids.extend(self.chords.iter().map(|c| c.id));
+        ids.extend(self.tempo_changes.iter().map(|c| c.id));
         ids.extend(self.sounds.iter().map(|s| s.id));
         for b in &self.buses {
             ids.push(b.id);
@@ -425,6 +438,26 @@ impl Project {
     pub fn beats_per_bar(&self) -> f64 {
         f64::from(self.time_signature.numerator.max(1))
     }
+
+    /// Beats ↔ seconds for this song, with its tempo changes.
+    pub fn tempo_map(&self) -> TempoMap {
+        TempoMap::new(self.tempo_bpm, &self.tempo_changes)
+    }
+
+    /// Seconds of `region`'s file played between two song positions: song
+    /// time for audio at its own speed, the recording's own beats for audio
+    /// that follows the tempo.
+    pub fn file_seconds_between(
+        &self,
+        region: &AudioRegion,
+        from_beats: f64,
+        to_beats: f64,
+    ) -> f64 {
+        match region.source_bpm {
+            Some(src) => (to_beats - from_beats) * 60.0 / src,
+            None => self.tempo_map().seconds_between(from_beats, to_beats),
+        }
+    }
 }
 
 impl Default for Project {
@@ -452,6 +485,7 @@ impl Default for Project {
             format_version: FORMAT_VERSION,
             name: "Untitled".to_owned(),
             tempo_bpm: 120.0,
+            tempo_changes: Vec::new(),
             time_signature: TimeSignature::default(),
             tracks: vec![
                 track(1, "Keys", InstrumentKind::Synth, "Warm Keys"),
@@ -747,11 +781,6 @@ impl AudioRegion {
     /// Seconds of audio left after `offset_seconds`.
     pub fn remaining_seconds(&self) -> f64 {
         (self.file_seconds - self.offset_seconds).max(0.0)
-    }
-
-    /// Seconds of the file that one beat on the timeline covers.
-    pub fn file_seconds_per_beat(&self, tempo_bpm: f64) -> f64 {
-        60.0 / self.source_bpm.unwrap_or(tempo_bpm)
     }
 }
 

@@ -296,7 +296,7 @@ impl Engine {
                     &ctx,
                 ),
                 master_gain: db_to_fader_gain(project.master.volume_db),
-                tempo_bpm: project.tempo_bpm,
+                tempo: Box::new(project.tempo_map()),
                 beats_per_bar: project.time_signature.numerator,
                 loop_enabled: project.loop_region.enabled,
                 loop_start: project.loop_region.start_beats,
@@ -527,8 +527,12 @@ impl Engine {
         let Ok(mut synced) = self.synced.lock() else {
             return;
         };
-        if synced.tempo_bpm != project.tempo_bpm {
-            self.send(EngineMessage::SetTempo(project.tempo_bpm));
+        // Processors are built at the starting tempo; the audio thread
+        // gives them the tempo of wherever the playhead is.
+        let tempo_changed =
+            synced.tempo_bpm != project.tempo_bpm || synced.tempo_changes != project.tempo_changes;
+        if tempo_changed {
+            self.send(EngineMessage::SetTempoMap(Box::new(project.tempo_map())));
         }
         if synced.time_signature != project.time_signature {
             self.send(EngineMessage::SetTimeSignature {
@@ -586,7 +590,6 @@ impl Engine {
                     && frozen(&synced, a) == frozen(project, b)
             });
         if same_layout {
-            let tempo_changed = synced.tempo_bpm != project.tempo_bpm;
             for (old, new) in synced.tracks.iter().zip(&project.tracks) {
                 self.sync_track(project, old, new, tempo_changed);
                 for (index, (a, b)) in old.sends.iter().zip(&new.sends).enumerate() {
@@ -673,12 +676,10 @@ impl Engine {
         }
         self.sync_chain(tracks, Some(new.id), &os.effects, &ns.effects, tempo_bpm);
         let automation_changed = old.automation != new.automation;
-        // Clips that follow the tempo need re-stretching when it changes.
-        let restretch = tempo_changed
-            && new
-                .clips
-                .iter()
-                .any(|c| c.audio.as_ref().is_some_and(|a| a.source_bpm.is_some()));
+        // Audio is placed in song seconds (and clips that follow the tempo
+        // are stretched to it), so a new tempo map moves it.
+        let restretch = tempo_changed && new.clips.iter().any(|c| c.audio.is_some());
+
         if old.clips != new.clips || automation_changed || restretch {
             self.send(EngineMessage::ReplaceSequence {
                 track_id: new.id,
@@ -1819,6 +1820,116 @@ mod tests {
         assert_eq!(found.len(), 1);
         // Beat 1 is 0.5 s from the start; we had already played 0.1 s.
         assert!(found[0].abs_diff(24_000 - 4_800) <= 1, "{found:?}");
+    }
+
+    /// A kick on every beat for `beats` beats, with `changes` (beats, bpm,
+    /// ramp) after a starting tempo of `start_bpm`.
+    fn kicks_with_tempo(start_bpm: f64, changes: &[(f64, f64, bool)], beats: u32) -> Session {
+        let mut s = Session::default();
+        s.execute(Command::SetTempo { bpm: start_bpm })
+            .expect("tempo");
+        for &(at, bpm, ramp) in changes {
+            s.execute(Command::AddTempoChange {
+                beats: at,
+                bpm,
+                ramp,
+            })
+            .expect("change");
+        }
+        s.execute(Command::CreateClip {
+            track_id: 3,
+            start_beats: 0.0,
+            length_beats: f64::from(beats),
+            name: None,
+            notes: (0..beats)
+                .map(|b| NoteInput {
+                    chance: 100,
+                    pitch: 36,
+                    start_beats: f64::from(b),
+                    length_beats: 0.1,
+                    velocity: 127,
+                    id: None,
+                })
+                .collect(),
+        })
+        .expect("clip");
+        s
+    }
+
+    #[test]
+    fn notes_land_on_time_across_a_tempo_change() {
+        // 120 BPM for 4 beats (2 s), then 60 BPM: one beat per second.
+        let s = kicks_with_tempo(120.0, &[(4.0, 60.0, false)], 8);
+        let (engine, mut p) = Engine::new(s.project(), SR);
+        engine.set_metronome(false);
+        engine.play();
+        let out = left(&render(&mut p, 5.5));
+        let found = onsets(&out, 0.05, 4_800);
+        let expected = [0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 5.0];
+        assert_eq!(found.len(), expected.len(), "{found:?}");
+        for (n, (&onset, &at)) in found.iter().zip(&expected).enumerate() {
+            let want = (at * f64::from(SR)) as usize;
+            assert!(
+                onset.abs_diff(want) <= 1,
+                "kick {n} at {onset}, wanted {want}"
+            );
+        }
+        assert!((engine.status().position_beats - 7.5).abs() < 0.01);
+    }
+
+    #[test]
+    fn notes_land_on_time_through_a_ramp() {
+        // 60 BPM, then from beat 4 a glide up to 120 BPM at beat 8.
+        let s = kicks_with_tempo(60.0, &[(4.0, 60.0, true), (8.0, 120.0, false)], 10);
+        let map = s.project().tempo_map();
+        let (engine, mut p) = Engine::new(s.project(), SR);
+        engine.set_metronome(false);
+        engine.play();
+        let seconds = map.seconds_at(9.5);
+        let out = left(&render(&mut p, seconds as f32));
+        let found = onsets(&out, 0.05, 4_800);
+        assert_eq!(found.len(), 10, "{found:?}");
+        for (beat, &onset) in found.iter().enumerate() {
+            let want = (map.seconds_at(beat as f64) * f64::from(SR)).round() as usize;
+            // A few samples of slack: the kit's hits don't all start
+            // equally sharply (it shows at a steady tempo too).
+            assert!(
+                onset.abs_diff(want) <= 4,
+                "kick {beat} at {onset}, wanted {want}: {found:?}"
+            );
+        }
+        // The glide really is faster at its end than its start.
+        assert!(found[8] - found[7] < found[5] - found[4]);
+    }
+
+    #[test]
+    fn metronome_follows_tempo_changes_and_counts_in_at_the_tempo_there() {
+        let mut s = Session::default();
+        s.execute(Command::AddTempoChange {
+            beats: 2.0,
+            bpm: 60.0,
+            ramp: false,
+        })
+        .expect("change");
+        let (engine, mut p) = Engine::new(s.project(), SR);
+        engine.play();
+        let out = left(&render(&mut p, 3.5));
+        let found = onsets(&out, 0.01, 4_800);
+        // Beats 0 and 1 at 120 BPM, then one click a second.
+        let expected = [0, 24_000, 48_000, 96_000, 144_000];
+        assert_eq!(found.len(), expected.len(), "{found:?}");
+        for (&onset, &want) in found.iter().zip(&expected) {
+            assert!(onset.abs_diff(want) <= 2, "click at {onset}, wanted {want}");
+        }
+        // Counting in to beat 8 (60 BPM there): a click a second.
+        engine.stop();
+        render(&mut p, 0.01);
+        engine.locate(8.0);
+        engine.play_with_count_in(2.0);
+        let out = left(&render(&mut p, 2.5));
+        let found = onsets(&out, 0.01, 4_800);
+        assert!(found.len() >= 3, "{found:?}");
+        assert!(found[1].abs_diff(found[0] + 48_000) <= 2, "{found:?}");
     }
 
     #[test]
