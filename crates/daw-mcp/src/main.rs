@@ -6,8 +6,12 @@
 //! that asked. It holds no state of its own, so the app can be restarted at
 //! any time. `--core` offers a short tool list and text-only results, for
 //! small local models.
+//!
+//! `--http [--port N]` serves the same tools at a web address on this
+//! computer instead (see [`http`]), for AI apps that only take an address.
 
 mod guide;
+mod http;
 mod tools;
 
 use std::sync::Arc;
@@ -199,6 +203,20 @@ async fn main() {
         return;
     }
     let core = std::env::args().any(|a| a == daw_control::ai_setup::CORE_FLAG);
+    let args: Vec<String> = std::env::args().collect();
+    if args.iter().any(|a| a == "--http") {
+        let port = args
+            .iter()
+            .position(|a| a == "--port")
+            .and_then(|i| args.get(i + 1))
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(0);
+        if let Err(e) = http::serve(core, port).await {
+            eprintln!("npt-mcp: {e}");
+            std::process::exit(1);
+        }
+        return;
+    }
     let service = match Bridge::new(core).serve(rmcp::transport::stdio()).await {
         Ok(s) => s,
         Err(e) => {
