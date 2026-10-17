@@ -50,6 +50,21 @@ A compressor can listen to a *different* track. Put one on the bass (or a pad), 
 
 Use it for fade-ins, filter sweeps into a chorus, and reverb swells at the end of a section.
 
+## Mix analysis: see how your mix measures up
+
+The **Mix analysis** tab (bottom panel, after **Sounds**) shows you what your AI sees when it "listens" to the song. Choose **Whole song** or **Loop region** (when Loop is on) and click **Analyze**. It plays the song through silently (and each track on its own), so it takes a few seconds on a long song.
+
+- **Three cards**, each with ✓ (fine), ⚠ (worth a look) or ✗ (fix it), judged against the usual targets for game music:
+  - **Loudness** (LUFS): aim for **-20 to -16**. It also shows the loudest moment.
+  - **Peaks**: keep them at **-1 dB or below**, or exported files may distort. A Limiter last on the master fixes this.
+  - **Stereo width**: 1.00 means mono (everything in the middle); around 0.3 to 0.9 sounds wide; below 0 means parts can cancel out on a phone speaker.
+- **What to fix**: the same plain-language advice your AI gets.
+- **Tone**: how the sound is shared from deep **Sub** to bright **Highs**. Most music has the most in **Bass**; a tiny **Highs** bar means a dull mix.
+- **Tracks**: each track's share of the mix. One bar far longer than the rest may be drowning the others out. Click a track to select it.
+- **Spectrogram**: a picture of the sound. Time runs left to right (bar numbers underneath), low sounds at the bottom, high at the top; brighter means louder. Kicks are tall stripes, a bass line glows along the bottom. **In words** describes it bar by bar.
+
+When you change the song, the results fade and say so: click **Analyze again** to update them.
+
 ## A simple mixing order
 
 1. Set every fader so nothing is louder than the drums and bass together.
@@ -57,6 +72,6 @@ Use it for fade-ins, filter sweeps into a chorus, and reverb swells at the end o
 3. EQ: cut lows from everything except kick and bass.
 4. Add reverb and delay to taste.
 5. Limiter on the master.
-6. Ask your AI to "listen to the mix". It measures loudness and balance and reports what's off.
+6. Open **Mix analysis** and click **Analyze** (or ask your AI to "listen to the mix"). Fix anything marked ⚠ or ✗.
 
 Game music usually sits around **-16 to -20 LUFS** (a loudness measure), with peaks below **-1 dB**. The Godot export levels this for you.
