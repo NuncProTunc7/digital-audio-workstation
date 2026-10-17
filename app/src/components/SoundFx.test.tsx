@@ -82,6 +82,16 @@ describe("SoundFx", () => {
     expect(s.onPlay).toHaveBeenCalledTimes(1);
   });
 
+  it("+ New starts a plain sound to shape from scratch", async () => {
+    const s = setup();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "+ New" })));
+    expect(soundList()).toEqual(["sound"]);
+    expect(document.querySelector(".sound-list .selected")?.textContent).toContain("sound");
+    // No category: the plain starting recipe, not a generated one.
+    expect(s.commands[0]).toEqual({ command: "add_sound" });
+    expect(s.onPlay).toHaveBeenCalledTimes(1);
+  });
+
   it("a slider drag is one undo step", async () => {
     const s = setup();
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Jump" })));

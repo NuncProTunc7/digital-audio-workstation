@@ -8,6 +8,7 @@ Click **🔊 Sound FX** in the top bar (or **Export ▾ → Sound effects to God
 
 - **Coin, Jump, Laser, Explosion, Hit, Power-up, Blip**: each click makes a **new** random sound of that kind and plays it. Don't like it? Click again: every click is a different take.
 - **🎲 Randomize**: anything at all. Weird, sometimes wonderful.
+- **+ New**: a blank canvas: a plain short beep with every effect off, called "sound". Build your own from there with the sliders (and **More settings**).
 - **✨ Vary**: a new take on the sound you have: every setting moves a little. Good for "like this, but not quite".
 - **▶ Play** (or **Space** while the panel is open) plays it again. Sound effects play on top of the song, so you can hear them against your music. **Stop** silences one that's still playing.
 

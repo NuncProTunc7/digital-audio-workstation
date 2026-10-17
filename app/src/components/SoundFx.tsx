@@ -131,9 +131,12 @@ export default function SoundFx({
   const [busy, setBusy] = useState(false);
   const [report, setReport] = useState<SoundExportReport | null>(null);
 
-  const add = async (category: SoundCategory) => {
+  /** A generated sound of `category`, or (null) a plain blip to shape from scratch. */
+  const add = async (category: SoundCategory | null) => {
     const before = new Set(sounds.map((s) => s.id));
-    const after = await onCommand({ command: "add_sound", category, seed: newSeed() });
+    const after = await onCommand(
+      category ? { command: "add_sound", category, seed: newSeed() } : { command: "add_sound" },
+    );
     onEndGesture();
     const added = after?.sounds?.find((s) => !before.has(s.id));
     if (added) {
@@ -249,6 +252,13 @@ export default function SoundFx({
         </div>
 
         <div className="sound-make" role="group" aria-label="Make a new sound">
+          <button
+            className="small"
+            title="A plain short beep with every effect off, to build your own sound from scratch"
+            onClick={() => void add(null)}
+          >
+            + New
+          </button>
           {CATEGORIES.map((c) => (
             <button key={c.category} className="small" title={c.title} onClick={() => void add(c.category)}>
               {c.label}
