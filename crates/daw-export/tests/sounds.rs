@@ -50,7 +50,8 @@ fn wav_info(bytes: &[u8]) -> (u16, u32, u16, usize) {
 }
 
 fn peak_dbfs(bytes: &[u8]) -> f64 {
-    let peak = bytes[44..]
+    let data = u32::from_le_bytes(bytes[40..44].try_into().expect("4")) as usize;
+    let peak = bytes[44..44 + data]
         .chunks(2)
         .map(|c| i16::from_le_bytes([c[0], c[1]]).unsigned_abs())
         .max()
@@ -206,4 +207,63 @@ fn exporting_one_sound_keeps_the_name_it_gets_when_exporting_all() {
         std::fs::read(dir.path().join("sfx/coin.wav")).expect("coin"),
         first_file
     );
+}
+
+#[test]
+fn re_exporting_a_renamed_sound_points_out_its_old_file() {
+    let dir = godot_project();
+    let mut p = Project::default();
+    let coin = add(&mut p, "coin", None, Some(SoundCategory::Coin));
+    let jump = add(&mut p, "jump", None, Some(SoundCategory::Jump));
+    let first = export_sounds(&p, &spec(dir.path())).expect("first");
+    assert!(first.left_behind.is_empty());
+    // A file of the user's own in the folder is never mistaken for one.
+    std::fs::write(dir.path().join("sfx/mine.wav"), b"RIFF....WAVE").expect("mine");
+    Command::RenameSound {
+        sound_id: coin,
+        name: "pickup".into(),
+    }
+    .apply(&mut p)
+    .expect("rename");
+    let report = export_sounds(&p, &spec(dir.path())).expect("again");
+    assert_eq!(report.left_behind, ["res://sfx/coin.wav"]);
+    // Nothing is deleted: a scene may still use the old file.
+    assert!(dir.path().join("sfx/coin.wav").is_file());
+    assert!(dir.path().join("sfx/pickup.wav").is_file());
+    // Exporting only another sound says nothing about it.
+    let only_jump = export_sounds(
+        &p,
+        &SoundExport {
+            sound_ids: Some(vec![jump]),
+            ..spec(dir.path())
+        },
+    )
+    .expect("jump");
+    assert!(only_jump.left_behind.is_empty());
+    // Another song's sound with the same id isn't this one's.
+    let mut other = p.clone();
+    other.name = "Another song".into();
+    Command::RenameSound {
+        sound_id: coin,
+        name: "gem".into(),
+    }
+    .apply(&mut other)
+    .expect("rename");
+    std::fs::remove_file(dir.path().join("sfx/coin.wav")).expect("rm");
+    let report = export_sounds(&other, &spec(dir.path())).expect("other song");
+    assert!(report.left_behind.is_empty(), "{:?}", report.left_behind);
+}
+
+#[test]
+fn the_tag_after_the_audio_leaves_the_file_readable() {
+    let dir = godot_project();
+    let mut p = Project::default();
+    let coin = add(&mut p, "coin", None, Some(SoundCategory::Coin));
+    export_sounds(&p, &spec(dir.path())).expect("export");
+    let bytes = std::fs::read(dir.path().join("sfx/coin.wav")).expect("coin");
+    let riff = u32::from_le_bytes(bytes[4..8].try_into().expect("4")) as usize;
+    assert_eq!(riff + 8, bytes.len(), "RIFF size covers every chunk");
+    let decoded = daw_audio::decode_file(&dir.path().join("sfx/coin.wav")).expect("decodes");
+    let recipe = p.sound(coin).expect("coin").recipe;
+    assert_eq!(decoded.frames(), daw_sfx::render(&recipe, 44_100).len());
 }

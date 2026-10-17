@@ -255,6 +255,8 @@ export interface SoundFile {
 
 export interface SoundExportReport {
   files: SoundFile[];
+  /** Files an earlier export wrote for these sounds before a rename (kept: a scene may use them). */
+  left_behind: string[];
 }
 
 /** One game sound effect. */

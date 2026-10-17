@@ -17,7 +17,14 @@ interface Spies {
   commands: Command[];
 }
 
-function setup(start: Project = defaultProject()): Spies {
+interface Options {
+  /** Commands the app refuses (resolve to undefined, like a rejected one). */
+  reject?: (c: Command) => boolean;
+  /** Holds each command's answer until the test lets it go. */
+  hold?: { release: (() => void)[] };
+}
+
+function setup(start: Project = defaultProject(), options: Options = {}): Spies {
   const spies: Spies = {
     onPlay: vi.fn<(id: number) => void>(),
     onEndGesture: vi.fn<() => void>(),
@@ -30,6 +37,7 @@ function setup(start: Project = defaultProject()): Spies {
           peak_dbfs: -6,
           turned_down_db: 0,
         })),
+        left_behind: ["res://sfx/old_coin.wav"],
       }),
     ),
     commands: [],
@@ -41,6 +49,8 @@ function setup(start: Project = defaultProject()): Spies {
         project={project}
         onCommand={async (c) => {
           spies.commands.push(c);
+          if (options.hold) await new Promise<void>((r) => options.hold?.release.push(r));
+          if (options.reject?.(c)) return undefined;
           const next = applyCommand(project, c);
           setProject(next);
           return next;
@@ -131,7 +141,9 @@ describe("SoundFx", () => {
     expect(s.onExport).toHaveBeenCalledWith(
       expect.objectContaining({ project_dir: "C:\\Games\\Farm", folder: "sfx", sound_ids: [expect.any(Number)] }),
     );
-    expect(within(document.querySelector(".sound-report") as HTMLElement).getByText(/res:\/\/sfx\/coin.wav/)).toBeTruthy();
+    const report = within(document.querySelector(".sound-report") as HTMLElement);
+    expect(report.getByText(/res:\/\/sfx\/coin.wav/)).toBeTruthy();
+    expect(report.getByText(/old_coin.wav is still there from before a rename/)).toBeTruthy();
   });
 
   it("keys in the panel don't reach the song's shortcuts", async () => {
@@ -158,5 +170,62 @@ describe("SoundFx", () => {
     s.onPlay.mockClear();
     fireEvent.keyDown(screen.getByRole("dialog"), { code: "Space", key: " " });
     expect(s.onPlay).toHaveBeenCalledTimes(1);
+  });
+
+  it("a rejected wave change doesn't play", async () => {
+    const s = setup(defaultProject(), {
+      reject: (c) => c.command === "set_sound" && c.recipe.wave !== undefined,
+    });
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Coin" })));
+    fireEvent.click(screen.getByRole("button", { name: /More/ }));
+    s.onPlay.mockClear();
+    await act(async () => fireEvent.change(screen.getByLabelText("Wave"), { target: { value: "saw" } }));
+    expect(s.onPlay).not.toHaveBeenCalled();
+    // An accepted change plays.
+    s.onPlay.mockClear();
+    await act(async () => fireEvent.change(screen.getByLabelText("Vibrato"), { target: { value: "0.5" } }));
+    await act(async () => fireEvent.pointerUp(screen.getByLabelText("Vibrato")));
+    expect(s.onPlay).toHaveBeenCalledTimes(1);
+  });
+
+  it("length down to nothing and back keeps the hold/fade balance", async () => {
+    const s = setup();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Coin" })));
+    const sets = () => s.commands.filter((c) => c.command === "set_sound");
+    fireEvent.click(screen.getByRole("button", { name: /More/ }));
+    await act(async () => fireEvent.change(screen.getByLabelText("Hold"), { target: { value: "0.1" } }));
+    await act(async () => fireEvent.change(screen.getByLabelText("Fade out"), { target: { value: "0.3" } }));
+    const length = screen.getByLabelText("Length");
+    await act(async () => fireEvent.change(length, { target: { value: "0" } }));
+    await act(async () => fireEvent.change(length, { target: { value: "0.8" } }));
+    const last = sets().at(-1);
+    if (last?.command !== "set_sound") throw new Error("no set_sound");
+    expect(last.recipe.sustain).toBeCloseTo(0.2, 2);
+    expect(last.recipe.decay).toBeCloseTo(0.6, 2);
+  });
+
+  it("letting go of a slider plays only after its last change is in", async () => {
+    const hold = { release: [] as (() => void)[] };
+    const s = setup(defaultProject(), { hold });
+    act(() => fireEvent.click(screen.getByRole("button", { name: "Coin" })));
+    await act(async () => hold.release.splice(0).forEach((r) => r()));
+    s.onPlay.mockClear();
+    const pitch = screen.getByLabelText("Pitch");
+    act(() => fireEvent.change(pitch, { target: { value: "0.7" } }));
+    act(() => fireEvent.pointerUp(pitch));
+    await act(async () => {});
+    expect(s.onPlay).not.toHaveBeenCalled();
+    await act(async () => hold.release.splice(0).forEach((r) => r()));
+    expect(s.onPlay).toHaveBeenCalledTimes(1);
+  });
+
+  it("warns when a setting makes the sound silent", async () => {
+    setup();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Blip" })));
+    expect(screen.queryByText(/below Lowest pitch/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /More/ }));
+    await act(async () => fireEvent.change(screen.getByLabelText("Pitch"), { target: { value: "0.2" } }));
+    await act(async () => fireEvent.change(screen.getByLabelText("Lowest pitch"), { target: { value: "0.4" } }));
+    expect(screen.getByText(/below Lowest pitch/)).toBeTruthy();
   });
 });

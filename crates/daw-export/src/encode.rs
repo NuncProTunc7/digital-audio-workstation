@@ -49,14 +49,24 @@ pub fn write_wav(
     sample_rate_hz: u32,
     loop_frames: Option<(usize, usize)>,
 ) -> Result<(), ExportError> {
+    write_wav_with(path, stereo, sample_rate_hz, loop_frames, None)
+}
+
+/// [`write_wav`], plus an optional comment (a `LIST`/`INFO`/`ICMT` chunk
+/// after the audio, which players and Godot ignore).
+pub(crate) fn write_wav_with(
+    path: &Path,
+    stereo: &[f32],
+    sample_rate_hz: u32,
+    loop_frames: Option<(usize, usize)>,
+    comment: Option<&str>,
+) -> Result<(), ExportError> {
     let frames = stereo.len() / 2;
     let data_bytes = (frames * 4) as u32;
-    let smpl_bytes: u32 = if loop_frames.is_some() { 36 + 24 } else { 0 };
-    let mut out = Vec::with_capacity(44 + data_bytes as usize + 68);
-    let riff_size =
-        4 + (8 + 16) + (8 + data_bytes) + if smpl_bytes > 0 { 8 + smpl_bytes } else { 0 };
+    let mut out = Vec::with_capacity(44 + data_bytes as usize + 128);
     out.extend_from_slice(b"RIFF");
-    out.extend_from_slice(&riff_size.to_le_bytes());
+    // The size goes in once every chunk is written.
+    out.extend_from_slice(&0u32.to_le_bytes());
     out.extend_from_slice(b"WAVE");
     out.extend_from_slice(b"fmt ");
     out.extend_from_slice(&16u32.to_le_bytes());
@@ -74,7 +84,7 @@ pub fn write_wav(
     }
     if let Some((begin, end)) = loop_frames {
         out.extend_from_slice(b"smpl");
-        out.extend_from_slice(&smpl_bytes.to_le_bytes());
+        out.extend_from_slice(&(36u32 + 24).to_le_bytes());
         let period_ns = (1e9 / f64::from(sample_rate_hz.max(1))).round() as u32;
         // manufacturer, product, sample period, MIDI unity note, pitch
         // fraction, SMPTE format, SMPTE offset, loop count, sampler data.
@@ -86,7 +96,43 @@ pub fn write_wav(
             out.extend_from_slice(&v.to_le_bytes());
         }
     }
+    if let Some(text) = comment {
+        // Zero-terminated, padded to an even length.
+        let mut text = text.as_bytes().to_vec();
+        text.push(0);
+        if text.len() % 2 == 1 {
+            text.push(0);
+        }
+        out.extend_from_slice(b"LIST");
+        out.extend_from_slice(&(4 + 8 + text.len() as u32).to_le_bytes());
+        out.extend_from_slice(b"INFOICMT");
+        out.extend_from_slice(&(text.len() as u32).to_le_bytes());
+        out.extend_from_slice(&text);
+    }
+    let riff_size = (out.len() - 8) as u32;
+    out[4..8].copy_from_slice(&riff_size.to_le_bytes());
     let tmp = path.with_extension("wav.tmp");
     std::fs::write(&tmp, out).map_err(|e| io_err(&tmp, e))?;
     std::fs::rename(&tmp, path).map_err(|e| io_err(path, e))
+}
+
+/// The comment [`write_wav_with`] wrote into a WAV file, if any.
+pub(crate) fn wav_comment(bytes: &[u8]) -> Option<String> {
+    if bytes.len() < 12 || &bytes[0..4] != b"RIFF" || &bytes[8..12] != b"WAVE" {
+        return None;
+    }
+    let mut at = 12;
+    while at + 8 <= bytes.len() {
+        let id = &bytes[at..at + 4];
+        let size = u32::from_le_bytes(bytes[at + 4..at + 8].try_into().ok()?) as usize;
+        let body = bytes.get(at + 8..(at + 8).checked_add(size)?)?;
+        if id == b"LIST" && body.get(0..8) == Some(b"INFOICMT") {
+            let len = u32::from_le_bytes(body.get(8..12)?.try_into().ok()?) as usize;
+            let text = body.get(12..12 + len)?;
+            let text = text.split(|&b| b == 0).next().unwrap_or_default();
+            return String::from_utf8(text.to_vec()).ok();
+        }
+        at += 8 + size + size % 2;
+    }
+    None
 }

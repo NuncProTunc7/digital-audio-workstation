@@ -471,7 +471,7 @@ fn extra_tools() -> Vec<ToolDef> {
         ),
         tool(
             "export_sounds",
-            "Write the project's game sound effects (all, or sound_ids) as 16-bit 44.1 kHz WAV files into the user's Godot project, in folder (default sfx), one file per sound named after it (coin -> res://sfx/coin.wav). Sounds that would peak above -1 dBFS are turned down. Returns each file's res:// path, length, peak, and how much it was turned down. Ask the user for their Godot project folder if you don't know it.",
+            "Write the project's game sound effects (all, or sound_ids) as 16-bit 44.1 kHz WAV files into the user's Godot project, in folder (default sfx), one file per sound named after it (coin -> res://sfx/coin.wav). Sounds that would peak above -1 dBFS are turned down. Returns each file's res:// path, length, peak, and how much it was turned down; left_behind lists files an earlier export wrote for these sounds before they were renamed (never deleted, since a scene may use them: tell the user they can delete them in Godot if nothing does). Ask the user for their Godot project folder if you don't know it.",
             object_schema(
                 json!({
                     "project_dir": { "type": "string", "description": "The Godot project folder (the one containing project.godot)." },
