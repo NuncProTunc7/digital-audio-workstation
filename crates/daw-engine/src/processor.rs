@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use daw_model::{MAX_TRACKS, TrackId};
+use daw_model::{MAX_TRACKS, TempoMap, TrackId};
 
 use crate::message::{
     AudioRegionPlay, AutoTarget, BusSlot, EffectChain, EngineMessage, Garbage, PendingJump,
@@ -16,6 +16,10 @@ pub const MAX_BLOCK_FRAMES: usize = 512;
 /// Audio clips fade over at least this long at their edges, so a cut in the
 /// middle of a waveform doesn't click.
 const DECLICK_SECONDS: f64 = 0.0015;
+
+/// Longest stretch rendered at one rate while the tempo glides; each
+/// stretch ends exactly where the tempo map says, so glides never drift.
+const RAMP_CHUNK_FRAMES: usize = 64;
 
 /// Output stays perfectly linear below this level (about -2 dBFS).
 const SOFT_CLIP_KNEE: f32 = 0.8;
@@ -51,7 +55,12 @@ pub struct AudioProcessor {
     /// there only clicks play. NEG_INFINITY when not counting in.
     count_in_end: f64,
     next_click_beat: f64,
-    tempo_bpm: f64,
+    /// The song's tempo changes (replaced whole; the old one goes back as
+    /// garbage).
+    tempo: Box<TempoMap>,
+    /// The tempo tempo-synced effects and instruments were last given
+    /// (NaN = give it again).
+    applied_bpm: f64,
     beats_per_bar: u8,
     metronome_on: bool,
     metronome: Metronome,
@@ -80,7 +89,7 @@ pub(crate) struct ProcessorInit {
     pub buses: Box<[BusSlot]>,
     pub master_effects: Box<EffectChain>,
     pub master_gain: f32,
-    pub tempo_bpm: f64,
+    pub tempo: Box<TempoMap>,
     pub beats_per_bar: u8,
     pub loop_enabled: bool,
     pub loop_start: f64,
@@ -112,7 +121,8 @@ impl AudioProcessor {
             position_beats: 0.0,
             count_in_end: f64::NEG_INFINITY,
             next_click_beat: 0.0,
-            tempo_bpm: init.tempo_bpm,
+            tempo: init.tempo,
+            applied_bpm: f64::NAN,
             beats_per_bar: init.beats_per_bar.max(1),
             metronome_on: true,
             metronome: Metronome::new(sample_rate_hz),
@@ -153,8 +163,9 @@ impl AudioProcessor {
         let channels = channels.max(1);
         self.handle_messages();
         if let Some(ns) = self.output_time_ns.take() {
+            let bpm = self.heard_bpm();
             self.status
-                .publish_clock(ns, self.position_beats, self.tempo_bpm, self.playing);
+                .publish_clock(ns, self.position_beats, bpm, self.playing);
         }
         for chunk in out.chunks_mut(MAX_BLOCK_FRAMES * channels) {
             let frames = chunk.len() / channels;
@@ -186,6 +197,42 @@ impl AudioProcessor {
     // RT-SAFE
     fn song_position(&self) -> f64 {
         self.position_beats.max(self.count_in_end)
+    }
+
+    /// The tempo being heard: during a count-in, the tempo where the song
+    /// will start.
+    // RT-SAFE
+    fn heard_bpm(&self) -> f64 {
+        if self.playing && self.position_beats < self.count_in_end {
+            self.tempo.bpm_at(self.count_in_end)
+        } else {
+            self.tempo.bpm_at(self.position_beats)
+        }
+    }
+
+    /// Gives tempo-synced effects, instruments and plugins `bpm` when it
+    /// differs from what they have.
+    // RT-SAFE
+    fn apply_tempo(&mut self, bpm: f64) {
+        if (bpm - self.applied_bpm).abs() < 0.01 {
+            return;
+        }
+        self.applied_bpm = bpm;
+        let bpm32 = bpm as f32;
+        for t in self.tracks.iter_mut() {
+            t.instrument.set_tempo(bpm);
+            for e in t.effects.effects.iter_mut() {
+                e.processor.set_tempo(bpm32);
+            }
+        }
+        for e in self.master_effects.effects.iter_mut() {
+            e.processor.set_tempo(bpm32);
+        }
+        for b in self.buses.iter_mut() {
+            for e in b.effects.effects.iter_mut() {
+                e.processor.set_tempo(bpm32);
+            }
+        }
     }
 
     /// Moves the one-shot on by `frames`, letting it go once it's done.
@@ -312,6 +359,8 @@ impl AudioProcessor {
                         // The effect went away meanwhile.
                         None => processor,
                     };
+                    // New processors start at the song's starting tempo.
+                    self.applied_bpm = f64::NAN;
                     self.throw_away(Garbage::Effect(spare));
                 }
                 EngineMessage::SetEffectPluginParam {
@@ -369,6 +418,7 @@ impl AudioProcessor {
                             std::mem::replace(&mut t.effects, chain)
                         }),
                     };
+                    self.applied_bpm = f64::NAN;
                     if let Some(old) = old {
                         self.throw_away(Garbage::Effects(old));
                     }
@@ -398,6 +448,7 @@ impl AudioProcessor {
                         }
                         None => instrument,
                     };
+                    self.applied_bpm = f64::NAN;
                     self.throw_away(Garbage::Instrument(spare));
                 }
                 EngineMessage::ReplaceTracks(new_tracks) => {
@@ -406,6 +457,7 @@ impl AudioProcessor {
                     for t in self.tracks.iter_mut() {
                         t.cursor = first_event_at(t, position);
                     }
+                    self.applied_bpm = f64::NAN;
                     self.throw_away(Garbage::Tracks(old));
                 }
                 EngineMessage::Play => {
@@ -449,23 +501,10 @@ impl AudioProcessor {
                     self.seam = None;
                     self.seek(beats.max(0.0));
                 }
-                EngineMessage::SetTempo(bpm) => {
-                    self.tempo_bpm = bpm;
-                    let bpm = bpm as f32;
-                    for t in self.tracks.iter_mut() {
-                        t.instrument.set_tempo(f64::from(bpm));
-                        for e in t.effects.effects.iter_mut() {
-                            e.processor.set_tempo(bpm);
-                        }
-                    }
-                    for e in self.master_effects.effects.iter_mut() {
-                        e.processor.set_tempo(bpm);
-                    }
-                    for b in self.buses.iter_mut() {
-                        for e in b.effects.effects.iter_mut() {
-                            e.processor.set_tempo(bpm);
-                        }
-                    }
+                EngineMessage::SetTempoMap(map) => {
+                    let old = std::mem::replace(&mut self.tempo, map);
+                    self.applied_bpm = f64::NAN;
+                    self.throw_away(Garbage::TempoMap(old));
                 }
                 EngineMessage::SetTimeSignature { numerator, .. } => {
                     self.beats_per_bar = numerator.max(1);
@@ -547,6 +586,7 @@ impl AudioProcessor {
                 }
                 EngineMessage::ReplaceBuses(buses) => {
                     let old = std::mem::replace(&mut self.buses, buses);
+                    self.applied_bpm = f64::NAN;
                     self.throw_away(Garbage::Buses(old));
                 }
                 EngineMessage::SetBusStrip { bus_id, strip } => {
@@ -618,10 +658,27 @@ impl AudioProcessor {
         self.left[..frames].fill(0.0);
         self.right[..frames].fill(0.0);
 
-        let beats_per_sample = self.tempo_bpm / 60.0 / f64::from(self.sample_rate_hz);
+        let sr = f64::from(self.sample_rate_hz);
         let mut start = 0;
         while start < frames {
+            let pos = self.position_beats;
+            let bpm = self.heard_bpm();
+            self.apply_tempo(bpm);
+            // A rate for finding the edges below; exact in steady stretches.
+            let mut beats_per_sample = bpm / 60.0 / sr;
             let mut end = frames;
+            let follows_map = self.playing && pos >= self.count_in_end;
+            if follows_map {
+                // Each stretch has one rate: stop at the next tempo change,
+                // and keep stretches short while the tempo glides.
+                if self.tempo.ramping_at(pos) {
+                    end = end.min(start + RAMP_CHUNK_FRAMES);
+                }
+                if let Some(next) = self.tempo.next_change_after(pos) {
+                    let to_change = (self.tempo.seconds_between(pos, next) * sr - 1e-6).ceil();
+                    end = end.min(start + (to_change as usize).max(1));
+                }
+            }
             let looping = self.playing && self.loop_enabled && self.position_beats < self.loop_end;
             if looping {
                 // Tolerate float error so an exact loop length doesn't gain
@@ -654,7 +711,23 @@ impl AudioProcessor {
                 let to_jump = ((j.at_beats - self.position_beats) / beats_per_sample - 1e-6).ceil();
                 end = end.min(start + (to_jump as usize).max(1));
             }
+            // While the tempo glides, each stretch ends exactly where the
+            // map says, so the changing rate never adds up to drift.
+            let n = (end - start) as f64;
+            let gliding = follows_map && self.tempo.ramping_at(pos);
+            let window_end = if gliding {
+                self.tempo.beats_at(self.tempo.seconds_at(pos) + n / sr)
+            } else {
+                pos + n * beats_per_sample
+            };
+            if gliding && window_end > pos {
+                beats_per_sample = (window_end - pos) / n;
+            }
+
             self.render_segment(start, end, beats_per_sample);
+            if self.playing {
+                self.position_beats = window_end;
+            }
             if counting && self.position_beats >= self.count_in_end - 1e-9 {
                 self.count_in_end = f64::NEG_INFINITY;
             }
@@ -741,6 +814,12 @@ impl AudioProcessor {
         let counting = self.playing && window_start < self.count_in_end;
         let playing = self.playing && !counting;
         let song_start = window_start.max(self.count_in_end);
+        // Audio clips are placed in song seconds.
+        let window_seconds = if playing {
+            self.tempo.seconds_at(window_start)
+        } else {
+            0.0
+        };
         let pass = self.loop_pass;
         for b in self.buses.iter_mut() {
             b.buf_left[..n].fill(0.0);
@@ -760,7 +839,10 @@ impl AudioProcessor {
             let mut done = 0;
             if playing && !t.frozen {
                 while let Some(ev) = t.sequence.events.get(t.cursor).copied() {
-                    if ev.beat >= window_end {
+                    // An event on the window's end belongs to the next one, even if
+                    // float error left the playhead a hair past it (a loop or
+                    // seam may jump away right there).
+                    if ev.beat >= window_end - 1e-9 {
                         break;
                     }
                     let offset = (((ev.beat - window_start) / beats_per_sample + 1e-6).max(0.0)
@@ -791,14 +873,12 @@ impl AudioProcessor {
                 t.instrument.process(&mut bl[done..], &mut br[done..]);
             }
             if playing {
-                let declick = DECLICK_SECONDS * f64::from(self.sample_rate_hz);
                 mix_audio(
                     &t.sequence.audio,
                     bl,
                     br,
-                    window_start,
-                    beats_per_sample,
-                    declick,
+                    window_seconds,
+                    f64::from(self.sample_rate_hz),
                 );
             }
             // Kept for compressors elsewhere that listen to this track.
@@ -1004,34 +1084,38 @@ fn apply_automation(t: &mut TrackSlot, beats: f64) {
 }
 
 /// Adds the audio clips that overlap this window, sample-accurately, with
-/// clip gain and fades.
+/// clip gain and fades. Sample `i` of the window is heard `i` samples after
+/// `window_seconds` (song time), whatever the tempo.
 // RT-SAFE
 fn mix_audio(
     regions: &[AudioRegionPlay],
     left: &mut [f32],
     right: &mut [f32],
-    window_start: f64,
-    beats_per_sample: f64,
-    declick_frames: f64,
+    window_seconds: f64,
+    sample_rate_hz: f64,
 ) {
     let n = left.len().min(right.len());
-    let window_end = window_start + n as f64 * beats_per_sample;
+    let sr = sample_rate_hz;
+    let window_end = window_seconds + n as f64 / sr;
+    let declick = DECLICK_SECONDS * sr;
     for r in regions {
-        if r.end_beats <= window_start || r.start_beats >= window_end {
+        if r.end_seconds <= window_seconds || r.start_seconds >= window_end {
             continue;
         }
-        let first = (((r.start_beats - window_start) / beats_per_sample).ceil()).max(0.0) as usize;
-        let last = (((r.end_beats - window_start) / beats_per_sample).ceil()).max(0.0) as usize;
+        let first = ((r.start_seconds - window_seconds) * sr).ceil().max(0.0) as usize;
+        let last = ((r.end_seconds - window_seconds) * sr).ceil().max(0.0) as usize;
         let (first, last) = (first.min(n), last.min(n));
-        // Frames since the clip started, at sample `first`.
-        let elapsed_first = (window_start - r.start_beats) / beats_per_sample + first as f64;
-        let length = (r.end_beats - r.start_beats) / beats_per_sample;
-        let fade_in = r.fade_in_frames.max(declick_frames);
-        let fade_out = r.fade_out_frames.max(declick_frames);
+        // Frames since this piece started, at sample 0 of the window.
+        let since_piece = (window_seconds - r.start_seconds) * sr;
+        // Fades belong to the whole clip, not to each piece of it.
+        let since_clip = (window_seconds - r.clip_start_seconds) * sr;
+        let length = (r.clip_end_seconds - r.clip_start_seconds) * sr;
+        let fade_in = r.fade_in_frames.max(declick);
+        let fade_out = r.fade_out_frames.max(declick);
         let buf = &*r.buffer;
         for i in first..last {
-            let elapsed = elapsed_first + (i - first) as f64;
-            let pos = r.offset_frames + elapsed;
+            let elapsed = since_clip + i as f64;
+            let pos = r.offset_frames + since_piece + i as f64;
             if pos < 0.0 {
                 continue;
             }
