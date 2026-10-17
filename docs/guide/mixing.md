@@ -6,7 +6,7 @@ Mixing makes every part audible and the whole song sit at the right loudness.
 
 - **Fader**: track volume. **Pan**: left/right (double-click to center). **M** / **S**: mute / solo.
 - **Type an exact value**: double-click the number under a fader (or a pan, send or effect setting), type, and press **Enter**; **Esc** cancels. Pan takes `C`, `30L` or `45R`; levels take `-3.5` (or `-inf` for silence).
-- **+ Add effect…** on a track: EQ, Compressor, Reverb, Delay, Chorus, Distortion, Limiter, and under **Plugins** any VST3 effect you installed (see [Plugins](plugins.md)). Effects run top to bottom; each has an on/off switch and its own settings (a plugin effect's are in its window: click its name, then **Open plugin window**).
+- **+ Add effect…** on a track: EQ, Compressor, Reverb, Delay, Chorus, Distortion, Limiter, the guitar pedals (Overdrive, Fuzz, Amp, Phaser, Flanger, Tremolo, Wah, Noise gate, Octaver; see [Guitar pedals](writing-music.md#guitar-pedals)), and under **Plugins** any VST3 effect you installed (see [Plugins](plugins.md)). Effects run top to bottom; each has an on/off switch and its own settings (a plugin effect's are in its window: click its name, then **Open plugin window**).
 - The master channel affects everything. A **Limiter** there stops the song clipping.
 - **Master** and **+ Bus** always stay at the right of the Mixer. With many tracks, scroll the other strips sideways with the mouse wheel or the scrollbar under them.
 
@@ -19,6 +19,10 @@ Mixing makes every part audible and the whole song sit at the right loudness.
 | Chorus | Widen and thicken pads and keys |
 | Distortion | Grit for bass, leads, drums |
 | Limiter | Last on the master: catches peaks |
+| Overdrive, Fuzz, Amp | Guitar grit, from a warm push to a wall of fuzz; the Amp adds a speaker cabinet |
+| Phaser, Flanger, Tremolo, Wah | Moving guitar colours: swirl, whoosh, pulse, "wow" |
+| Noise gate | Silence between phrases (recorded guitars, tight metal chugs) |
+| Octaver | Adds an octave below (and above) single notes |
 
 ## Buses: groups and a shared reverb
 
