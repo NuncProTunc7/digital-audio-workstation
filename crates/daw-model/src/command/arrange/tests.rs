@@ -340,3 +340,100 @@ fn times_defaults_to_one_in_json() {
         }
     );
 }
+
+// ---- Tempo changes move with bar edits ----
+
+/// (beats, bpm) of each tempo change, in order.
+fn tempos(p: &Project) -> Vec<(f64, f64)> {
+    p.tempo_changes.iter().map(|c| (c.beats, c.bpm)).collect()
+}
+
+fn with_tempos(changes: &[(f64, f64)]) -> Project {
+    let (mut p, _) = song();
+    for &(beats, bpm) in changes {
+        Command::AddTempoChange {
+            beats,
+            bpm,
+            ramp: false,
+        }
+        .apply(&mut p)
+        .expect("tempo change");
+    }
+    p
+}
+
+#[test]
+fn insert_bars_moves_later_tempo_changes() {
+    let p = with_tempos(&[(2.0, 90.0), (8.0, 140.0)]);
+    let p = run(p, Command::InsertBars { at_bar: 2, bars: 1 });
+    // Before the gap stays; from the gap on moves one bar later.
+    assert_eq!(tempos(&p), vec![(2.0, 90.0), (12.0, 140.0)]);
+}
+
+#[test]
+fn delete_bars_keeps_the_tempo_playing_after_the_cut() {
+    let p = with_tempos(&[(6.0, 140.0), (10.0, 100.0)]);
+    let p = run(
+        p,
+        Command::DeleteBars {
+            from_bar: 2,
+            bars: 1,
+        },
+    );
+    // The change inside the cut takes effect where the cut was, so what
+    // followed it still plays at 140; the later one closes up.
+    assert_eq!(tempos(&p), vec![(4.0, 140.0), (6.0, 100.0)]);
+    assert_eq!(p.tempo_map().bpm_at(5.0), 140.0);
+}
+
+#[test]
+fn delete_bars_at_the_start_makes_its_tempo_the_song_tempo() {
+    let p = with_tempos(&[(2.0, 150.0), (8.0, 100.0)]);
+    let p = run(
+        p,
+        Command::DeleteBars {
+            from_bar: 1,
+            bars: 1,
+        },
+    );
+    assert_eq!(p.tempo_bpm, 150.0, "the cut's tempo now starts the song");
+    assert_eq!(tempos(&p), vec![(4.0, 100.0)]);
+    // A change right on the cut's end lands on beat 0 the same way.
+    let p = with_tempos(&[(4.0, 160.0)]);
+    let p = run(
+        p,
+        Command::DeleteBars {
+            from_bar: 1,
+            bars: 1,
+        },
+    );
+    assert_eq!(p.tempo_bpm, 160.0);
+    assert!(p.tempo_changes.is_empty());
+}
+
+#[test]
+fn repeat_bars_copies_tempo_changes_and_restarts_each_copy() {
+    // 120 BPM, then 140 from beat 6 (inside bar 2).
+    let p = with_tempos(&[(6.0, 140.0), (16.0, 90.0)]);
+    let p = run(
+        p,
+        Command::RepeatBars {
+            from_bar: 2,
+            bars: 1,
+            times: 2,
+        },
+    );
+    // Each copy starts at 120 like the original bar 2 did and speeds up
+    // halfway; the later change moves past both copies.
+    assert_eq!(
+        tempos(&p),
+        vec![
+            (6.0, 140.0),
+            (8.0, 120.0),
+            (10.0, 140.0),
+            (12.0, 120.0),
+            (14.0, 140.0),
+            (24.0, 90.0)
+        ]
+    );
+}

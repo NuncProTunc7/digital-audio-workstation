@@ -1977,7 +1977,14 @@ pub(crate) mod tests {
         let clip_id = v["song"]["tracks"][0]["clips"][0]["id"]
             .as_u64()
             .expect("id") as u32;
-        let clip = ok(handle(&host, Request::GetClip { clip_id }));
+        let clip = ok(handle(
+            &host,
+            Request::GetClip {
+                clip_id,
+                from_bar: None,
+                to_bar: None,
+            },
+        ));
         let ids: Vec<u32> = clip["clip"]["notes"]
             .as_array()
             .expect("notes")

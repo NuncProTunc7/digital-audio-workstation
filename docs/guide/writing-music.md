@@ -90,9 +90,9 @@ The **Tempo** box in the top bar is the speed the song *starts* at. To change sp
 
 **Right-click the bar numbers** to change the whole song at once, on every track. The menu starts on the bar you clicked, or on the whole loop region if looping is on and you clicked inside it; change **From bar** and **Bars** to pick another range.
 
-- **Insert empty bars before bar N** opens a gap: everything from that bar on (clips, section markers, chords, automation, the loop) moves later. A clip that runs across the point is split there.
-- **Delete bars** removes the range from every track and closes the gap. Clips that run into the range are cut at its edges; audio skips that part of the recording. The section and chord that were playing at the end of the range carry on where it began.
-- **Repeat bars** plays the range again right after itself ("play the chorus twice"): notes, audio, chords, automation and markers are copied (a copied *Chorus* marker becomes *Chorus 2*), and the rest of the song moves later. The copies are ordinary clips, not linked.
+- **Insert empty bars before bar N** opens a gap: everything from that bar on (clips, section markers, chords, tempo changes, automation, the loop) moves later. A clip that runs across the point is split there.
+- **Delete bars** removes the range from every track and closes the gap. Clips that run into the range are cut at its edges; audio skips that part of the recording. The section, chord and tempo that were playing at the end of the range carry on where it began (cut from bar 1, and that tempo becomes the song's tempo).
+- **Repeat bars** plays the range again right after itself ("play the chorus twice"): notes, audio, chords, tempo changes, automation and markers are copied (each copy starts at the tempo the range started with) (a copied *Chorus* marker becomes *Chorus 2*), and the rest of the song moves later. The copies are ordinary clips, not linked.
 
 Each is one step: **Ctrl+Z** puts everything back. Your AI can do the same with `insert_bars`, `delete_bars` and `repeat_bars`.
 

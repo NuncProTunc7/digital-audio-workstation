@@ -137,8 +137,8 @@ pub enum Command {
 
     // ---- Arrangement (whole bars, every track) ----
     /// Open empty bars in the song: everything at or after the start of bar
-    /// `at_bar` (clips on every track, section markers, chords, automation
-    /// points, the loop region) moves `bars` bars later. A clip that crosses
+    /// `at_bar` (clips on every track, section markers, chords, tempo
+    /// changes, automation points, the loop region) moves `bars` bars later. A clip that crosses
     /// that point is split there and its second half moves (audio keeps its
     /// place in the recording). Bars count from 1 like the ruler; bar length
     /// follows the time signature. One undo step. Example: 4 bars before a
@@ -155,7 +155,9 @@ pub enum Command {
     /// there and only the part inside is removed (audio clips skip that part
     /// of the recording). Markers, chords and automation inside the range are
     /// removed, except that the section and chord playing at the end of the
-    /// range carry on where the range began. A loop region inside the range
+    /// range carry on where the range began. Tempo changes likewise: the
+    /// tempo playing at the end of the range starts where the range began
+    /// (at bar 1 it becomes the song tempo). A loop region inside the range
     /// stays where it was. One undo step.
     DeleteBars {
         /// First bar to remove (1 = song start).
@@ -165,8 +167,9 @@ pub enum Command {
     },
     /// Play a range of bars again right after itself, e.g. "play the chorus
     /// twice": copies bars `from_bar` to `from_bar + bars - 1` on every
-    /// track (clips, chords, automation, section markers) `times` times
-    /// (1-64), and moves everything after the range later to make room.
+    /// track (clips, chords, automation, section markers, tempo changes)
+    /// `times` times (1-64), and moves everything after the range later to
+    /// make room. Each copy starts at the tempo the range started with.
     /// Clips crossing the range edges are copied only for the part inside.
     /// Copies are independent clips (not linked); copied markers are named
     /// "Chorus 2", "Chorus 3"... One undo step.

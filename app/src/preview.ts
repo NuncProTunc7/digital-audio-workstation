@@ -798,6 +798,7 @@ function arrangeBars(p: Project, command: BarsCommand): Project {
     }
     for (const m of p.markers ?? []) if (m.start_beats >= at) m.start_beats += by;
     for (const c of p.chords ?? []) if (c.start_beats >= at) c.start_beats += by;
+    for (const c of p.tempo_changes ?? []) if (c.beats >= at) c.beats += by;
     if (p.loop_region.start_beats >= at) p.loop_region.start_beats += by;
     if (p.loop_region.end_beats > at) p.loop_region.end_beats += by;
   };
@@ -816,6 +817,8 @@ function arrangeBars(p: Project, command: BarsCommand): Project {
     }
     p.markers = (p.markers ?? []).filter((m) => !inside(m.start_beats));
     p.chords = (p.chords ?? []).filter((c) => !inside(c.start_beats));
+    // Loosely: the Rust Command keeps the tempo playing after the cut.
+    p.tempo_changes = (p.tempo_changes ?? []).filter((c) => !inside(c.beats));
     shiftFrom(end, -len);
     return p;
   }
@@ -825,6 +828,7 @@ function arrangeBars(p: Project, command: BarsCommand): Project {
   );
   const markers = (p.markers ?? []).filter((m) => m.start_beats >= from && m.start_beats < end);
   const chords = (p.chords ?? []).filter((c) => c.start_beats >= from && c.start_beats < end);
+  const tempos = (p.tempo_changes ?? []).filter((c) => c.beats >= from && c.beats < end);
   shiftFrom(end, len * times);
   for (let k = 1; k <= times; k++) {
     const offset = len * k;
@@ -847,6 +851,7 @@ function arrangeBars(p: Project, command: BarsCommand): Project {
       t.clips.push(copy);
       t.clips.sort((a, b) => a.start_beats - b.start_beats);
     }
+    for (const c of tempos) p.tempo_changes = [...(p.tempo_changes ?? []), { ...c, id: p.next_id++, beats: c.beats + offset }];
     for (const m of markers) {
       p.markers = [...(p.markers ?? []), { id: p.next_id++, name: `${m.name} ${k + 1}`, start_beats: m.start_beats + offset }];
     }

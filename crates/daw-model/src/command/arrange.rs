@@ -202,6 +202,21 @@ fn open_gap(e: &mut Edit, at: f64, len: f64, automation: bool) -> Result<(), Com
             start_beats: start + len,
         })?;
     }
+    // Tempo changes from the gap on move with the music (latest first).
+    let tempos: Vec<(Id, f64)> = e
+        .project
+        .tempo_changes
+        .iter()
+        .rev()
+        .filter(|c| c.beats >= at - EPS)
+        .map(|c| (c.id, c.beats))
+        .collect();
+    for (tempo_change_id, beats) in tempos {
+        e.run(Command::MoveTempoChange {
+            tempo_change_id,
+            beats: beats + len,
+        })?;
+    }
     if automation {
         for (track_id, lane_id, points) in lanes(e.project) {
             let (before, after): (Vec<AutomationPoint>, Vec<AutomationPoint>) =
@@ -298,6 +313,68 @@ fn survivor(items: &[(Id, f64)], from: f64, end: f64) -> Option<Id> {
         .map(|&(id, _)| id)
 }
 
+/// Deleting `from..end`: tempo changes inside the cut go, except the last
+/// one, which moves to the cut so what followed it keeps its tempo; later
+/// changes close up. At the song start, the tempo that will open the song
+/// becomes the song tempo instead (a change can't sit on beat 0).
+fn close_tempo_gap(e: &mut Edit, from: f64, end: f64) -> Result<(), CommandError> {
+    let len = end - from;
+    let changes: Vec<(Id, f64)> = e
+        .project
+        .tempo_changes
+        .iter()
+        .map(|c| (c.id, c.beats))
+        .collect();
+    let keep = survivor(&changes, from, end);
+    for &(tempo_change_id, b) in &changes {
+        if b >= from - EPS && b < end - EPS && Some(tempo_change_id) != keep {
+            e.run(Command::RemoveTempoChange { tempo_change_id })?;
+        }
+    }
+    let mut opener = None;
+    if from < EPS {
+        // The change that will play from beat 0: the survivor, or one
+        // right on the cut's end.
+        opener = keep.or_else(|| {
+            changes
+                .iter()
+                .find(|&&(_, b)| (b - end).abs() < EPS)
+                .map(|&(id, _)| id)
+        });
+        if let Some(tempo_change_id) = opener {
+            let bpm = e
+                .project
+                .tempo_changes
+                .iter()
+                .find(|c| c.id == tempo_change_id)
+                .map(|c| c.bpm);
+            if let Some(bpm) = bpm {
+                e.run(Command::SetTempo { bpm })?;
+            }
+            e.run(Command::RemoveTempoChange { tempo_change_id })?;
+        }
+    } else if let Some(tempo_change_id) = keep.filter(|&id| {
+        changes
+            .iter()
+            .any(|&(c, b)| c == id && (b - from).abs() >= EPS)
+    }) {
+        e.run(Command::MoveTempoChange {
+            tempo_change_id,
+            beats: from,
+        })?;
+    }
+    // Earliest first, so a moved one never lands on one still to move.
+    for &(tempo_change_id, b) in &changes {
+        if b >= end - EPS && Some(tempo_change_id) != opener {
+            e.run(Command::MoveTempoChange {
+                tempo_change_id,
+                beats: b - len,
+            })?;
+        }
+    }
+    Ok(())
+}
+
 pub(super) fn delete(
     project: &mut Project,
     from_bar: u32,
@@ -383,6 +460,8 @@ pub(super) fn delete(
                 })?;
             }
         }
+
+        close_tempo_gap(e, from, end)?;
 
         for (track_id, lane_id, points) in lanes(e.project) {
             if points.iter().all(|p| p.beats < from - EPS) {
@@ -488,6 +567,20 @@ pub(super) fn repeat(
         chords.insert(0, c);
     }
 
+    // Tempo: each copy starts at the tempo the section started with, and
+    // repeats the section's own changes.
+    let map = project.tempo_map();
+    let start_bpm = map.bpm_at(from);
+    let end_bpm = map.bpm_at(end - EPS);
+    let section_tempos: Vec<_> = project
+        .tempo_changes
+        .iter()
+        .filter(|c| c.beats >= from - EPS && c.beats < end - EPS)
+        .copied()
+        .collect();
+    let restart = section_tempos.first().is_none_or(|c| c.beats > from + EPS)
+        && (start_bpm - end_bpm).abs() > 1e-9;
+
     record(project, |e| {
         open_gap(e, end, total, false)?;
         let sources: Vec<_> = clip_spans(e.project)
@@ -545,6 +638,20 @@ pub(super) fn repeat(
                     root: c.root,
                     quality: c.quality,
                     bass: c.bass,
+                })?;
+            }
+            if restart {
+                e.run(Command::AddTempoChange {
+                    beats: from + offset,
+                    bpm: start_bpm,
+                    ramp: false,
+                })?;
+            }
+            for c in &section_tempos {
+                e.run(Command::AddTempoChange {
+                    beats: c.beats + offset,
+                    bpm: c.bpm,
+                    ramp: c.ramp,
                 })?;
             }
         }
