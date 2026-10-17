@@ -40,6 +40,8 @@ get_track, and get_clip.
 notes. Bring in files with import_audio; shape clips with set_audio_clip (gain, fades), \
 split_clip, trim_clip_start, move_clip, and resize_clip. Audio keeps its own speed when \
 the tempo changes.
+- Tempo: set_tempo is the starting tempo; add_tempo_change changes it from a beat on \
+(ramp: glide to the next change's tempo). Notes stay on their beats.
 
 Working well:
 - Before composing, read_guide(\"composing\") for the workflow, game-music recipes, and mix \
