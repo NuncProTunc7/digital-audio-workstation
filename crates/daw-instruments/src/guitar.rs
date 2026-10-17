@@ -9,7 +9,7 @@
 //! together and how low the guitar goes.
 
 use daw_dsp::{Biquad, BiquadShape, Rng, db_to_gain, midi_to_hz};
-use daw_model::instrument::{GUITAR_FRETS, strings_for};
+use daw_model::instrument::{guitar_string_for, strings_for};
 
 use crate::InstrumentProcessor;
 
@@ -120,11 +120,6 @@ impl GuitarString {
             pan_r: angle.sin(),
         }
     }
-
-    /// Whether a new note may take this string without cutting a held one.
-    fn is_free(&self) -> bool {
-        !self.held && self.pending.is_none()
-    }
 }
 
 /// The built-in guitar.
@@ -178,32 +173,14 @@ impl Guitar {
         strings_for(f64::from(self.params.tuning), 0.0)[0]
     }
 
-    /// Which string plays `note`: the one already playing it, else the
-    /// highest free string that can reach it, else the highest that can.
+    /// Which string plays `note` (the rule is shared with the tab view).
     // RT-SAFE
     fn pick_string(&self, note: u8) -> usize {
-        if let Some(i) = self
+        let busy = self
             .strings
-            .iter()
-            .position(|s| (s.held || s.pending.is_some()) && Self::sounding(s) == note)
-        {
-            return i;
-        }
-        let open = self.open_strings();
-        // The capo shortens the neck: it still ends at the last fret.
-        let reach = GUITAR_FRETS.saturating_sub(open[0].saturating_sub(self.uncapoed_low()));
-        let reaches = |i: usize| note >= open[i] && note <= open[i].saturating_add(reach);
-        if let Some(i) = (0..STRINGS)
-            .rev()
-            .find(|&i| reaches(i) && self.strings[i].is_free())
-        {
-            return i;
-        }
-        if let Some(i) = (0..STRINGS).rev().find(|&i| reaches(i)) {
-            return i;
-        }
-        // Out of the guitar's range: the nearest end still plays it.
-        if note < open[0] { 0 } else { STRINGS - 1 }
+            .each_ref()
+            .map(|s| (s.held || s.pending.is_some()).then(|| Self::sounding(s)));
+        guitar_string_for(note, self.open_strings(), self.uncapoed_low(), busy)
     }
 
     // RT-SAFE
