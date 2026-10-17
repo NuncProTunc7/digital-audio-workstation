@@ -1259,6 +1259,7 @@ export default function App({ backend }: AppProps) {
                 catalog={catalog}
                 activeNotes={activeNotes}
                 songKey={project.key}
+                songChords={project.chords}
                 onParam={(param, value) =>
                   void execute({ command: "set_instrument_param", track_id: selectedTrack.id, param, value })
                 }

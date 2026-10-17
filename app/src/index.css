@@ -3034,3 +3034,15 @@ button.tiny.power.on {
   background: #ff3b30;
   box-shadow: 0 0 6px #ff3b30;
 }
+
+/* Chord buttons above the guitar neck. */
+.fretboard-chords {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.fretboard-chords button {
+  min-width: 38px;
+}
