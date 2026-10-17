@@ -43,6 +43,8 @@ pub enum ExportError {
     Io { path: PathBuf, message: String },
     #[error("OGG encoding failed: {0}")]
     Encode(String),
+    #[error("there is no layer called \"{name}\"; the layers are: {layers}")]
+    NoSuchLayer { name: String, layers: String },
 }
 
 pub(crate) fn io_err(path: &Path, e: impl ToString) -> ExportError {
@@ -111,6 +113,29 @@ pub struct GodotExport {
     pub sections: Vec<Section>,
     /// Loudness to normalize to (LUFS), e.g. -16. None leaves levels as mixed.
     pub target_lufs: Option<f64>,
+    /// With the layers resource: layers that start silent, for the game to
+    /// fade in (by name: a track's, or with `bus_stems` a bus's or "other";
+    /// any case).
+    pub silent_layers: Vec<String>,
+}
+
+/// The names layers can go by: each track's, or with bus stems each bus's
+/// and "other".
+fn layer_names(project: &Project, spec: &GodotExport) -> Vec<String> {
+    if spec.bus_stems && !project.buses.is_empty() {
+        let mut names: Vec<String> = project.buses.iter().map(|b| b.name.clone()).collect();
+        names.push("other".into());
+        names
+    } else {
+        project.tracks.iter().map(|t| t.name.clone()).collect()
+    }
+}
+
+/// True if `name` was chosen to start silent.
+fn starts_silent(spec: &GodotExport, name: &str) -> bool {
+    spec.silent_layers
+        .iter()
+        .any(|s| s.trim().eq_ignore_ascii_case(name.trim()))
 }
 
 /// What was written.
@@ -180,6 +205,19 @@ pub fn export_to_godot(
     let dir = spec.project_dir.join(&folder);
     std::fs::create_dir_all(&dir).map_err(|e| io_err(&dir, e))?;
     let base = file_slug(&spec.name);
+    if spec.stems && spec.layers_resource {
+        let names = layer_names(project, spec);
+        if let Some(missing) = spec.silent_layers.iter().find(|s| {
+            !names
+                .iter()
+                .any(|n| n.trim().eq_ignore_ascii_case(s.trim()))
+        }) {
+            return Err(ExportError::NoSuchLayer {
+                name: missing.clone(),
+                layers: names.join(", "),
+            });
+        }
+    }
 
     let (start, end) = render::default_region(project, spec.start_beats, spec.end_beats)?;
     // An intro plays from the song start up to the loop.
@@ -257,7 +295,7 @@ pub fn export_to_godot(
                 continue;
             }
             let res = write(&format!("{base}_{}", file_slug(&name)), &stem)?;
-            stem_paths.push(res);
+            stem_paths.push((res, starts_silent(spec, &name)));
         }
     } else if spec.stems {
         for t in project.tracks.iter().filter(|t| heard_in_mix(project, t)) {
@@ -274,7 +312,7 @@ pub fn export_to_godot(
                 continue;
             }
             let res = write(&format!("{base}_{}", file_slug(&t.name)), &stem)?;
-            stem_paths.push(res);
+            stem_paths.push((res, starts_silent(spec, &t.name)));
         }
     }
     let mut section_paths = Vec::new();

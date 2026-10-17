@@ -107,15 +107,22 @@ fn resource_header(kind: &str, paths: &[&str]) -> String {
     s
 }
 
-/// An `AudioStreamSynchronized`: all stems start together, every layer at
-/// full volume. Turn layers up and down from game code.
-pub(crate) fn write_synchronized(path: &Path, stems: &[String]) -> Result<(), ExportError> {
-    let stems: Vec<&str> = stems.iter().take(32).map(String::as_str).collect();
-    let mut s = resource_header("AudioStreamSynchronized", &stems);
+/// Volume (dB) of a layer that starts silent: inaudible, but still
+/// playing in time, so fading it up from game code brings it in on the beat.
+const SILENT_LAYER_DB: f64 = -80.0;
+
+/// An `AudioStreamSynchronized`: all stems start together, each at full
+/// volume or (`true` beside it) silent. Turn layers up and down from game
+/// code.
+pub(crate) fn write_synchronized(path: &Path, stems: &[(String, bool)]) -> Result<(), ExportError> {
+    let stems = &stems[..stems.len().min(32)];
+    let paths: Vec<&str> = stems.iter().map(|(p, _)| p.as_str()).collect();
+    let mut s = resource_header("AudioStreamSynchronized", &paths);
     let _ = writeln!(s, "stream_count = {}", stems.len());
-    for i in 0..stems.len() {
+    for (i, (_, silent)) in stems.iter().enumerate() {
         let _ = writeln!(s, "stream_{i}/stream = ExtResource(\"{}\")", i + 1);
-        let _ = writeln!(s, "stream_{i}/volume = 0.0");
+        let db = if *silent { SILENT_LAYER_DB } else { 0.0 };
+        let _ = writeln!(s, "stream_{i}/volume = {db:.1}");
     }
     std::fs::write(path, s).map_err(|e| io_err(path, e))
 }

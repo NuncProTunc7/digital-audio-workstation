@@ -817,6 +817,8 @@ export interface GodotOptions {
   layers: boolean | null;
   target_lufs: number | null;
   normalize: boolean | null;
+  /** Layers (track names, or bus names and "other") that start silent in the layers resource. */
+  silent_layers?: string[];
 }
 
 /** One thing the export check found. */

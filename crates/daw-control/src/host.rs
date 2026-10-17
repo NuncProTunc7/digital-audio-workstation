@@ -1220,6 +1220,7 @@ fn godot_spec(
         } else {
             Some(options.target_lufs.unwrap_or(DEFAULT_GAME_LUFS))
         },
+        silent_layers: options.silent_layers.clone().unwrap_or_default(),
     }
 }
 

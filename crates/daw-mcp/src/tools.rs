@@ -784,6 +784,7 @@ fn godot_options_properties() -> Value {
         "stems": { "type": "boolean", "description": "Also export each track separately (default false). Tracks not heard in the mix (muted, or another track soloed) get no stem; inspect_export names them." },
         "bus_stems": { "type": "boolean", "description": "With stems: one stem per bus (the tracks playing into it) plus an \"other\" stem for tracks playing straight into the master, instead of one per track. Default false." },
         "layers": { "type": "boolean", "description": "With stems, write an AudioStreamSynchronized .tres (default true)." },
+        "silent_layers": { "type": "array", "items": { "type": "string" }, "description": "With layers: names of layers that start silent (volume -80 dB) so the game fades them in, e.g. drums for combat. A layer is named after its track, or with bus_stems after its bus or \"other\"; case doesn't matter. An unknown name is an error listing the layers." },
         "sections": { "type": "array", "description": "Named sections for an AudioStreamInteractive .tres.", "items": { "type": "object", "properties": { "name": { "type": "string" }, "start_beats": { "type": "number" }, "end_beats": { "type": "number" } }, "required": ["name", "start_beats", "end_beats"] } },
         "sections_from_markers": { "type": "boolean", "description": "Use the song's section markers (see add_marker and get_song's sections) as the sections. Ignored when sections is given." },
         "target_lufs": num("Loudness target (default -16)."),

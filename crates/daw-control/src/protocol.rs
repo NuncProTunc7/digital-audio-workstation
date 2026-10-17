@@ -237,6 +237,10 @@ pub struct GodotOptions {
     pub target_lufs: Option<f64>,
     #[serde(default)]
     pub normalize: Option<bool>,
+    /// With the layers resource: layers (track names, or with bus_stems bus
+    /// names and "other") that start silent for the game to fade in.
+    #[serde(default)]
+    pub silent_layers: Option<Vec<String>>,
 }
 
 /// Reply to a [`Request`].
