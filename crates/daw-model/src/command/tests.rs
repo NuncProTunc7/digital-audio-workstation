@@ -196,6 +196,10 @@ fn sample_commands(p: &Project) -> Vec<Command> {
             kind: EffectKind::Delay,
             index: None,
         },
+        Command::LoadRig {
+            track_id: Some(1),
+            rig: "Metal".into(),
+        },
         Command::RemoveEffect {
             track_id: Some(1),
             effect_id: fx,
@@ -2343,4 +2347,42 @@ fn set_sound_keeps_settings_left_out() {
     );
     s.undo();
     assert_eq!(s.project().sounds[0].recipe, original);
+}
+
+#[test]
+fn a_rig_replaces_the_chain_and_undo_brings_the_old_one_back() {
+    let mut p = fixture();
+    let before = p.tracks[0].mixer.effects.clone();
+    let undo = Command::LoadRig {
+        track_id: Some(1),
+        rig: "clean shimmer".into(),
+    }
+    .apply(&mut p)
+    .expect("rig");
+    let kinds: Vec<EffectKind> = p.tracks[0].mixer.effects.iter().map(|e| e.kind).collect();
+    assert_eq!(
+        kinds,
+        [
+            EffectKind::Compressor,
+            EffectKind::Amp,
+            EffectKind::Chorus,
+            EffectKind::Delay,
+            EffectKind::Reverb
+        ]
+    );
+    // The rig's settings, not the defaults.
+    let amp = &p.tracks[0].mixer.effects[1];
+    assert_eq!(amp.value("channel"), Some(0.0));
+    assert_eq!(amp.value("treble"), Some(7.0));
+    undo.apply(&mut p).expect("undo");
+    assert_eq!(p.tracks[0].mixer.effects, before, "same effects, same ids");
+    // Unknown rigs say which there are.
+    let err = Command::LoadRig {
+        track_id: Some(1),
+        rig: "Polka".into(),
+    }
+    .apply(&mut p)
+    .expect_err("no such rig")
+    .to_string();
+    assert!(err.contains("Metal"), "{err}");
 }

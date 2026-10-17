@@ -742,6 +742,247 @@ pub const OCTAVER_PARAMS: &[ParamSpec] = &[
     p("dry", "Dry", "Octaver", 0.0, 1.0, 0.8, Unit::Percent, false),
 ];
 
+/// One effect of a rig: its kind and the settings that differ from the
+/// defaults.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct RigPedal {
+    pub kind: EffectKind,
+    pub params: &'static [(&'static str, f64)],
+}
+
+/// A ready-made guitar setup: a chain of pedals, an amp, and room effects.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+pub struct Rig {
+    pub name: &'static str,
+    pub description: &'static str,
+    pub chain: &'static [RigPedal],
+}
+
+const fn pedal(kind: EffectKind, params: &'static [(&'static str, f64)]) -> RigPedal {
+    RigPedal { kind, params }
+}
+
+/// The rigs `load_rig` knows, in menu order.
+pub const RIGS: &[Rig] = &[
+    Rig {
+        name: "Clean",
+        description: "A clean amp with a touch of room: chords and picked parts.",
+        chain: &[
+            pedal(
+                EffectKind::Compressor,
+                &[("threshold_db", -24.0), ("ratio", 3.0), ("makeup_db", 4.0)],
+            ),
+            pedal(
+                EffectKind::Amp,
+                &[
+                    ("channel", 0.0),
+                    ("gain", 3.0),
+                    ("treble", 6.0),
+                    ("master_db", -4.0),
+                ],
+            ),
+            pedal(EffectKind::Reverb, &[("size", 0.5), ("mix", 0.15)]),
+        ],
+    },
+    Rig {
+        name: "Clean shimmer",
+        description: "Sparkling clean with chorus, dotted-eighth echoes and a big hall: dreamy towns and menus.",
+        chain: &[
+            pedal(
+                EffectKind::Compressor,
+                &[("threshold_db", -24.0), ("ratio", 3.0), ("makeup_db", 4.0)],
+            ),
+            pedal(
+                EffectKind::Amp,
+                &[
+                    ("channel", 0.0),
+                    ("gain", 3.0),
+                    ("treble", 7.0),
+                    ("master_db", -4.0),
+                ],
+            ),
+            pedal(EffectKind::Chorus, &[("depth", 0.5), ("mix", 0.4)]),
+            pedal(
+                EffectKind::Delay,
+                &[
+                    ("sync", 3.0),
+                    ("feedback", 0.35),
+                    ("ping_pong", 1.0),
+                    ("mix", 0.25),
+                ],
+            ),
+            pedal(EffectKind::Reverb, &[("size", 0.85), ("mix", 0.35)]),
+        ],
+    },
+    Rig {
+        name: "Crunch",
+        description: "An amp just breaking up, nudged by an overdrive: rhythm parts and riffs.",
+        chain: &[
+            pedal(
+                EffectKind::Overdrive,
+                &[("drive", 0.3), ("tone", 0.55), ("level_db", 0.0)],
+            ),
+            pedal(
+                EffectKind::Amp,
+                &[("channel", 1.0), ("gain", 5.0), ("mid", 6.0)],
+            ),
+            pedal(EffectKind::Reverb, &[("size", 0.45), ("mix", 0.12)]),
+        ],
+    },
+    Rig {
+        name: "Blues",
+        description: "Warm, singing overdrive through an open-back combo: bends and slow leads.",
+        chain: &[
+            pedal(
+                EffectKind::Overdrive,
+                &[("drive", 0.45), ("tone", 0.45), ("level_db", 0.0)],
+            ),
+            pedal(
+                EffectKind::Amp,
+                &[
+                    ("channel", 1.0),
+                    ("gain", 4.0),
+                    ("bass", 6.0),
+                    ("mid", 6.0),
+                    ("cabinet", 1.0),
+                ],
+            ),
+            pedal(EffectKind::Reverb, &[("size", 0.55), ("mix", 0.2)]),
+        ],
+    },
+    Rig {
+        name: "Classic rock",
+        description: "A cranked amp through a 4x12 with a short echo: power chords and anthems.",
+        chain: &[
+            pedal(
+                EffectKind::Amp,
+                &[
+                    ("channel", 1.0),
+                    ("gain", 8.0),
+                    ("mid", 7.0),
+                    ("cabinet", 3.0),
+                ],
+            ),
+            pedal(
+                EffectKind::Delay,
+                &[("sync", 4.0), ("feedback", 0.25), ("mix", 0.15)],
+            ),
+            pedal(EffectKind::Reverb, &[("size", 0.5), ("mix", 0.15)]),
+        ],
+    },
+    Rig {
+        name: "Metal",
+        description: "Gated high gain with a tight boost and scooped mids: chugs and boss fights.",
+        chain: &[
+            pedal(
+                EffectKind::NoiseGate,
+                &[("threshold_db", -50.0), ("release_s", 0.06)],
+            ),
+            pedal(
+                EffectKind::Overdrive,
+                &[("drive", 0.05), ("tone", 0.6), ("level_db", 0.0)],
+            ),
+            pedal(
+                EffectKind::Amp,
+                &[
+                    ("channel", 2.0),
+                    ("gain", 7.0),
+                    ("bass", 6.0),
+                    ("mid", 3.5),
+                    ("treble", 6.5),
+                    ("cabinet", 3.0),
+                ],
+            ),
+            pedal(EffectKind::Reverb, &[("size", 0.4), ("mix", 0.08)]),
+        ],
+    },
+    Rig {
+        name: "Fuzz lead",
+        description: "Thick fuzz into a clean amp with quarter-note echoes: soaring leads.",
+        chain: &[
+            pedal(
+                EffectKind::Fuzz,
+                &[("fuzz", 0.8), ("tone", 0.55), ("level_db", -8.0)],
+            ),
+            pedal(EffectKind::Amp, &[("channel", 0.0), ("gain", 5.0)]),
+            pedal(
+                EffectKind::Delay,
+                &[("sync", 2.0), ("feedback", 0.4), ("mix", 0.25)],
+            ),
+            pedal(EffectKind::Reverb, &[("size", 0.6), ("mix", 0.2)]),
+        ],
+    },
+    Rig {
+        name: "Funk",
+        description: "Squeezed and auto-wah'd clean: choppy sixteenth-note rhythm.",
+        chain: &[
+            pedal(
+                EffectKind::Compressor,
+                &[
+                    ("threshold_db", -28.0),
+                    ("ratio", 6.0),
+                    ("attack_s", 0.003),
+                    ("makeup_db", 6.0),
+                ],
+            ),
+            pedal(
+                EffectKind::Wah,
+                &[("mode", 0.0), ("sensitivity", 0.7), ("resonance", 0.75)],
+            ),
+            pedal(
+                EffectKind::Amp,
+                &[("channel", 0.0), ("gain", 3.0), ("treble", 7.0)],
+            ),
+        ],
+    },
+    Rig {
+        name: "Surf",
+        description: "Twangy clean with tremolo and a splashy spring-style reverb: beaches and westerns.",
+        chain: &[
+            pedal(
+                EffectKind::Amp,
+                &[
+                    ("channel", 0.0),
+                    ("gain", 4.0),
+                    ("treble", 7.0),
+                    ("cabinet", 1.0),
+                ],
+            ),
+            pedal(EffectKind::Tremolo, &[("rate_hz", 6.0), ("depth", 0.5)]),
+            pedal(
+                EffectKind::Reverb,
+                &[("size", 0.7), ("damping", 0.2), ("mix", 0.45)],
+            ),
+        ],
+    },
+    Rig {
+        name: "Ambient",
+        description: "Clean guitar washed in long echoes and a huge reverb: pads, title screens.",
+        chain: &[
+            pedal(
+                EffectKind::Amp,
+                &[("channel", 0.0), ("gain", 3.0), ("master_db", -4.0)],
+            ),
+            pedal(EffectKind::Chorus, &[("depth", 0.4), ("mix", 0.3)]),
+            pedal(
+                EffectKind::Delay,
+                &[
+                    ("sync", 2.0),
+                    ("feedback", 0.6),
+                    ("ping_pong", 1.0),
+                    ("mix", 0.4),
+                ],
+            ),
+            pedal(EffectKind::Reverb, &[("size", 1.0), ("mix", 0.6)]),
+        ],
+    },
+];
+
+pub fn rig(name: &str) -> Option<&'static Rig> {
+    RIGS.iter()
+        .find(|r| r.name.eq_ignore_ascii_case(name.trim()))
+}
+
 pub fn effect_params(kind: EffectKind) -> &'static [ParamSpec] {
     match kind {
         EffectKind::Eq => EQ_PARAMS,
@@ -823,5 +1064,21 @@ mod tests {
             assert_eq!(e.params.len(), specs.len());
         }
         assert_eq!(DELAY_SYNC_CHOICES.len(), DELAY_SYNC_BEATS.len());
+    }
+
+    #[test]
+    fn every_rig_uses_real_settings() {
+        for r in RIGS {
+            assert!(!r.chain.is_empty(), "{}", r.name);
+            for pedal in r.chain {
+                assert_ne!(pedal.kind, EffectKind::Plugin);
+                for (id, value) in pedal.params {
+                    let spec = effect_spec(pedal.kind, id)
+                        .unwrap_or_else(|| panic!("{}: {:?} has no {id}", r.name, pedal.kind));
+                    assert!(spec.validate(*value), "{}: {id} = {value}", r.name);
+                }
+            }
+        }
+        assert_eq!(rig("metal").map(|r| r.name), Some("Metal"));
     }
 }

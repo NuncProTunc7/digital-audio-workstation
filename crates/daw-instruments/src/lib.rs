@@ -138,6 +138,8 @@ pub struct Catalog {
     /// the order of its `string.tuning` choice, and how many frets it has.
     pub guitar_tunings: &'static [daw_model::instrument::Tuning],
     pub guitar_frets: u8,
+    /// Ready-made guitar effect chains for `load_rig`.
+    pub rigs: &'static [daw_model::effect::Rig],
 }
 
 pub fn catalog() -> Catalog {
@@ -147,5 +149,6 @@ pub fn catalog() -> Catalog {
         drum_pads: &DRUM_PADS,
         guitar_tunings: daw_model::instrument::GUITAR_TUNINGS,
         guitar_frets: daw_model::instrument::GUITAR_FRETS,
+        rigs: daw_model::effect::RIGS,
     }
 }

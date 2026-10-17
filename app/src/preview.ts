@@ -201,6 +201,20 @@ export function applyCommand(project: Project, command: Command): Project {
       c.splice(command.index ?? c.length, 0, { id: id(), kind: command.kind, enabled: true, params });
       break;
     }
+    case "load_rig": {
+      const rig = catalog.rigs.find((r) => r.name.toLowerCase() === command.rig.trim().toLowerCase());
+      if (!rig) throw new Error(`there is no rig called "${command.rig}"`);
+      const c = chain(command.track_id);
+      const effects = rig.chain.map((pedal) => {
+        const description = catalog.effects.find((e) => e.kind === pedal.kind);
+        const params: Record<string, number> = {};
+        for (const s of description?.params ?? []) params[s.id] = s.default;
+        for (const [k, v] of pedal.params) params[k] = v;
+        return { id: id(), kind: pedal.kind, enabled: true, params };
+      });
+      c.splice(0, c.length, ...effects);
+      break;
+    }
     case "add_plugin_effect": {
       const c = chain(command.track_id);
       c.splice(command.index ?? c.length, 0, {

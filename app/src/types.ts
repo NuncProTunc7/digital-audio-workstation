@@ -484,6 +484,7 @@ export type Command =
   | { command: "load_preset"; track_id: number; preset: string }
   | { command: "set_instrument"; track_id: number; instrument: Instrument }
   | { command: "add_effect"; track_id: Opt<number>; kind: EffectKind; index: Opt<number> }
+  | { command: "load_rig"; track_id: Opt<number>; rig: string }
   | { command: "add_plugin_effect"; track_id: Opt<number>; plugin: PluginRef; index: Opt<number> }
   | { command: "remove_effect"; track_id: Opt<number>; effect_id: number }
   | { command: "set_effect_param"; track_id: Opt<number>; effect_id: number; param: string; value: number }
@@ -703,6 +704,15 @@ export interface Catalog {
   /** Guitar tunings in the order of the `string.tuning` choice. */
   guitar_tunings: GuitarTuning[];
   guitar_frets: number;
+  /** Ready-made guitar effect chains (load_rig). */
+  rigs: Rig[];
+}
+
+/** A ready-made guitar effect chain: each effect's kind and the settings that differ from the defaults. */
+export interface Rig {
+  name: string;
+  description: string;
+  chain: { kind: EffectKind; params: [string, number][] }[];
 }
 
 /** A guitar tuning: open strings as MIDI notes, lowest first. */
