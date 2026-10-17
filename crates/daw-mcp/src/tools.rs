@@ -239,13 +239,13 @@ fn extra_tools() -> Vec<ToolDef> {
         ),
         tool(
             "get_sound",
-            "One game sound effect in full: its recipe (every setting, to change with set_sound), start_hz (its starting pitch in Hz), seconds (how long it really lasts: a slide below freq_limit ends it early), peak_dbfs, and silent (true if it makes no sound). You can't hear sounds: use these facts, then ask the user.",
+            "One game sound effect in full: its recipe (every setting, to change with set_sound), start_hz (its starting pitch in Hz), seconds (how long it really lasts: a slide below freq_limit ends it early), peak_dbfs, silent (true if it makes no sound) and silent_because (why, when a setting explains it). You can't hear sounds: use these facts, then ask the user.",
             object_schema(json!({ "sound_id": { "type": "integer" } }), &["sound_id"]),
             true,
         ),
         tool(
             "play_sound",
-            "Play one of the project's game sound effects (see get_song's sounds) so the user can hear it; the song keeps playing. Returns its length in seconds. You can't hear it: ask the user how it sounds.",
+            "Play one of the project's game sound effects (see get_song's sounds) so the user can hear it; the song keeps playing. Returns its length in seconds; Stop silences it. Fails with the reason if the sound makes no sound at all. You can't hear it: ask the user how it sounds.",
             object_schema(json!({ "sound_id": { "type": "integer" } }), &["sound_id"]),
             true,
         ),

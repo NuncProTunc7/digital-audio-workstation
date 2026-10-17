@@ -394,6 +394,15 @@ impl SoundRecipe {
         3528.0 * (self.base_freq * self.base_freq + 0.001)
     }
 
+    /// Why the recipe makes no sound at all, in plain words, if a setting
+    /// explains it: a sound stops once its pitch is below "lowest pitch",
+    /// so starting below it ends the sound before it begins.
+    pub fn silent_because(&self) -> Option<&'static str> {
+        (self.freq_limit > 0.0 && self.base_freq < self.freq_limit).then_some(
+            "Pitch starts below Lowest pitch, so the sound ends before it begins: raise Pitch or lower Lowest pitch",
+        )
+    }
+
     /// Length in seconds: attack, hold, and fade (at most
     /// [`MAX_SOUND_SECONDS`]).
     pub fn seconds(&self) -> f32 {

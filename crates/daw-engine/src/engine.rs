@@ -436,14 +436,16 @@ impl Engine {
         });
     }
 
-    /// Plays the last `span_beats` of a loop into its first `span_beats`,
-    /// over and over, to judge the loop point.
     /// Plays mono audio once on top of everything (a sound effect being
-    /// tried out), replacing any still playing. The transport isn't touched.
-    pub fn play_one_shot(&self, mono: impl Into<Arc<[f32]>>) {
-        self.send(EngineMessage::PlayOneShot(mono.into()));
+    /// tried out), replacing any still playing; Stop silences it. The
+    /// transport isn't touched. False if the engine's queue was full, so
+    /// nothing will play.
+    pub fn play_one_shot(&self, mono: impl Into<Arc<[f32]>>) -> bool {
+        self.send(EngineMessage::PlayOneShot(mono.into()))
     }
 
+    /// Plays the last `span_beats` of a loop into its first `span_beats`,
+    /// over and over, to judge the loop point.
     pub fn audition_seam(&self, start_beats: f64, end_beats: f64, span_beats: f64) {
         self.send(EngineMessage::AuditionSeam {
             start_beats,
@@ -1528,6 +1530,35 @@ mod tests {
         engine.play_one_shot(vec![0.0f32; 10]);
         let both = render(&mut p, 0.2);
         assert!((peak(&both) - peak(&song)).abs() < 0.05, "song still plays");
+    }
+
+    #[test]
+    fn stop_silences_a_sound_effect_still_playing() {
+        let s = Session::default();
+        let (engine, mut p) = Engine::new(s.project(), SR);
+        engine.set_metronome(false);
+        let shot: Arc<[f32]> = vec![0.25f32; 48_000].into();
+        assert!(engine.play_one_shot(Arc::clone(&shot)));
+        render(&mut p, 0.01);
+        engine.stop();
+        let out = render(&mut p, 0.01);
+        assert!(peak(&out) < 1e-6, "still playing: {}", peak(&out));
+        // The next message collects it, freed off the audio thread.
+        engine.stop();
+        assert_eq!(Arc::strong_count(&shot), 1);
+    }
+
+    #[test]
+    fn a_one_shot_that_does_not_fit_in_the_queue_says_so() {
+        let s = Session::default();
+        let (engine, _p) = Engine::new(s.project(), SR);
+        // Nothing drains the queue, so it fills up.
+        let mut sent = 0;
+        while engine.play_one_shot(vec![0.0f32; 1]) {
+            sent += 1;
+            assert!(sent < 100_000, "the queue never filled");
+        }
+        assert!(sent > 0);
     }
 
     #[test]

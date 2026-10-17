@@ -34,20 +34,50 @@ pub fn render(recipe: &SoundRecipe, sample_rate_hz: u32) -> Vec<f32> {
     resample(&base, sample_rate_hz)
 }
 
-/// Linear-interpolation resampling: plenty for short effects.
+/// Zero crossings each side of a resampling kernel.
+const SINC_HALF_WIDTH: f64 = 16.0;
+
+/// Windowed-sinc resampling. Going down in rate, the kernel also cuts
+/// everything the new rate can't carry, so high pitches don't fold back as
+/// false low tones. Slow next to a real-time resampler, but effects are
+/// short and rendered off the audio thread.
 fn resample(input: &[f32], to_hz: u32) -> Vec<f32> {
     let ratio = f64::from(BASE_RATE_HZ) / f64::from(to_hz);
+    // Cutoff as a fraction of the input's Nyquist.
+    let cutoff = (1.0 / ratio).min(1.0);
+    let reach = SINC_HALF_WIDTH / cutoff;
     let n = ((input.len() as f64) / ratio).round() as usize;
     (0..n)
         .map(|i| {
             let pos = i as f64 * ratio;
-            let j = pos.floor() as usize;
-            let frac = (pos - j as f64) as f32;
-            let a = input.get(j).copied().unwrap_or(0.0);
-            let b = input.get(j + 1).copied().unwrap_or(a);
-            a + (b - a) * frac
+            let first = (pos - reach).ceil().max(0.0) as usize;
+            let last = ((pos + reach).floor() as usize).min(input.len().saturating_sub(1));
+            let mut sum = 0.0f64;
+            for (k, &s) in input.iter().enumerate().take(last + 1).skip(first) {
+                let x = (pos - k as f64) * cutoff;
+                sum += f64::from(s) * sinc(x) * blackman(x / SINC_HALF_WIDTH);
+            }
+            (sum * cutoff) as f32
         })
         .collect()
+}
+
+fn sinc(x: f64) -> f64 {
+    if x.abs() < 1e-9 {
+        1.0
+    } else {
+        let px = std::f64::consts::PI * x;
+        px.sin() / px
+    }
+}
+
+/// Blackman window over -1..1 (0 outside).
+fn blackman(t: f64) -> f64 {
+    if t.abs() >= 1.0 {
+        return 0.0;
+    }
+    let a = std::f64::consts::PI * (t + 1.0);
+    0.42 - 0.5 * a.cos() + 0.08 * (2.0 * a).cos()
 }
 
 /// xorshift32, for the noise wave.

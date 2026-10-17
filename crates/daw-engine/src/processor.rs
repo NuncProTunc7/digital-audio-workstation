@@ -488,6 +488,9 @@ impl AudioProcessor {
                     for t in self.tracks.iter_mut() {
                         release_sequenced(t);
                     }
+                    if let Some((shot, _)) = self.one_shot.take() {
+                        self.throw_away(Garbage::OneShot(shot));
+                    }
                     // Stopped during a count-in: back where it would have started.
                     if self.count_in_end.is_finite() {
                         let start = self.song_position();
