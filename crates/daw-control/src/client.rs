@@ -8,19 +8,36 @@ use thiserror::Error;
 use crate::discovery::{ControlFile, control_file_path};
 use crate::protocol::{Request, Response};
 
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
+// Windows can take just over two seconds to report a refused connection.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 /// Analysis and export can take a while on long songs.
 const READ_TIMEOUT: Duration = Duration::from_secs(300);
 
 #[derive(Debug, Error)]
 pub enum ClientError {
-    #[error("Nunc Pro Tune isn't running. Open the app, then try again. (No control file at {0}.)")]
+    #[error("The AI control file is missing at {0}. Open Nunc Pro Tune or check its AI panel.")]
     NotRunning(String),
+    #[error(
+        "Access denied while reading the AI control file at {0}. Check Nunc Pro Tune’s AI panel and launch both apps under the same Windows account."
+    )]
+    FileAccessDenied(String),
+    #[error("The AI control file at {0} could not be read. Check Nunc Pro Tune’s AI panel.")]
+    FileUnreadable(String),
+    #[error(
+        "Nunc Pro Tune refused the AI connection. Check its AI panel and restart the AI bridge."
+    )]
+    AccessDenied,
+    #[error("Windows denied the local AI connection. Check Nunc Pro Tune’s AI panel.")]
+    ConnectAccessDenied,
+    #[error("The AI connection timed out during {0}. Check Nunc Pro Tune’s AI panel.")]
+    TimedOut(&'static str),
     #[error("Nunc Pro Tune isn't responding. If it was closed, open it again. ({0})")]
     Unreachable(String),
     /// Nothing listens on the port the discovery file names: the file is
     /// left over from an earlier run.
-    #[error("Nunc Pro Tune isn't running (or was closed). Open the app, then try again. ({0})")]
+    #[error(
+        "The AI control file points to a port with no listener. Open or restart Nunc Pro Tune, then try again. ({0})"
+    )]
     NoListener(String),
     #[error("unexpected reply from Nunc Pro Tune: {0}")]
     Protocol(String),
@@ -42,8 +59,14 @@ impl ControlClient {
     }
 
     pub fn from_file(path: &Path) -> Result<Self, ClientError> {
-        let file = ControlFile::read(path)
-            .map_err(|_| ClientError::NotRunning(path.display().to_string()))?;
+        let file = ControlFile::read(path).map_err(|e| {
+            let path = path.display().to_string();
+            match e.kind() {
+                std::io::ErrorKind::NotFound => ClientError::NotRunning(path),
+                std::io::ErrorKind::PermissionDenied => ClientError::FileAccessDenied(path),
+                _ => ClientError::FileUnreadable(path),
+            }
+        })?;
         Ok(Self::new(file.port, file.token))
     }
 
@@ -103,14 +126,27 @@ impl ControlClient {
         &self,
         request: &Request,
     ) -> Result<Result<serde_json::Value, String>, ClientError> {
+        self.call_with_timeout(request, READ_TIMEOUT)
+    }
+
+    pub(crate) fn call_with_timeout(
+        &self,
+        request: &Request,
+        timeout: Duration,
+    ) -> Result<Result<serde_json::Value, String>, ClientError> {
         let body =
             serde_json::to_string(request).map_err(|e| ClientError::Protocol(e.to_string()))?;
         let addr = SocketAddr::from(([127, 0, 0, 1], self.port));
-        let mut stream = TcpStream::connect_timeout(&addr, CONNECT_TIMEOUT)
-            .map_err(|e| ClientError::NoListener(e.to_string()))?;
+        let mut stream =
+            TcpStream::connect_timeout(&addr, CONNECT_TIMEOUT).map_err(|e| match e.kind() {
+                std::io::ErrorKind::ConnectionRefused => ClientError::NoListener(e.to_string()),
+                std::io::ErrorKind::PermissionDenied => ClientError::ConnectAccessDenied,
+                _ => transport_error(e, "connect"),
+            })?;
         stream
-            .set_read_timeout(Some(READ_TIMEOUT))
-            .map_err(|e| ClientError::Unreachable(e.to_string()))?;
+            .set_read_timeout(Some(timeout))
+            .and_then(|()| stream.set_write_timeout(Some(CONNECT_TIMEOUT.min(timeout))))
+            .map_err(|e| transport_error(e, "handshake"))?;
         let ai = self
             .ai
             .as_deref()
@@ -124,15 +160,20 @@ impl ControlClient {
         stream
             .write_all(head.as_bytes())
             .and_then(|()| stream.write_all(body.as_bytes()))
-            .map_err(|e| ClientError::Unreachable(e.to_string()))?;
+            .map_err(|e| transport_error(e, "handshake"))?;
         let mut raw = Vec::new();
         stream
             .read_to_end(&mut raw)
-            .map_err(|e| ClientError::Unreachable(e.to_string()))?;
+            .map_err(|e| transport_error(e, "handshake"))?;
         let text = String::from_utf8_lossy(&raw);
         let (head, body) = text
             .split_once("\r\n\r\n")
             .ok_or_else(|| ClientError::Protocol("no body".into()))?;
+        match head.split_ascii_whitespace().nth(1) {
+            Some("401" | "403") => return Err(ClientError::AccessDenied),
+            Some("200" | "400") => {}
+            _ => return Err(ClientError::Protocol("unexpected HTTP status".into())),
+        }
         let chunked = head.lines().any(|l| {
             l.to_ascii_lowercase().starts_with("transfer-encoding:")
                 && l.to_ascii_lowercase().contains("chunked")
@@ -145,6 +186,16 @@ impl ControlClient {
         let response: Response =
             serde_json::from_str(&json).map_err(|e| ClientError::Protocol(e.to_string()))?;
         Ok(response.into_result())
+    }
+}
+
+fn transport_error(e: std::io::Error, step: &'static str) -> ClientError {
+    match e.kind() {
+        std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock => {
+            ClientError::TimedOut(step)
+        }
+        std::io::ErrorKind::PermissionDenied => ClientError::AccessDenied,
+        _ => ClientError::Unreachable(e.to_string()),
     }
 }
 
@@ -192,7 +243,7 @@ mod tests {
         .expect("write");
         let err = ControlClient::call_via(&path, &Request::Ping, None).expect_err("stale");
         assert!(matches!(err, ClientError::NoListener(_)), "{err}");
-        assert!(err.to_string().contains("isn't running"));
+        assert!(err.to_string().contains("no listener"));
         assert!(!path.exists(), "the stale file is gone");
         // With no file at all, the usual "not running" message.
         let err = ControlClient::call_via(&path, &Request::Ping, None).expect_err("none");

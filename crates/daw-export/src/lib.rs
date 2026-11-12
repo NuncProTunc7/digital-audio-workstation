@@ -7,6 +7,7 @@
 //! `AudioStreamSynchronized` (stems as layers) and `AudioStreamInteractive`
 //! (sections you switch between). Formats follow `docs/godot-formats.md`.
 
+mod audio;
 mod encode;
 mod godot;
 mod inspect;
@@ -21,6 +22,10 @@ use daw_model::Project;
 use serde::Serialize;
 use thiserror::Error;
 
+pub use audio::{
+    AudioExport, AudioExportMode, AudioExportReport, AudioPreview, AudioRegion, PreviewSelection,
+    export_audio, inspect_audio_export, preview_audio,
+};
 pub use encode::{write_ogg, write_wav};
 pub use inspect::{Finding, Inspection, Level, inspect};
 pub use render::{RenderedLoop, render_loop, render_with_intro};
@@ -37,6 +42,8 @@ pub enum ExportError {
         "the folder inside the Godot project must be a relative path like music/boss, got \"{0}\""
     )]
     BadFolder(String),
+    #[error("{0}")]
+    InvalidAudioExport(String),
     #[error("nothing to export: {0}")]
     Empty(String),
     #[error("could not write {path}: {message}")]
@@ -54,7 +61,9 @@ pub(crate) fn io_err(path: &Path, e: impl ToString) -> ExportError {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum AudioFormat {
     /// OGG Vorbis: small files, Godot's preferred music format.

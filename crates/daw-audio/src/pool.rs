@@ -244,6 +244,16 @@ impl AudioPool {
         Ok(missing)
     }
 
+    /// Pins the file search paths and in-memory audio for an offline render.
+    pub fn snapshot(&self) -> Arc<Self> {
+        let pool = Self::new(self.scratch.clone());
+        pool.set_project_folder(self.project_folder());
+        if let (Ok(source), Ok(mut dest)) = (self.memory.lock(), pool.memory.lock()) {
+            dest.clone_from(&source);
+        }
+        Arc::new(pool)
+    }
+
     /// Drops cached audio (after opening another project).
     pub fn clear_cache(&self) {
         if let Ok(mut c) = self.buffers.lock() {

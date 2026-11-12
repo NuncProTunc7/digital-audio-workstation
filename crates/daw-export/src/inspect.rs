@@ -49,11 +49,11 @@ impl Inspection {
     }
 }
 
-fn db(x: f32) -> f64 {
+pub(crate) fn db(x: f32) -> f64 {
     20.0 * f64::from(x.max(1e-9)).log10()
 }
 
-fn rms(x: &[f32]) -> f32 {
+pub(crate) fn rms(x: &[f32]) -> f32 {
     (x.iter().map(|v| v * v).sum::<f32>() / x.len().max(1) as f32).sqrt()
 }
 
@@ -276,7 +276,15 @@ fn check_loop(
             ),
         );
     }
-    let start_frame = rendered.loop_start_frame();
+    check_seam(say, samples, rendered.loop_start_frame(), what);
+}
+
+pub(crate) fn check_seam(
+    say: &mut impl FnMut(Level, String),
+    samples: &[f32],
+    start_frame: usize,
+    what: &str,
+) {
     let (jump, step) = seam_jump(samples, start_frame);
     if jump > 0.05 && jump > 8.0 * step.max(1e-4) {
         say(

@@ -62,3 +62,24 @@ describe("AiPanel web address", () => {
     expect(onWeb).toHaveBeenCalledWith(false, false);
   });
 });
+
+it("shows the bridge status, failed step, and recovery message", () => {
+  const message = "Access denied while reading the AI control file.";
+  show({
+    ...status(),
+    listening: false,
+    error: message,
+    connection: {
+      status: "access_denied",
+      failed_step: "read_control_file",
+      message,
+      app_version: null,
+      protocol_version: null,
+      expected_protocol_version: 1,
+      capabilities: [],
+    },
+  });
+  expect(screen.getByText("access_denied")).toBeTruthy();
+  expect(screen.getByText("read_control_file")).toBeTruthy();
+  expect(screen.getByText(message)).toBeTruthy();
+});

@@ -2,26 +2,13 @@
 //! `Command` JSON Schema, so the UI and the AI can never drift apart; a few
 //! more tools cover reading the song, the transport, files, and analysis.
 
+use std::sync::LazyLock;
+
 use serde_json::{Map, Value, json};
 
-use daw_control::Request;
+use daw_control::{HIDDEN_COMMANDS, ProjectGuard, Request};
 
-/// Commands that exist only so undo can restore things exactly.
-const HIDDEN_COMMANDS: &[&str] = &[
-    "restore_track",
-    "restore_clip",
-    "restore_effect",
-    "restore_automation_lane",
-    "restore_snapshot",
-    "restore_marker",
-    "restore_tempo_change",
-    "restore_bus",
-    "restore_chord",
-    "restore_sound",
-    "set_song_state",
-    "set_clip_link",
-    "set_clip_notes",
-];
+static COMMAND_SCHEMA: LazyLock<Value> = LazyLock::new(daw_model::command_schema);
 
 /// Commands whose tool does more than the Command (freeze_track renders
 /// the track first), so the generated tool of that name is left out.
@@ -65,9 +52,63 @@ fn rename_root_refs(v: &mut Value) {
     }
 }
 
+fn guard_properties(properties: &mut Map<String, Value>) {
+    properties.insert("project_id".into(), json!({
+        "type": "string", "description": "Only act if this project ID from get_song is still open."
+    }));
+    properties.insert("expected_revision".into(), json!({
+        "type": "integer", "minimum": 0, "description": "Reject the write if the song has changed since this revision."
+    }));
+}
+
+fn batch_command_schema(mut schema: Value) -> Value {
+    if let Some(root) = schema.as_object_mut() {
+        root.remove("$defs");
+        root.remove("$schema");
+    }
+    if let Some(variants) = schema["oneOf"].as_array_mut() {
+        variants.retain(|v| {
+            !v["properties"]["command"]["const"]
+                .as_str()
+                .is_some_and(|name| HIDDEN_COMMANDS.contains(&name))
+        });
+        for variant in variants {
+            let name = variant["properties"]["command"]["const"]
+                .as_str()
+                .unwrap_or_default()
+                .to_owned();
+            let mut alternatives = Vec::new();
+            for (id, reference) in [("track_id", "track_ref"), ("clip_id", "clip_ref")] {
+                if variant["properties"].get(id).is_none() {
+                    continue;
+                }
+                variant["properties"][reference] = json!({
+                    "type": "string", "description": format!("Use an earlier batch reference instead of {id}.")
+                });
+                let required = variant["required"].as_array_mut().expect("tag is required");
+                let requires_id = required.contains(&json!(id));
+                required.retain(|item| item != id);
+                alternatives.push(if requires_id {
+                    json!({"oneOf": [{"required": [id]}, {"required": [reference]}]})
+                } else {
+                    json!({"not": {"required": [id, reference]}})
+                });
+            }
+            if !alternatives.is_empty() {
+                variant["allOf"] = json!(alternatives);
+            }
+            if matches!(name.as_str(), "add_track" | "create_clip") {
+                variant["properties"]["ref"] = json!({"type": "string", "minLength": 1, "description": "Name the object created by this command for later commands in this batch."});
+            }
+            variant["additionalProperties"] = json!(false);
+        }
+    }
+    schema
+}
+
 /// Tools generated from every `Command` variant, plus `batch`.
 fn command_tools() -> Vec<ToolDef> {
-    let mut schema = daw_model::command_schema();
+    let mut schema = COMMAND_SCHEMA.clone();
     rename_root_refs(&mut schema);
     let defs = schema.get("$defs").cloned().unwrap_or_else(|| json!({}));
     let variants = schema
@@ -77,11 +118,7 @@ fn command_tools() -> Vec<ToolDef> {
         .unwrap_or_default();
 
     // `Command` itself, for `batch`'s list of commands.
-    let mut command_def = schema.clone();
-    if let Some(o) = command_def.as_object_mut() {
-        o.remove("$defs");
-        o.remove("$schema");
-    }
+    let command_def = batch_command_schema(schema.clone());
     let mut all_defs = defs.clone();
     if let Some(o) = all_defs.as_object_mut() {
         o.insert("Command".into(), command_def);
@@ -110,6 +147,12 @@ fn command_tools() -> Vec<ToolDef> {
             .cloned()
             .unwrap_or_default();
         properties.remove("command");
+        guard_properties(&mut properties);
+        if name == "batch" {
+            properties.insert("include_song".into(), json!({
+                "type": "boolean", "default": false, "description": "Include the full song summary in the batch result."
+            }));
+        }
         let required: Vec<Value> = variant
             .get("required")
             .and_then(Value::as_array)
@@ -147,7 +190,26 @@ fn command_tools() -> Vec<ToolDef> {
     tools
 }
 
+fn scoped_audio_schema(schema: Value) -> Map<String, Value> {
+    let mut schema = schema.as_object().cloned().expect("audio schema");
+    schema.remove("$schema");
+    schema.get_mut("properties").and_then(Value::as_object_mut).expect("audio properties")
+        .insert("project_id".into(), json!({"type": "string", "description": "Require the given project from get_song to still be open."}));
+    schema
+}
+
 fn extra_tools() -> Vec<ToolDef> {
+    let audio_schema =
+        scoped_audio_schema(schemars::schema_for!(daw_export::AudioExport).to_value());
+    let preview_schema =
+        scoped_audio_schema(schemars::schema_for!(daw_export::AudioPreview).to_value());
+    let mut save_schema = json!({
+        "path": { "type": "string", "description": "Destination path. Adds .nptune if missing." },
+        "overwrite": { "type": "boolean", "default": false }
+    });
+    guard_properties(save_schema.as_object_mut().expect("save properties"));
+    let mut copy_schema = json!({ "path": { "type": "string", "description": "New destination path. Adds .nptune if missing." } });
+    guard_properties(copy_schema.as_object_mut().expect("copy properties"));
     let num = |d: &str| json!({ "type": "number", "description": d });
     let int = |d: &str| json!({ "type": "integer", "minimum": 0, "description": d });
     let tool =
@@ -159,8 +221,32 @@ fn extra_tools() -> Vec<ToolDef> {
         };
     vec![
         tool(
+            "inspect_audio_export",
+            "Check the destination and render an explicitly selected region without writing. Reports loop seam or playlist endpoint levels, loudness, and peaks.",
+            audio_schema.clone(),
+            true,
+        ),
+        tool(
+            "export_audio",
+            "Export stereo Ogg Vorbis or WAV to an ordinary folder. Choose loop, one_shot, or playlist, and select a marker, beat range, or full arrangement. Returns verified duration, loudness, peaks and exclusive loop end in samples per channel. Overwrite defaults to false.",
+            audio_schema,
+            false,
+        ),
+        tool(
+            "preview_audio",
+            "Write a short playable Ogg or WAV and measure its loudness and peaks without changing playback. Choose the first eight bars, a region (up to 30 seconds), or the join between the last and first two seconds of a loop.",
+            preview_schema,
+            false,
+        ),
+        tool(
+            "bridge_status",
+            "Check control-file access, connection and protocol compatibility even if Nunc Pro Tune is unavailable. Reports the failed step, recovery advice and supported capabilities.",
+            object_schema(json!({}), &[]),
+            true,
+        ),
+        tool(
             "get_song",
-            "Overview of the open song: tempo (tempo_bpm is the starting tempo; tempo_changes lists later changes with id, beats, bar, bpm, and ramp), time signature, length (beats, bars, and seconds), loop, master, and every track with its clips (ids, positions, note counts, muted). Each track says frozen: \"frozen\", \"out of date (plays live)\", or \"no\". Muted clips are kept but silent (e.g. unused recording takes stacked under the one that plays). Also lists the game sound effects (sounds: id, name, wave, seconds; details with get_sound). Start here. When the user says \"this\", \"these\", or \"here\", call get_selection to see what they have selected.",
+            "Overview of the open song including project_id, file_path, dirty, and revision. Also includes tempo (tempo_bpm is the starting tempo; tempo_changes lists later changes with id, beats, bar, bpm, and ramp), time signature, length (beats, bars, and seconds), loop, master, and every track with its clips (ids, positions, note counts, muted). Each track says frozen: \"frozen\", \"out of date (plays live)\", or \"no\". Muted clips are kept but silent (e.g. unused recording takes stacked under the one that plays). Also lists the game sound effects (sounds: id, name, wave, seconds; details with get_sound). Start here. When the user says \"this\", \"these\", or \"here\", call get_selection to see what they have selected.",
             object_schema(json!({}), &[]),
             true,
         ),
@@ -392,10 +478,22 @@ fn extra_tools() -> Vec<ToolDef> {
         ),
         tool(
             "save_project",
-            "Save the project. Without a path, saves to the file it was opened from or last saved to. With a path, a song still named \"Untitled\" is renamed after the file (undoable).",
+            "Save the active project. A new project needs a path. Use overwrite to replace any existing file, including the active file. An Untitled song takes the new file name.",
+            object_schema(save_schema, &[]),
+            false,
+        ),
+        tool(
+            "save_project_copy",
+            "Save a new, independent copy of the active project and its recordings. Includes unsaved edits. Leaves the active project, dirty state, and undo history intact. Choose an unused destination.",
+            object_schema(copy_schema, &["path"]),
+            false,
+        ),
+        tool(
+            "create_project",
+            "Create a blank project file at a new destination while leaving the open song in place. Open it with open_project when ready to switch.",
             object_schema(
-                json!({ "path": { "type": "string", "description": "Absolute path; .nptune is added if missing." } }),
-                &[],
+                json!({"path": {"type": "string"}, "name": {"type": "string"}}),
+                &["path"],
             ),
             false,
         ),
@@ -544,6 +642,7 @@ fn extra_tools() -> Vec<ToolDef> {
 /// a song, for small local models that lose their way in a long list.
 pub const CORE_TOOLS: &[&str] = &[
     "read_guide",
+    "bridge_status",
     "get_song",
     "get_selection",
     "get_track",
@@ -575,7 +674,12 @@ pub const CORE_TOOLS: &[&str] = &[
     "redo",
     "analyze_mix",
     "save_project",
+    "save_project_copy",
+    "create_project",
     "export_wav",
+    "inspect_audio_export",
+    "export_audio",
+    "preview_audio",
     "add_sound",
     "get_sound",
     "set_sound",
@@ -599,7 +703,43 @@ pub fn all_tools() -> Vec<ToolDef> {
 }
 
 /// Turns a tool call into a request for the app.
-pub fn to_request(name: &str, args: Map<String, Value>) -> Result<Request, String> {
+pub fn to_request(name: &str, mut args: Map<String, Value>) -> Result<Request, String> {
+    let guard = ProjectGuard {
+        project_id: args
+            .remove("project_id")
+            .map(|v| serde_json::from_value(v).map_err(|_| "project_id must be a string"))
+            .transpose()?,
+        expected_revision: args
+            .remove("expected_revision")
+            .map(|v| {
+                v.as_u64()
+                    .ok_or("expected_revision must be a nonnegative integer")
+            })
+            .transpose()?,
+    };
+    let command_tool = || {
+        COMMAND_SCHEMA["oneOf"].as_array().is_some_and(|variants| {
+            variants
+                .iter()
+                .any(|v| v["properties"]["command"]["const"] == name)
+        })
+    };
+    let checked_write = matches!(name, "batch" | "save_project" | "save_project_copy")
+        || ((guard.project_id.is_some() || guard.expected_revision.is_some())
+            && command_tool()
+            && !REPLACED_COMMANDS.contains(&name));
+    if guard.project_id.is_some()
+        && !checked_write
+        && !matches!(
+            name,
+            "export_audio" | "inspect_audio_export" | "preview_audio"
+        )
+    {
+        return Err(format!("{name} does not accept project_id"));
+    }
+    if guard.expected_revision.is_some() && !checked_write {
+        return Err(format!("{name} does not accept expected_revision"));
+    }
     let get_f64 = |k: &str| args.get(k).and_then(Value::as_f64);
     let get_bool = |k: &str| args.get(k).and_then(Value::as_bool);
     let get_str = |k: &str| args.get(k).and_then(Value::as_str).map(str::to_owned);
@@ -610,6 +750,40 @@ pub fn to_request(name: &str, args: Map<String, Value>) -> Result<Request, Strin
             .ok_or_else(|| format!("{k} must be a non-negative integer id"))
     };
     let request = match name {
+        "preview_audio" => Request::PreviewAudio {
+            options: serde_json::from_value(Value::Object(args))
+                .map_err(|e| format!("invalid arguments for {name}: {e}"))?,
+            project_id: guard.project_id,
+        },
+        "inspect_audio_export" | "export_audio" => {
+            let options = serde_json::from_value(Value::Object(args))
+                .map_err(|e| format!("invalid arguments for {name}: {e}"))?;
+            let project_id = guard.project_id;
+            if name == "export_audio" {
+                Request::ExportAudio {
+                    options,
+                    project_id,
+                }
+            } else {
+                Request::InspectAudioExport {
+                    options,
+                    project_id,
+                }
+            }
+        }
+        "batch" => Request::EditBatch {
+            commands: args
+                .get("commands")
+                .and_then(Value::as_array)
+                .cloned()
+                .ok_or("commands must be an array")?,
+            include_song: args
+                .get("include_song")
+                .map(|v| v.as_bool().ok_or("include_song must be true or false"))
+                .transpose()?
+                .unwrap_or(false),
+            guard,
+        },
         "get_song" => Request::GetSong,
         "get_selection" => Request::GetSelection,
         "get_track" => Request::GetTrack {
@@ -699,8 +873,25 @@ pub fn to_request(name: &str, args: Map<String, Value>) -> Result<Request, Strin
             end_beats: get_f64("end_beats"),
             tail_seconds: get_f64("tail_seconds"),
         },
-        "save_project" => Request::Save {
-            path: get_str("path"),
+        "save_project" => Request::SaveChecked {
+            path: args
+                .get("path")
+                .map(|v| v.as_str().map(str::to_owned).ok_or("path must be a string"))
+                .transpose()?,
+            overwrite: args
+                .get("overwrite")
+                .map(|v| v.as_bool().ok_or("overwrite must be true or false"))
+                .transpose()?
+                .unwrap_or(false),
+            guard,
+        },
+        "save_project_copy" => Request::SaveProjectCopy {
+            path: get_str("path").ok_or("path is required")?,
+            guard,
+        },
+        "create_project" => Request::CreateProjectFile {
+            path: get_str("path").ok_or("path is required")?,
+            name: get_str("name"),
         },
         "open_project" => Request::Open {
             path: get_str("path").ok_or("path is required")?,
@@ -763,7 +954,11 @@ pub fn to_request(name: &str, args: Map<String, Value>) -> Result<Request, Strin
             obj.insert("command".into(), json!(command));
             let command: daw_model::Command = serde_json::from_value(Value::Object(obj))
                 .map_err(|e| format!("invalid arguments for {name}: {e}"))?;
-            Request::Execute { command }
+            if guard != ProjectGuard::default() {
+                Request::ExecuteChecked { command, guard }
+            } else {
+                Request::Execute { command }
+            }
         }
     };
     Ok(request)
@@ -899,10 +1094,7 @@ mod tests {
         .as_object()
         .cloned()
         .expect("obj");
-        let Request::Execute {
-            command: daw_model::Command::Batch { commands },
-        } = to_request("batch", args).expect("ok")
-        else {
+        let Request::EditBatch { commands, .. } = to_request("batch", args).expect("ok") else {
             panic!("not a batch");
         };
         assert_eq!(commands.len(), 2);

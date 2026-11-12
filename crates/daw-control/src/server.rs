@@ -126,6 +126,11 @@ fn serve<F: Fn(Request, &str) -> Response>(
         return respond(request, 400, &Response::error("could not read request"));
     }
     match serde_json::from_str::<Request>(&body) {
+        Ok(Request::BridgeHandshake) => respond(
+            request,
+            200,
+            &Response::ok(crate::bridge_status::handshake()),
+        ),
         Ok(parsed) => {
             let ai = request
                 .headers()

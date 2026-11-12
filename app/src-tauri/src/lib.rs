@@ -84,7 +84,7 @@ struct AppState {
     app: OnceLock<AppHandle>,
     /// Keeps the control server (Claude's way in) alive.
     control: Mutex<Option<ControlServer>>,
-    control_error: Mutex<Option<String>>,
+    control_error: Mutex<Option<daw_control::bridge_status::BridgeStatus>>,
     /// When Claude last talked to the app, and what it did recently.
     last_remote: Mutex<Option<Instant>>,
     /// The AI that last sent a request ("Claude", "Codex"...).
@@ -280,7 +280,7 @@ impl daw_control::Host for AppState {
                 .lock()
                 .ok()
                 .and_then(|e| e.clone())
-                .unwrap_or_else(|| "not listening".into()),
+                .map_or_else(|| "not listening".into(), |status| status.message.into()),
             (true, None) => "listening, no requests yet".into(),
             (true, Some(t)) => format!("listening, last request {} s ago", t.elapsed().as_secs()),
         };
@@ -1721,6 +1721,7 @@ fn bridge_path(app: &AppHandle) -> PathBuf {
 
 #[derive(Serialize)]
 struct AiStatus {
+    connection: Option<daw_control::bridge_status::BridgeStatus>,
     /// The control server is running, so an AI can connect.
     listening: bool,
     error: Option<String>,
@@ -1752,9 +1753,18 @@ fn ai_status(app: AppHandle, state: State<'_, AppState>) -> Result<AiStatus, Str
     let bridge = bridge_path(&app);
     let desktop = ai_setup::desktop_config_path();
     let codex = ai_setup::codex_config_path();
+    let connection = state
+        .control_error
+        .lock()
+        .ok()
+        .and_then(|e| e.clone())
+        .unwrap_or_else(|| daw_control::bridge_status::probe(&daw_control::control_file_path()));
     Ok(AiStatus {
-        listening: state.control.lock().is_ok_and(|c| c.is_some()),
-        error: state.control_error.lock().ok().and_then(|e| e.clone()),
+        listening: connection.status == "connected",
+        error: connection
+            .failed_step
+            .map(|_| connection.message.to_owned()),
+        connection: Some(connection),
         last_activity_secs: state
             .last_remote
             .lock()
@@ -1874,7 +1884,7 @@ fn start_control(app: &AppHandle) {
         Err(e) => {
             diagnostics::log_error(&format!("control server failed: {e}"));
             if let Ok(mut err) = state.control_error.lock() {
-                *err = Some(format!("Claude can't connect: {e}"));
+                *err = Some(daw_control::bridge_status::startup_failure(e.kind()));
             }
         }
     }

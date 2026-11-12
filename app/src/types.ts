@@ -819,6 +819,15 @@ export interface WebAddress {
 }
 
 export interface AiStatus {
+  connection?: {
+    status: string;
+    failed_step: string | null;
+    message: string;
+    app_version: string | null;
+    protocol_version: number | null;
+    expected_protocol_version: number;
+    capabilities: string[];
+  } | null;
   /** The control server is running, so an AI can connect. */
   listening: boolean;
   error: string | null;

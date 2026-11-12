@@ -9,7 +9,7 @@ use daw_model::{Project, TrackId};
 use crate::{ExportError, GAME_SAMPLE_RATE_HZ};
 
 /// How much ring-out (reverb, echo, release) is rendered past the end.
-const TAIL_SECONDS: f64 = 4.0;
+pub(crate) const TAIL_SECONDS: f64 = 4.0;
 /// A non-looping export keeps this much of the ring-out.
 const ONE_SHOT_TAIL_SECONDS: f64 = 2.0;
 /// Normalizing never pushes peaks above this (dBFS).
@@ -128,19 +128,8 @@ pub fn render_with_intro(
         ONE_SHOT_TAIL_SECONDS
     };
     let mut stereo = render_region(&p, audio, from, end, tail, GAME_SAMPLE_RATE_HZ);
-    if looped && file_frames > intro_frames {
-        let split = (file_frames * 2).min(stereo.len());
-        let (body, rest) = stereo.split_at_mut(split);
-        let looped_part = &mut body[(intro_frames * 2).min(split)..];
-        // The tail may be longer than a short loop: wrap it round as often
-        // as needed.
-        if !looped_part.is_empty() {
-            let len = looped_part.len();
-            for (i, s) in rest.iter().enumerate() {
-                looped_part[i % len] += s;
-            }
-        }
-        stereo.truncate(file_frames * 2);
+    if looped {
+        fold_tail(&mut stereo, intro_frames, file_frames);
     }
     let intro_beats = if looped {
         loop_start.clamp(from, end) - from
@@ -159,17 +148,39 @@ pub fn render_with_intro(
     }
 }
 
+/// Wrap an effect tail into the loop body and keep its exact frame count.
+pub(crate) fn fold_tail(stereo: &mut Vec<f32>, intro_frames: usize, file_frames: usize) {
+    if file_frames > intro_frames {
+        let split = (file_frames * 2).min(stereo.len());
+        let (body, rest) = stereo.split_at_mut(split);
+        let looped_part = &mut body[(intro_frames * 2).min(split)..];
+        // The tail may be longer than a short loop: wrap it round as often
+        // as needed.
+        if !looped_part.is_empty() {
+            let len = looped_part.len();
+            for (i, s) in rest.iter().enumerate() {
+                looped_part[i % len] += s;
+            }
+        }
+        stereo.truncate(file_frames * 2);
+    }
+}
+
 /// Gain (dB) that brings `main` to `target_lufs` without peaks above -1 dBFS.
 pub(crate) fn normalize_gain(main: &RenderedLoop, target_lufs: Option<f64>) -> f64 {
+    normalize_gain_for_samples(&main.stereo, target_lufs)
+}
+
+pub(crate) fn normalize_gain_for_samples(stereo: &[f32], target_lufs: Option<f64>) -> f64 {
     let Some(target) = target_lufs else {
         return 0.0;
     };
-    let m = daw_analysis::measure(&main.stereo, GAME_SAMPLE_RATE_HZ);
+    let m = daw_analysis::measure(stereo, GAME_SAMPLE_RATE_HZ);
     let Some(lufs) = m.integrated_lufs.filter(|l| l.is_finite()) else {
         return 0.0;
     };
     let wanted = target - lufs;
-    let peak_db = 20.0 * f64::from(main.stereo.iter().fold(0.0f32, |a, s| a.max(s.abs()))).log10();
+    let peak_db = 20.0 * f64::from(stereo.iter().fold(0.0f32, |a, s| a.max(s.abs()))).log10();
     let headroom = PEAK_CEILING_DB - peak_db;
     wanted.min(headroom).clamp(-40.0, 40.0)
 }

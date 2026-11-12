@@ -1,3 +1,4 @@
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, MutexGuard};
 
@@ -9,7 +10,7 @@ use daw_model::summary::{clip_detail, song_summary, track_detail};
 use daw_model::{AudioRegion, ClipId, Command, InstrumentKind, Project, Session, TrackId};
 use serde_json::{Value, json};
 
-use crate::protocol::{Request, Response};
+use crate::protocol::{ProjectGuard, Request, Response};
 
 /// What the request handler needs from whoever owns the project (the desktop
 /// app, or a test).
@@ -291,24 +292,19 @@ pub fn diagnostic_report<H: Host>(host: &H) -> Result<String, String> {
 }
 
 fn handle_inner<H: Host>(host: &H, request: Request, ai: &str) -> Result<Value, String> {
+    let write_audio = matches!(request, Request::ExportAudio { .. });
     match request {
+        Request::BridgeHandshake => Ok(crate::bridge_status::handshake()),
         Request::Ping => {
             Ok(json!({ "app": "Nunc Pro Tune", "version": env!("CARGO_PKG_VERSION") }))
         }
-        Request::Execute { command } => {
-            let name = command.name();
-            let description = describe(&command, ai);
-            let mut session = host.session()?;
-            let command = with_safety_version(host, session.project(), command, ai);
-            session.execute(command).map_err(|e| e.to_string())?;
-            // Each remote edit is its own undo step.
-            session.end_gesture();
-            sync(host, &session);
-            let summary = song_summary(session.project());
-            drop(session);
-            host.project_changed(&description);
-            Ok(json!({ "applied": name, "song": summary }))
-        }
+        Request::Execute { command } => execute_remote(host, command, &ProjectGuard::default(), ai),
+        Request::ExecuteChecked { command, guard } => execute_remote(host, command, &guard, ai),
+        Request::EditBatch {
+            commands,
+            guard,
+            include_song,
+        } => edit_batch(host, &commands, &guard, include_song, ai),
         Request::Undo | Request::Redo => {
             let undo = matches!(request, Request::Undo);
             let mut session = host.session()?;
@@ -321,7 +317,7 @@ fn handle_inner<H: Host>(host: &H, request: Request, ai: &str) -> Result<Value, 
             }
             Ok(json!({ "changed": done, "song": summary }))
         }
-        Request::GetSong => Ok(song_summary(host.session()?.project())),
+        Request::GetSong => current_song(host),
         Request::GetTrack { track_id } => {
             let session = host.session()?;
             let track = session
@@ -515,15 +511,51 @@ fn handle_inner<H: Host>(host: &H, request: Request, ai: &str) -> Result<Value, 
                 "missing_audio": saved.missing_audio,
             }))
         }
+        Request::SaveChecked {
+            path,
+            guard,
+            overwrite,
+        } => {
+            let saved = save_project_with(
+                host,
+                path.as_deref().map(Path::new),
+                &guard,
+                Some(overwrite),
+            )?;
+            host.project_changed(&format!("{ai} saved the project"));
+            Ok(json!({ "saved_to": saved.path, "missing_audio": saved.missing_audio }))
+        }
+        Request::SaveProjectCopy { path, guard } => {
+            let (project, audio) = capture_render_project(host, guard)?;
+            let target = with_extension(Path::new(&path));
+            write_independent_project(&project, &audio, &target)?;
+            Ok(json!({ "file_path": target, "name": project.name }))
+        }
+        Request::CreateProjectFile { path, name } => {
+            let target = with_extension(Path::new(&path));
+            let mut project = Project::default();
+            if let Some(name) = name.or_else(|| {
+                target
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .map(str::to_owned)
+            }) {
+                Command::RenameProject { name }
+                    .apply(&mut project)
+                    .map_err(|e| e.to_string())?;
+            }
+            write_independent_project(&project, &host.audio(), &target)?;
+            Ok(json!({ "file_path": target, "name": project.name }))
+        }
         Request::Open { path } => {
             open_project(host, Path::new(&path))?;
             host.project_changed(&format!("{ai} opened a project"));
-            Ok(song_summary(host.session()?.project()))
+            current_song(host)
         }
         Request::New => {
             new_project(host)?;
             host.project_changed(&format!("{ai} started a new project"));
-            Ok(song_summary(host.session()?.project()))
+            current_song(host)
         }
         Request::Analyze {
             start_beats,
@@ -549,6 +581,29 @@ fn handle_inner<H: Host>(host: &H, request: Request, ai: &str) -> Result<Value, 
                     json!(base64::engine::general_purpose::STANDARD.encode(png));
             }
             Ok(v)
+        }
+        Request::InspectAudioExport {
+            options,
+            project_id,
+        }
+        | Request::ExportAudio {
+            options,
+            project_id,
+        } => audio_export(host, &options, project_id, write_audio),
+        Request::PreviewAudio {
+            options,
+            project_id,
+        } => {
+            let (project, audio) = capture_render_project(
+                host,
+                ProjectGuard {
+                    project_id,
+                    expected_revision: None,
+                },
+            )?;
+            let report =
+                daw_export::preview_audio(&project, &audio, &options).map_err(|e| e.to_string())?;
+            serde_json::to_value(report).map_err(|e| e.to_string())
         }
         Request::ExportWav {
             path,
@@ -934,6 +989,90 @@ pub fn end_take<H: Host>(
     newest_clip(session.project(), track_id).map(Some)
 }
 
+fn current_song<H: Host>(host: &H) -> Result<Value, String> {
+    let session = host.session()?;
+    Ok(song_with_identity(host, &session))
+}
+
+fn song_with_identity<H: Host>(host: &H, session: &Session) -> Value {
+    let mut song = song_summary(session.project());
+    song["project_id"] = json!(session.project_id());
+    song["file_path"] = json!(host.project_path());
+    song["dirty"] = json!(session.is_dirty());
+    song["revision"] = json!(session.revision());
+    song
+}
+
+fn execute_remote<H: Host>(
+    host: &H,
+    command: Command,
+    guard: &ProjectGuard,
+    ai: &str,
+) -> Result<Value, String> {
+    let name = command.name();
+    let description = describe(&command, ai);
+    let mut session = host.session()?;
+    guard.check(&session)?;
+    let command = with_safety_version(host, session.project(), command, ai);
+    session.execute(command).map_err(|e| e.to_string())?;
+    session.end_gesture();
+    sync(host, &session);
+    let song = song_with_identity(host, &session);
+    drop(session);
+    host.project_changed(&description);
+    Ok(json!({ "applied": name, "song": song }))
+}
+
+fn edit_batch<H: Host>(
+    host: &H,
+    raw: &[Value],
+    guard: &ProjectGuard,
+    include_song: bool,
+    ai: &str,
+) -> Result<Value, String> {
+    let mut session = host.session()?;
+    guard.check(&session)?;
+    let mut scratch = session.project().clone();
+    let mut batch = crate::batch::Batch::prepare(raw, &mut scratch)?;
+    let safety = with_safety_version(
+        host,
+        session.project(),
+        Command::Batch {
+            commands: Vec::new(),
+        },
+        ai,
+    );
+    if let Command::Batch { mut commands } = safety
+        && !commands.is_empty()
+    {
+        let snapshot = commands.remove(0);
+        scratch = session.project().clone();
+        snapshot
+            .clone()
+            .apply(&mut scratch)
+            .map_err(|e| e.to_string())?;
+        batch = crate::batch::Batch::prepare(raw, &mut scratch)?;
+        batch.commands.insert(0, snapshot);
+    }
+    let mut result = crate::batch::changes(session.project(), &scratch);
+    result["refs"] = batch.refs();
+    let command = Command::Batch {
+        commands: batch.commands,
+    };
+    let description = describe(&command, ai);
+    session.execute(command).map_err(|e| e.to_string())?;
+    session.end_gesture();
+    sync(host, &session);
+    result["revision"] = json!(session.revision());
+    result["project_id"] = json!(session.project_id());
+    if include_song {
+        result["song"] = song_with_identity(host, &session);
+    }
+    drop(session);
+    host.project_changed(&description);
+    Ok(result)
+}
+
 pub(crate) fn engine<H: Host>(host: &H) -> Result<Arc<Engine>, String> {
     host.engine().ok_or_else(|| {
         "audio isn't running in Nunc Pro Tune (check the output device in the status bar)".into()
@@ -959,26 +1098,22 @@ pub(crate) fn replace<H: Host>(
         e.all_notes_off();
     }
     let mut session = host.session()?;
+    let audio = host.audio();
+    audio.clear_cache();
+    audio.set_project_folder(path.as_deref().map(audio_folder_for));
     session.replace_project(project);
-    sync(host, &session);
-    drop(session);
     host.set_project_path(path);
+    sync(host, &session);
     Ok(())
 }
 
 /// Starts a fresh default project.
 pub fn new_project<H: Host>(host: &H) -> Result<(), String> {
-    let audio = host.audio();
-    audio.clear_cache();
-    audio.set_project_folder(None);
     replace(host, Project::default(), None)
 }
 
 pub fn open_project<H: Host>(host: &H, path: &Path) -> Result<(), String> {
     let project = daw_model::load_project(path).map_err(|e| e.to_string())?;
-    let audio = host.audio();
-    audio.clear_cache();
-    audio.set_project_folder(Some(audio_folder_for(path)));
     replace(host, project, Some(path.to_owned()))
 }
 
@@ -995,15 +1130,57 @@ pub struct SavedProject {
 /// A song still called "Untitled" takes the file's name (as an ordinary,
 /// undoable rename), so exports aren't called "untitled".
 pub fn save_project<H: Host>(host: &H, path: Option<&Path>) -> Result<SavedProject, String> {
+    save_project_with(host, path, &ProjectGuard::default(), None)
+}
+
+fn save_project_with<H: Host>(
+    host: &H,
+    path: Option<&Path>,
+    guard: &ProjectGuard,
+    overwrite: Option<bool>,
+) -> Result<SavedProject, String> {
+    let session = host.session()?;
+    guard.check(&session)?;
+    let id = session.project_id().to_owned();
+    drop(session);
     // The file keeps each plugin's own settings as they are now.
     crate::plugins::store_states(host);
+    let mut session = host.session()?;
+    ProjectGuard {
+        project_id: Some(id),
+        expected_revision: guard.expected_revision,
+    }
+    .check(&session)?;
     let target = match path {
         Some(p) => with_extension(p),
         None => host
             .project_path()
             .ok_or_else(|| "the project has not been saved yet; give a file path".to_owned())?,
     };
-    let mut session = host.session()?;
+    if overwrite == Some(false) {
+        let mut project = session.project().clone();
+        let rename = save_name(&target, path.is_some(), &project);
+        if let Some(name) = &rename {
+            Command::RenameProject { name: name.clone() }
+                .apply(&mut project)
+                .map_err(|e| e.to_string())?;
+        }
+        let audio = host.audio();
+        write_independent_project(&project, &audio, &target)?;
+        if let Some(name) = rename {
+            session
+                .execute(Command::RenameProject { name })
+                .map_err(|e| e.to_string())?;
+            session.end_gesture();
+        }
+        session.mark_saved();
+        audio.set_project_folder(Some(audio_folder_for(&target)));
+        host.set_project_path(Some(target.clone()));
+        return Ok(SavedProject {
+            path: target,
+            missing_audio: Vec::new(),
+        });
+    }
     if path.is_some() && session.project().name == UNTITLED {
         let stem = target
             .file_stem()
@@ -1030,13 +1207,84 @@ pub fn save_project<H: Host>(host: &H, path: Option<&Path>) -> Result<SavedProje
     keep_backups(&target);
     daw_model::save_project(session.project(), &target).map_err(|e| e.to_string())?;
     session.mark_saved();
-    drop(session);
     audio.set_project_folder(Some(folder));
     host.set_project_path(Some(target.clone()));
     Ok(SavedProject {
         path: target,
         missing_audio,
     })
+}
+
+fn save_name(target: &Path, has_path: bool, project: &Project) -> Option<String> {
+    (has_path && project.name == UNTITLED)
+        .then(|| {
+            target
+                .file_stem()?
+                .to_str()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_owned)
+        })
+        .flatten()
+}
+
+fn write_independent_project(
+    project: &Project,
+    audio: &AudioPool,
+    target: &Path,
+) -> Result<(), String> {
+    let parent = target
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let folder = audio_folder_for(target);
+    for path in [target, folder.as_path()] {
+        match std::fs::symlink_metadata(path) {
+            Ok(_) => {
+                return Err(format!(
+                    "{} already exists. Choose a new destination or explicitly overwrite when saving the active project.",
+                    path.display()
+                ));
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e.to_string()),
+        }
+    }
+    let mut staged = tempfile::NamedTempFile::new_in(parent).map_err(|e| e.to_string())?;
+    staged
+        .write_all(daw_model::project_to_json(project).as_bytes())
+        .map_err(|e| e.to_string())?;
+    staged.as_file().sync_all().map_err(|e| e.to_string())?;
+    let files = project.audio_files();
+    let result = if files.is_empty() {
+        staged
+            .persist_noclobber(target)
+            .map(|_| ())
+            .map_err(|e| e.error.to_string())
+    } else {
+        // Reserving the folder prevents a concurrent save from mixing recordings.
+        std::fs::create_dir(&folder).map_err(|e| e.to_string())?;
+        let result = (|| {
+            let missing = audio
+                .gather(files.iter().map(String::as_str), &folder)
+                .map_err(|e| e.to_string())?;
+            if !missing.is_empty() {
+                return Err(format!(
+                    "Could not copy the project. Missing audio: {}",
+                    missing.join(", ")
+                ));
+            }
+            staged
+                .persist_noclobber(target)
+                .map(|_| ())
+                .map_err(|e| e.error.to_string())
+        })();
+        if result.is_err() {
+            let _ = std::fs::remove_dir_all(&folder);
+        }
+        result
+    };
+    result.map_err(|e| format!("Could not save {}: {e}", target.display()))
 }
 
 /// The name of a new song (`Project::default`).
@@ -1083,6 +1331,48 @@ fn with_extension(path: &Path) -> PathBuf {
 
 /// Default loudness for game music exports (LUFS).
 pub const DEFAULT_GAME_LUFS: f64 = -16.0;
+
+fn audio_export<H: Host>(
+    host: &H,
+    options: &daw_export::AudioExport,
+    project_id: Option<String>,
+    write: bool,
+) -> Result<Value, String> {
+    let (project, audio) = capture_render_project(
+        host,
+        ProjectGuard {
+            project_id,
+            expected_revision: None,
+        },
+    )?;
+    let render = if write {
+        daw_export::export_audio
+    } else {
+        daw_export::inspect_audio_export
+    };
+    let report = render(&project, &audio, options).map_err(|e| e.to_string())?;
+    serde_json::to_value(report).map_err(|e| e.to_string())
+}
+
+fn capture_render_project<H: Host>(
+    host: &H,
+    guard: ProjectGuard,
+) -> Result<(Project, Arc<AudioPool>), String> {
+    let session = host.session()?;
+    guard.check(&session)?;
+    let id = session.project_id().to_owned();
+    let mut project = session.project().clone();
+    let audio = host.audio().snapshot();
+    drop(session);
+    crate::plugins::copy_live_states(host, &mut project);
+    let current = host.session()?;
+    ProjectGuard {
+        project_id: Some(id),
+        ..guard
+    }
+    .check(&current)?;
+    Ok((project, audio))
+}
 
 /// Renders loops into a Godot project. Rendering runs on a snapshot, so
 /// the app stays responsive.
@@ -1359,6 +1649,156 @@ pub(crate) mod tests {
 
     fn ok(r: Response) -> Value {
         r.into_result().expect("request succeeded")
+    }
+
+    #[test]
+    fn typed_batch_resolves_refs_and_is_atomic_and_undoable() {
+        let host = TestHost {
+            keep_versions: true,
+            ..TestHost::default()
+        };
+        // Ensure this batch also exercises the safety snapshot's ID allocation.
+        host.session()
+            .expect("session")
+            .execute(Command::CreateClip {
+                track_id: 1,
+                start_beats: 0.0,
+                length_beats: 4.0,
+                name: None,
+                notes: vec![],
+            })
+            .expect("initial clip");
+        let before = host.session().expect("session").project().clone();
+        let song = current_song(&host).expect("song");
+        let guard = ProjectGuard {
+            project_id: song["project_id"].as_str().map(str::to_owned),
+            expected_revision: song["revision"].as_u64(),
+        };
+        let good = vec![
+            json!({"command":"add_track","name":"Guitar","instrument":"guitar","ref":"guitar"}),
+            json!({"command":"load_preset","track_ref":"guitar","preset":"Nylon Guitar"}),
+            json!({"command":"set_track_mixer","track_ref":"guitar","volume_db":-9}),
+            json!({"command":"create_clip","track_ref":"guitar","start_beats":4,"length_beats":4,"ref":"hook"}),
+            json!({"command":"add_notes","clip_ref":"hook","notes":[{"pitch":64,"start_beats":0,"length_beats":1}]}),
+        ];
+        let mut bad = good.clone();
+        bad.push(json!({"command":"rename_track","track_ref":"missing","name":"Oops"}));
+        let result = handle(
+            &host,
+            Request::EditBatch {
+                commands: bad,
+                guard: guard.clone(),
+                include_song: false,
+            },
+        )
+        .into_result()
+        .expect_err("invalid reference");
+        assert!(result.contains("commands[5].track_ref"), "{result}");
+        assert_eq!(host.session().expect("session").project(), &before);
+        assert!(host.last_claude.lock().expect("AI edits").is_none());
+
+        let result = ok(handle(
+            &host,
+            Request::EditBatch {
+                commands: good,
+                guard: guard.clone(),
+                include_song: false,
+            },
+        ));
+        let guitar = result["refs"]["guitar"].as_u64().expect("track") as u32;
+        let clip = result["refs"]["hook"].as_u64().expect("clip") as u32;
+        assert!(result.get("song").is_none());
+        assert!(
+            result["created_ids"]
+                .as_array()
+                .expect("IDs")
+                .contains(&json!(clip))
+        );
+        {
+            let session = host.session().expect("session");
+            let track = session.project().track(guitar).expect("guitar");
+            assert_eq!(track.mixer.volume_db, -9.0);
+            assert_eq!(track.clips[0].id, clip);
+            assert_eq!(track.clips[0].notes[0].pitch, 64);
+            assert_eq!(result["revision"], session.revision());
+            assert_eq!(session.project().snapshots.len(), 1);
+        }
+        let conflict = handle(
+            &host,
+            Request::ExecuteChecked {
+                command: Command::SetTempo { bpm: 80.0 },
+                guard,
+            },
+        )
+        .into_result()
+        .expect_err("revision conflict");
+        assert!(conflict.contains("expected_revision conflict"));
+        ok(handle(&host, Request::Undo));
+        let session = host.session().expect("session");
+        assert_eq!(session.project().tracks, before.tracks);
+        assert_eq!(session.project().snapshots, before.snapshots);
+        assert!(
+            session.can_undo(),
+            "the earlier edit still has its own undo step"
+        );
+    }
+
+    #[test]
+    fn creating_and_copying_files_keeps_the_open_project_and_its_edits() {
+        let host = TestHost::default();
+        ok(handle(
+            &host,
+            Request::Execute {
+                command: Command::SetTempo { bpm: 96.0 },
+            },
+        ));
+        let before = current_song(&host).expect("song");
+        let guard = ProjectGuard {
+            project_id: before["project_id"].as_str().map(str::to_owned),
+            expected_revision: before["revision"].as_u64(),
+        };
+        let copy = host._scratch.path().join("Copy.nptune");
+        let blank = host._scratch.path().join("Blank.nptune");
+        let copy_request = Request::SaveProjectCopy {
+            path: copy.to_string_lossy().into_owned(),
+            guard: guard.clone(),
+        };
+        ok(handle(&host, copy_request.clone()));
+        ok(handle(
+            &host,
+            Request::CreateProjectFile {
+                path: blank.to_string_lossy().into_owned(),
+                name: None,
+            },
+        ));
+        assert!(handle(&host, copy_request).into_result().is_err());
+        assert_eq!(
+            daw_model::load_project(&copy).expect("copy").tempo_bpm,
+            96.0
+        );
+        assert_eq!(
+            daw_model::load_project(&blank).expect("blank").tempo_bpm,
+            120.0
+        );
+        assert_eq!(current_song(&host).expect("unchanged song"), before);
+        assert!(host.session().expect("session").can_undo());
+        ok(handle(
+            &host,
+            Request::Open {
+                path: blank.to_string_lossy().into_owned(),
+            },
+        ));
+        let conflict = handle(
+            &host,
+            Request::ExecuteChecked {
+                command: Command::SetTempo { bpm: 80.0 },
+                guard,
+            },
+        )
+        .into_result()
+        .expect_err("stale project ID");
+        assert!(conflict.contains("project_id"));
+        assert_eq!(host.session().expect("session").project().tempo_bpm, 120.0);
     }
 
     #[test]

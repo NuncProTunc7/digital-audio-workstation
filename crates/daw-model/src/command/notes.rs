@@ -13,6 +13,7 @@ fn default_velocity() -> u8 {
 pub struct NoteInput {
     /// MIDI note number, 0–127. 60 = middle C. Drums: 36 kick, 38 snare,
     /// 42 closed hat, 46 open hat, 49 crash.
+    #[schemars(range(min = 0, max = 127))]
     pub pitch: u8,
     /// Start, in beats from the clip start.
     pub start_beats: f64,
@@ -20,11 +21,13 @@ pub struct NoteInput {
     pub length_beats: f64,
     /// Loudness, 1–127 (default 100).
     #[serde(default = "default_velocity")]
+    #[schemars(range(min = 1, max = 127))]
     pub velocity: u8,
     /// How often it plays, 1–100 % (default 100 = every time). Use for
     /// occasional ghost notes and fills; the pattern of skips is fixed, so
     /// playback and exports always match.
     #[serde(default = "full_chance")]
+    #[schemars(range(min = 1, max = 100))]
     pub chance: u8,
     /// Leave out; only used by undo to restore notes with their old ids.
     #[serde(default, skip_serializing_if = "Option::is_none")]

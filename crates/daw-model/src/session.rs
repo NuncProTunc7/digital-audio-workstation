@@ -1,10 +1,14 @@
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use crate::command::{Command, CommandError};
 use crate::project::Project;
 
 /// An open project plus its undo/redo history.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Session {
     project: Project,
+    project_id: String,
     undo_stack: Vec<Command>,
     redo_stack: Vec<Command>,
     // The most recent Command executed, for merging slider drags.
@@ -14,10 +18,23 @@ pub struct Session {
     saved_revision: u64,
 }
 
+impl Default for Session {
+    fn default() -> Self {
+        Self::new(Project::default())
+    }
+}
+
 impl Session {
     pub fn new(project: Project) -> Self {
+        static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+        let serial = NEXT_ID.fetch_add(1, Ordering::Relaxed);
+        let time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
         Self {
             project,
+            project_id: format!("{:x}-{time:x}-{serial:x}", std::process::id()),
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
             last_executed: None,
@@ -53,6 +70,11 @@ impl Session {
         self.revision
     }
 
+    /// Identifies this open instance until New or Open replaces it.
+    pub fn project_id(&self) -> &str {
+        &self.project_id
+    }
+
     pub fn project(&self) -> &Project {
         &self.project
     }
@@ -72,11 +94,16 @@ impl Session {
         let Some(plugin) = self.project.plugin_mut(id) else {
             return false;
         };
+        let old_count = plugin.params.len();
         for (id, v) in new_params {
             plugin.params.entry(*id).or_insert(v.clamp(0.0, 1.0));
         }
-        if state.is_some() {
+        let state_changed = state.is_some() && state != plugin.state;
+        if state_changed {
             plugin.state = state;
+        }
+        if !state_changed && old_count == plugin.params.len() {
+            return true;
         }
         let was_saved = !self.is_dirty();
         self.revision += 1;

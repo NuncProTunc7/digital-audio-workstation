@@ -234,6 +234,21 @@ fn claude_can_list_tools_edit_the_song_and_analyze_it() {
         serde_json::from_str(&text_of(&mcp.call("get_song", json!({})))).expect("song json");
     assert_eq!(song["tracks"][3]["name"], "Lead");
     assert_eq!(song["tracks"][3]["clips"][0]["note_count"], 2);
+    let output = dir.join("lead.ogg");
+    let spec = json!({
+        "project_id": song["project_id"],
+        "path": output, "format": "ogg", "mode": "loop",
+        "region": {"type": "beats", "start_beats": 0, "end_beats": 4}
+    });
+    let check = mcp.call("inspect_audio_export", spec.clone());
+    assert_eq!(check["isError"], false, "{check}");
+    assert!(!output.exists());
+    let export = mcp.call("export_audio", spec);
+    assert_eq!(export["isError"], false, "{export}");
+    let export: Value = serde_json::from_str(&text_of(&export)).expect("export report");
+    assert_eq!(export["verified_encoded_file"], true);
+    assert_eq!(export["loop_start_samples"], 0);
+    assert!(output.is_file());
 
     let r = mcp.call(
         "analyze_mix",
@@ -254,7 +269,14 @@ fn claude_can_list_tools_edit_the_song_and_analyze_it() {
     drop(server);
     let r = mcp.call("get_song", json!({}));
     assert_eq!(r["isError"], json!(true));
-    assert!(text_of(&r).contains("isn't running"), "{}", text_of(&r));
+    assert!(
+        text_of(&r).contains("control file is missing"),
+        "{}",
+        text_of(&r)
+    );
+    let r = mcp.call("bridge_status", json!({}));
+    assert_eq!(r["isError"], false, "{r}");
+    assert_eq!(r["structuredContent"]["status"], "control_file_missing");
     std::fs::remove_dir_all(&dir).ok();
 }
 

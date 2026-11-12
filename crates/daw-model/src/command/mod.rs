@@ -77,6 +77,7 @@ pub enum Command {
     /// changes later in the song (add_tempo_change) stay where they are.
     SetTempo {
         /// Tempo in beats per minute.
+        #[schemars(range(min = MIN_TEMPO_BPM, max = MAX_TEMPO_BPM))]
         bpm: f64,
     },
     /// Change the tempo partway through the song: from `beats` on, the song
@@ -93,6 +94,7 @@ pub enum Command {
         /// Where the new tempo starts, in beats from the song start (> 0).
         beats: f64,
         /// The new tempo in beats per minute (20–999).
+        #[schemars(range(min = MIN_TEMPO_BPM, max = MAX_TEMPO_BPM))]
         bpm: f64,
         /// Glide from here to the next change's tempo (default false:
         /// a sudden change).
@@ -212,8 +214,10 @@ pub enum Command {
     SetTrackMixer {
         track_id: TrackId,
         /// Fader level in dB, -60 (silent) to +6.
+        #[schemars(range(min = crate::project::MIN_VOLUME_DB, max = crate::project::MAX_VOLUME_DB))]
         volume_db: Option<f64>,
         /// Stereo position, -1.0 (left) to 1.0 (right).
+        #[schemars(range(min = -1.0, max = 1.0))]
         pan: Option<f64>,
         mute: Option<bool>,
         /// When any track is soloed, only soloed tracks are heard.

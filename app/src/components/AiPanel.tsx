@@ -119,6 +119,13 @@ export default function AiPanel({ status, onInstallClaudeDesktop, onInstallCodex
         running on your own computer.
       </p>
 
+      {status?.connection && (
+        <p className="muted">
+          Connection check: <code>{status.connection.status}</code>
+          {status.connection.failed_step && <> · <code>{status.connection.failed_step}</code></>}
+        </p>
+      )}
+
       <label className="field ai-app">
         <span>Which AI app?</span>
         <select

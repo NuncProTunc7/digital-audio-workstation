@@ -104,6 +104,41 @@ pub fn render_region(
     )
 }
 
+/// Renders the selected passage and stops sequencing at its end, leaving
+/// instrument release and effect tails to ring for the requested time.
+pub fn render_bounded_region(
+    project: &Project,
+    audio: &Arc<AudioPool>,
+    start_beats: f64,
+    end_beats: f64,
+    tail_seconds: f64,
+    sample_rate_hz: u32,
+) -> Vec<f32> {
+    let mut project = project.clone();
+    project.loop_region.enabled = false;
+    let seconds = project.tempo_map().seconds_between(start_beats, end_beats);
+    render_project(
+        &project,
+        audio,
+        vec![
+            TimedMessage {
+                at_seconds: 0.0,
+                message: EngineMessage::Locate(start_beats),
+            },
+            TimedMessage {
+                at_seconds: 0.0,
+                message: EngineMessage::Play,
+            },
+            TimedMessage {
+                at_seconds: seconds,
+                message: EngineMessage::Stop,
+            },
+        ],
+        seconds + tail_seconds,
+        sample_rate_hz,
+    )
+}
+
 /// Renders the whole song from the start (looping off) plus `tail_seconds`
 /// for reverb and delay tails. Returns interleaved stereo.
 pub fn render_song(

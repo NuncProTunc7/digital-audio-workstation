@@ -8,6 +8,9 @@
 
 pub mod ai;
 pub mod ai_setup;
+mod batch;
+pub mod bridge_status;
+pub use batch::HIDDEN_COMMANDS;
 pub mod autosave;
 pub mod calibrate;
 mod client;
@@ -35,6 +38,6 @@ pub use host::{
     inspect_export, load_user_preset, new_project, open_project, play_sound, sample_pack_status,
     save_project, save_user_preset,
 };
-pub use protocol::{GodotOptions, Request, Response, SoundExportOptions};
+pub use protocol::{GodotOptions, ProjectGuard, Request, Response, SoundExportOptions};
 pub use selection::Selection;
 pub use server::ControlServer;

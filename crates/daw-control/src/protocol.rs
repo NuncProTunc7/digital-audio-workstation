@@ -1,15 +1,56 @@
 use daw_model::{ClipId, Command, TrackId};
 use serde::{Deserialize, Serialize};
 
+/// Preconditions for a write against the current project.
+#[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProjectGuard {
+    pub project_id: Option<String>,
+    pub expected_revision: Option<u64>,
+}
+
+impl ProjectGuard {
+    pub(crate) fn check(&self, session: &daw_model::Session) -> Result<(), String> {
+        if self
+            .project_id
+            .as_deref()
+            .is_some_and(|id| id != session.project_id())
+        {
+            return Err(
+                "project_id is no longer open. Read get_song for the current project.".into(),
+            );
+        }
+        if let Some(expected) = self.expected_revision
+            && session.revision() != expected
+        {
+            return Err(format!(
+                "expected_revision conflict: expected {expected}, current revision is {}. Read get_song before retrying.",
+                session.revision()
+            ));
+        }
+        Ok(())
+    }
+}
+
 /// Everything the bridge can ask the app to do.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "method", content = "params", rename_all = "snake_case")]
 pub enum Request {
     /// Check the app is there.
     Ping,
+    /// Authenticated bridge capability and protocol negotiation.
+    BridgeHandshake,
     /// Apply a project edit (use `Command::Batch` for several at once).
     Execute {
         command: Command,
+    },
+    ExecuteChecked {
+        command: Command,
+        guard: ProjectGuard,
+    },
+    EditBatch {
+        commands: Vec<serde_json::Value>,
+        guard: ProjectGuard,
+        include_song: bool,
     },
     Undo,
     Redo,
@@ -116,6 +157,19 @@ pub enum Request {
     Save {
         path: Option<String>,
     },
+    SaveChecked {
+        path: Option<String>,
+        guard: ProjectGuard,
+        overwrite: bool,
+    },
+    SaveProjectCopy {
+        path: String,
+        guard: ProjectGuard,
+    },
+    CreateProjectFile {
+        path: String,
+        name: Option<String>,
+    },
     Open {
         path: String,
     },
@@ -126,6 +180,18 @@ pub enum Request {
         end_beats: Option<f64>,
         per_track: Option<bool>,
         spectrogram: Option<bool>,
+    },
+    InspectAudioExport {
+        options: daw_export::AudioExport,
+        project_id: Option<String>,
+    },
+    ExportAudio {
+        options: daw_export::AudioExport,
+        project_id: Option<String>,
+    },
+    PreviewAudio {
+        options: daw_export::AudioPreview,
+        project_id: Option<String>,
     },
     /// Render to a 24-bit WAV file.
     ExportWav {

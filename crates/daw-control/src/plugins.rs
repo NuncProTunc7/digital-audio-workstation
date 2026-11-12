@@ -270,20 +270,37 @@ pub fn store_states<H: Host>(host: &H) {
     let Some(engine) = host.engine() else {
         return;
     };
-    let ids = match host.session() {
-        Ok(s) => plugin_ids(s.project()),
+    let (project_id, ids) = match host.session() {
+        Ok(s) => (s.project_id().to_owned(), plugin_ids(s.project())),
         Err(_) => return,
     };
     for id in ids {
-        let Some(Ok(instance)) = engine.plugin(id) else {
+        let Some(encoded) = encoded_plugin_state(&engine, id) else {
             continue;
         };
-        let Ok(state) = instance.state() else {
-            continue;
-        };
-        let encoded = base64::engine::general_purpose::STANDARD.encode(state);
-        if let Ok(mut s) = host.session() {
+        if let Ok(mut s) = host.session()
+            && s.project_id() == project_id
+        {
             s.note_plugin(id, &BTreeMap::new(), Some(encoded));
+        }
+    }
+}
+
+fn encoded_plugin_state(engine: &daw_engine::Engine, id: Id) -> Option<String> {
+    let instance = engine.plugin(id)?.ok()?;
+    let state = instance.state().ok()?;
+    Some(base64::engine::general_purpose::STANDARD.encode(state))
+}
+
+/// Include the current plugin settings in an offline copy of a project.
+pub(crate) fn copy_live_states<H: Host>(host: &H, project: &mut Project) {
+    if let Some(engine) = host.engine() {
+        for id in plugin_ids(project) {
+            if let Some(plugin) = project.plugin_mut(id)
+                && let Some(encoded) = encoded_plugin_state(&engine, id)
+            {
+                plugin.state = Some(encoded);
+            }
         }
     }
 }

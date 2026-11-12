@@ -14,9 +14,20 @@ const OGG_QUALITY: f32 = 0.6;
 
 /// Writes interleaved stereo as OGG Vorbis.
 pub fn write_ogg(path: &Path, stereo: &[f32], sample_rate_hz: u32) -> Result<(), ExportError> {
-    let enc = |e: vorbis_rs::VorbisError| ExportError::Encode(e.to_string());
     let tmp = path.with_extension("ogg.tmp");
-    let file = BufWriter::new(File::create(&tmp).map_err(|e| io_err(&tmp, e))?);
+    let file = File::create(&tmp).map_err(|e| io_err(&tmp, e))?;
+    encode_ogg(file, &tmp, stereo, sample_rate_hz)?;
+    std::fs::rename(&tmp, path).map_err(|e| io_err(path, e))
+}
+
+pub(crate) fn encode_ogg(
+    file: impl Write,
+    path: &Path,
+    stereo: &[f32],
+    sample_rate_hz: u32,
+) -> Result<(), ExportError> {
+    let enc = |e: vorbis_rs::VorbisError| ExportError::Encode(e.to_string());
+    let file = BufWriter::new(file);
     let rate = NonZeroU32::new(sample_rate_hz.max(1)).unwrap_or(NonZeroU32::MIN);
     let channels = NonZeroU8::new(2).unwrap_or(NonZeroU8::MIN);
     // A fixed stream serial makes exports reproducible.
@@ -36,9 +47,7 @@ pub fn write_ogg(path: &Path, stereo: &[f32], sample_rate_hz: u32) -> Result<(),
         encoder.encode_audio_block([&left, &right]).map_err(enc)?;
     }
     let mut file = encoder.finish().map_err(enc)?;
-    file.flush().map_err(|e| io_err(&tmp, e))?;
-    drop(file);
-    std::fs::rename(&tmp, path).map_err(|e| io_err(path, e))
+    file.flush().map_err(|e| io_err(path, e))
 }
 
 /// Writes 16-bit stereo WAV. With `loop_frames` (begin, end), adds a `smpl`
@@ -61,6 +70,21 @@ pub(crate) fn write_wav_with(
     loop_frames: Option<(usize, usize)>,
     comment: Option<&str>,
 ) -> Result<(), ExportError> {
+    let tmp = path.with_extension("wav.tmp");
+    std::fs::write(
+        &tmp,
+        wav_bytes(stereo, sample_rate_hz, loop_frames, comment),
+    )
+    .map_err(|e| io_err(&tmp, e))?;
+    std::fs::rename(&tmp, path).map_err(|e| io_err(path, e))
+}
+
+pub(crate) fn wav_bytes(
+    stereo: &[f32],
+    sample_rate_hz: u32,
+    loop_frames: Option<(usize, usize)>,
+    comment: Option<&str>,
+) -> Vec<u8> {
     let frames = stereo.len() / 2;
     let data_bytes = (frames * 4) as u32;
     let mut out = Vec::with_capacity(44 + data_bytes as usize + 128);
@@ -111,9 +135,7 @@ pub(crate) fn write_wav_with(
     }
     let riff_size = (out.len() - 8) as u32;
     out[4..8].copy_from_slice(&riff_size.to_le_bytes());
-    let tmp = path.with_extension("wav.tmp");
-    std::fs::write(&tmp, out).map_err(|e| io_err(&tmp, e))?;
-    std::fs::rename(&tmp, path).map_err(|e| io_err(path, e))
+    out
 }
 
 /// The comment [`write_wav_with`] wrote into a WAV file, if any.

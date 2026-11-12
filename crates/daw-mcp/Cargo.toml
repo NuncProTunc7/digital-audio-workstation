@@ -12,6 +12,8 @@ name = "npt-mcp"
 path = "src/main.rs"
 
 [dependencies]
+daw-export = { path = "../daw-export" }
+schemars.workspace = true
 daw-control = { path = "../daw-control" }
 daw-model.workspace = true
 bytes = "1"

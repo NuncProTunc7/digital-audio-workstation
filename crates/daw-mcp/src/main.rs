@@ -57,8 +57,8 @@ ranges, presets).
 - When the user says \"this\", \"these\", or \"here\" (\"make this clip louder\", \"fix \
 these notes\"), call get_selection: it returns the track, clip, notes, or sound they have \
 selected in the app, and the playhead.
-- Use batch to make a multi-step change one undo step (e.g. add a track, load a preset, \
-create a clip with notes).
+- Use batch to make a multi-step change one undo step. Name new tracks or clips with ref, then use track_ref or clip_ref in later steps. Use project_id and expected_revision from get_song when preparing edits.\n\
+- If the app cannot be reached, use bridge_status. Use save_project_copy or create_project to write an independent file while keeping the current project open.
 - You cannot hear audio: after changes, call analyze_mix (and spectrogram=true when \
 judging tone: you get a picture and the same in words, bar by bar) to check loudness, \
 balance, and peaks. Game music usually sits around \
@@ -78,7 +78,7 @@ in get_track (once ready, lowest_note/highest_note: notes outside them are silen
 (add_plugin_effect). Their controls are 0-1 values by id (plugin_params, \
 set_plugin_params); always check the display text. Audio clips can follow tempo changes with set_clip_tempo.
 - Games: export_godot writes seamless loops (plus optional stems and adaptive-music \
-resources) straight into the user's Godot project, already set to loop.
+resources) straight into the user's Godot project, already set to loop. For ordinary folders, use inspect_audio_export and export_audio with a marker, beat range, or full arrangement. Use preview_audio to render a short excerpt without moving the transport.
 - Game sound effects (coin, jump, laser, explosion, hit, power-up, blip): add_sound with a category (each seed is a different take), read it with get_sound, change only the settings you name with set_sound (or vary_sound for a new take), let the user hear it with play_sound, and write WAVs into their Godot project with export_sounds. read_guide(\"composing\") has sound-design recipes; read_guide(\"sound-effects\") explains every setting.
 - Recording timing: if the user's takes land late (common with Bluetooth headsets), run \
 calibrate_recording (explain the clapping first) or set recording_delay.
@@ -118,6 +118,11 @@ impl Bridge {
                 Ok(text) => CallToolResult::success(vec![ContentBlock::text(text)]),
                 Err(e) => CallToolResult::error(vec![ContentBlock::text(e)]),
             };
+        }
+        if name == "bridge_status" {
+            let status = daw_control::bridge_status::probe(&daw_control::control_file_path());
+            let value = serde_json::to_value(status).expect("bridge status is serializable");
+            return CallToolResult::structured(value);
         }
         let request = match tools::to_request(name, args) {
             Ok(r) => r,
